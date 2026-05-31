@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# FFmpeg binaries
+bin/ffmpeg.exe
+bin/ffprobe.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Temp
+*.tmp
+*.log
+
+# Output
+格式大师/
