@@ -3,7 +3,6 @@ import threading
 import fitz
 from typing import Optional
 from PIL import Image
-from PIL import ImageTk
 
 
 class PdfEditor:
@@ -99,7 +98,7 @@ class PdfEditor:
 
     # ── Thumbnails ─────────────────────────────────────────
 
-    def get_thumbnail(self, page_num: int) -> Optional[ImageTk.PhotoImage]:
+    def get_thumbnail(self, page_num: int) -> Optional[Image.Image]:
         with self._lock:
             if not self._doc or page_num < 0 or page_num >= self.page_count:
                 return None
@@ -118,11 +117,10 @@ class PdfEditor:
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        tk_img = ImageTk.PhotoImage(img)
         if len(self._thumb_cache) >= self.THUMB_CACHE_MAX:
             oldest = self._thumb_access.pop(0)
             self._thumb_cache.pop(oldest, None)
-        self._thumb_cache[real_idx] = tk_img
+        self._thumb_cache[real_idx] = img
         self._thumb_access.append(real_idx)
 
     def _clear_thumb_cache(self):

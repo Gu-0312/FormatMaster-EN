@@ -4,6 +4,7 @@ import os
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from PIL import ImageTk
 from core.pdf_editor import PdfEditor
 
 # ── Design Tokens ──
@@ -494,9 +495,9 @@ class PdfEditorPanel(tk.Frame):
         def _worker():
             for i in range(start, end + 1):
                 try:
-                    tk_img = self.editor.get_thumbnail(i)
-                    if tk_img:
-                        self.after(0, self._place_thumb, i, tk_img, gen)
+                    pil_img = self.editor.get_thumbnail(i)
+                    if pil_img:
+                        self.after(0, self._place_thumb, i, pil_img, gen)
                 except Exception:
                     import traceback
                     traceback.print_exc()
@@ -504,7 +505,7 @@ class PdfEditorPanel(tk.Frame):
         t = threading.Thread(target=_worker, daemon=True)
         t.start()
 
-    def _place_thumb(self, page_num, tk_img, gen=0):
+    def _place_thumb(self, page_num, pil_img, gen=0):
         if gen != self._render_gen:
             return
         if page_num not in self._page_items:
@@ -513,6 +514,7 @@ class PdfEditorPanel(tk.Frame):
         if items["img"] is not None:
             self.canvas.delete(items["img"])
 
+        tk_img = ImageTk.PhotoImage(pil_img)
         x, y = self._get_thumb_pos(page_num)
         img_id = self.canvas.create_image(
             x + THUMB_W // 2, y + THUMB_H // 2,
