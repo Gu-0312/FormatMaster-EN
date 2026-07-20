@@ -1,11 +1,13 @@
-"""PDF 编辑器 UI 面板"""
+"""PDF 编辑器 UI 面板 - 优化排版版"""
 
 import os
+import math
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import ImageTk
 from core.pdf_editor import PdfEditor
+from utils.config import USER_PREFS
 
 # ── Design Tokens ──
 PAGE_BG = "#F5F6FA"
@@ -14,89 +16,41 @@ CARD_ALT = "#FAFBFC"
 ACCENT = "#F05A42"
 ACCENT_DEEP = "#D04532"
 ACCENT_PALE = "#FFF1EF"
+ACCENT_LIGHT = "#FFE8E3"
 BORDER = "#E5E7EB"
+BORDER_HI = "#D1D5DB"
 INK = "#1A1A2E"
 INK_SEC = "#6B7280"
 INK_DIS = "#9CA3AF"
 INK_INV = "#FFFFFF"
+SHADOW = "#E8E9ED"
 
-THUMB_W = 150
-THUMB_H = 200
-PADDING = 10
-COLUMNS = 4
-TEXT_H = 25
+THUMB_BASE_W = 150
+THUMB_BASE_H = 200
+PADDING = 16
+TEXT_H = 28
 FONT = "Microsoft YaHei UI"
+MIN_GAP = 12
+MAX_COLUMNS = 8
+MIN_COLUMNS = 2
 
 
 # ═══════════════════════════════════════════════
 #  Dialog Windows
 # ═══════════════════════════════════════════════
 
-class _WatermarkDialog(tk.Toplevel):
-    POSITIONS = ["左上角", "右上角", "左下角", "右下角", "居中"]
+class _DialogBase(tk.Toplevel):
+    """Dialog 基类，减少重复代码"""
 
-    def __init__(self, parent):
+    def __init__(self, parent, title, size):
         super().__init__(parent)
-        self.title("添加水印")
-        self.geometry("360x240")
+        self.title(title)
+        self.geometry(size)
         self.transient(parent)
         self.grab_set()
         self.resizable(False, False)
         self.result = None
-
-        self._pos_var = tk.StringVar(value=self.POSITIONS[3])
-        self._opacity_var = tk.DoubleVar(value=0.3)
-        self._text_var = tk.StringVar(value="格式大师")
-
-        body = tk.Frame(self, bg=PAGE_BG, padx=16, pady=12)
-        body.pack(fill=tk.BOTH, expand=True)
-
-        # Text
-        row1 = tk.Frame(body, bg=PAGE_BG)
-        row1.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(row1, text="水印文字", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Entry(row1, textvariable=self._text_var, font=(FONT, 9),
-                 bg=CARD_BG, fg=INK, relief="solid",
-                 highlightthickness=1, highlightbackground=BORDER,
-                 width=25).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Position
-        row2 = tk.Frame(body, bg=PAGE_BG)
-        row2.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(row2, text="位置", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        for pos in self.POSITIONS:
-            tk.Radiobutton(row2, text=pos, variable=self._pos_var,
-                           value=pos, bg=PAGE_BG, fg=INK,
-                           activebackground=PAGE_BG,
-                           font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 4))
-
-        # Opacity
-        row3 = tk.Frame(body, bg=PAGE_BG)
-        row3.pack(fill=tk.X, pady=(0, 12))
-        tk.Label(row3, text="不透明度", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Scale(row3, variable=self._opacity_var, from_=0.1, to=1.0,
-                 resolution=0.1, orient=tk.HORIZONTAL, bg=PAGE_BG,
-                 fg=INK, highlightthickness=0, length=140,
-                 font=(FONT, 8)).pack(side=tk.LEFT)
-
-        # Buttons
-        btn_frame = tk.Frame(body, bg=PAGE_BG)
-        btn_frame.pack(fill=tk.X)
-        tk.Button(btn_frame, text="确定", font=(FONT, 9),
-                  bg=ACCENT, fg=INK_INV, relief="flat", padx=20, pady=2,
-                  activebackground=ACCENT_DEEP, cursor="hand2",
-                  command=self._on_ok).pack(side=tk.RIGHT, padx=(8, 0))
-        tk.Button(btn_frame, text="取消", font=(FONT, 9),
-                  bg=CARD_BG, fg=INK, relief="flat", padx=20, pady=2,
-                  activebackground=CARD_ALT, cursor="hand2",
-                  command=self.destroy).pack(side=tk.RIGHT)
-
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.wait_visibility()
-        self.center_on_parent()
+        self.configure(bg=PAGE_BG)
 
     def center_on_parent(self):
         self.update_idletasks()
@@ -109,6 +63,75 @@ class _WatermarkDialog(tk.Toplevel):
         x = px + (pw - w) // 2
         y = py + (ph - h) // 2
         self.geometry(f"+{x}+{y}")
+
+    def _make_row(self, parent, label_text, pady=(0, 8)):
+        row = tk.Frame(parent, bg=PAGE_BG)
+        row.pack(fill=tk.X, pady=pady)
+        tk.Label(row, text=label_text, bg=PAGE_BG, fg=INK,
+                 font=(FONT, 10), width=8, anchor=tk.W).pack(side=tk.LEFT, padx=(0, 8))
+        return row
+
+    def _make_entry(self, parent, textvariable, width=25):
+        return tk.Entry(parent, textvariable=textvariable, font=(FONT, 10),
+                        bg=CARD_BG, fg=INK, relief="solid",
+                        highlightthickness=1, highlightbackground=BORDER,
+                        highlightcolor=ACCENT, width=width)
+
+    def _make_buttons(self, parent, on_ok, pady=(12, 0)):
+        btn_frame = tk.Frame(parent, bg=PAGE_BG)
+        btn_frame.pack(fill=tk.X, pady=pady)
+        tk.Button(btn_frame, text="确定", font=(FONT, 10, "bold"),
+                  bg=ACCENT, fg=INK_INV, relief="flat", padx=24, pady=4,
+                  activebackground=ACCENT_DEEP, cursor="hand2",
+                  command=on_ok).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(btn_frame, text="取消", font=(FONT, 10),
+                  bg=CARD_BG, fg=INK, relief="flat", padx=24, pady=4,
+                  activebackground=CARD_ALT, cursor="hand2",
+                  command=self.destroy).pack(side=tk.RIGHT)
+
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.wait_visibility()
+        self.center_on_parent()
+
+
+class _WatermarkDialog(_DialogBase):
+    POSITIONS = ["左上角", "右上角", "左下角", "右下角", "居中"]
+
+    def __init__(self, parent):
+        super().__init__(parent, "添加水印", "380x260")
+
+        self._pos_var = tk.StringVar(value=self.POSITIONS[3])
+        self._opacity_var = tk.DoubleVar(value=0.3)
+        self._text_var = tk.StringVar(value="格式大师")
+
+        body = tk.Frame(self, bg=PAGE_BG, padx=20, pady=16)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        # Title
+        tk.Label(body, text="水印设置", bg=PAGE_BG, fg=INK,
+                 font=(FONT, 12, "bold")).pack(anchor=tk.W, pady=(0, 12))
+
+        # Text
+        row1 = self._make_row(body, "水印文字")
+        self._make_entry(row1, self._text_var, 28).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Position
+        row2 = self._make_row(body, "位  置")
+        for pos in self.POSITIONS:
+            tk.Radiobutton(row2, text=pos, variable=self._pos_var,
+                           value=pos, bg=PAGE_BG, fg=INK,
+                           activebackground=PAGE_BG,
+                           selectcolor=CARD_BG,
+                           font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 6))
+
+        # Opacity
+        row3 = self._make_row(body, "不透明度")
+        tk.Scale(row3, variable=self._opacity_var, from_=0.1, to=1.0,
+                 resolution=0.1, orient=tk.HORIZONTAL, bg=PAGE_BG,
+                 fg=INK, highlightthickness=0, length=160,
+                 font=(FONT, 9), troughcolor=BORDER).pack(side=tk.LEFT)
+
+        self._make_buttons(body, self._on_ok)
 
     def _on_ok(self):
         self.result = (
@@ -119,84 +142,39 @@ class _WatermarkDialog(tk.Toplevel):
         self.destroy()
 
 
-class _PageNumDialog(tk.Toplevel):
+class _PageNumDialog(_DialogBase):
     POSITIONS = ["底部居中", "底部左对齐", "底部右对齐", "顶部居中"]
 
     def __init__(self, parent):
-        super().__init__(parent)
-        self.title("添加页码")
-        self.geometry("340x200")
-        self.transient(parent)
-        self.grab_set()
-        self.resizable(False, False)
-        self.result = None
+        super().__init__(parent, "添加页码", "380x280")
 
         self._start_var = tk.StringVar(value="1")
         self._pos_var = tk.StringVar(value=self.POSITIONS[0])
         self._fmt_var = tk.StringVar(value="— {n} —")
 
-        body = tk.Frame(self, bg=PAGE_BG, padx=16, pady=12)
+        body = tk.Frame(self, bg=PAGE_BG, padx=20, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
 
+        tk.Label(body, text="页码设置", bg=PAGE_BG, fg=INK,
+                 font=(FONT, 12, "bold")).pack(anchor=tk.W, pady=(0, 12))
+
         # Start number
-        row1 = tk.Frame(body, bg=PAGE_BG)
-        row1.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(row1, text="起始编号", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Entry(row1, textvariable=self._start_var, font=(FONT, 9),
-                 bg=CARD_BG, fg=INK, relief="solid",
-                 highlightthickness=1, highlightbackground=BORDER,
-                 width=10).pack(side=tk.LEFT)
+        row1 = self._make_row(body, "起始编号")
+        self._make_entry(row1, self._start_var, 12).pack(side=tk.LEFT)
 
         # Position
-        row2 = tk.Frame(body, bg=PAGE_BG)
-        row2.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(row2, text="位置", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        pos_cb = ttk.Combobox(row2, textvariable=self._pos_var,
-                              values=self.POSITIONS, state="readonly",
-                              width=14, font=(FONT, 9))
-        pos_cb.pack(side=tk.LEFT)
+        row2 = self._make_row(body, "位  置")
+        ttk.Combobox(row2, textvariable=self._pos_var,
+                     values=self.POSITIONS, state="readonly",
+                     width=14, font=(FONT, 10)).pack(side=tk.LEFT)
 
         # Format
-        row3 = tk.Frame(body, bg=PAGE_BG)
-        row3.pack(fill=tk.X, pady=(0, 12))
-        tk.Label(row3, text="格式", bg=PAGE_BG, fg=INK,
-                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Entry(row3, textvariable=self._fmt_var, font=(FONT, 9),
-                 bg=CARD_BG, fg=INK, relief="solid",
-                 highlightthickness=1, highlightbackground=BORDER,
-                 width=20).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(row3, text="{n} 代表页码", bg=PAGE_BG, fg=INK_SEC,
-                 font=(FONT, 8)).pack(side=tk.LEFT, padx=(6, 0))
+        row3 = self._make_row(body, "格  式")
+        self._make_entry(row3, self._fmt_var, 22).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(row3, text="{n} = 页码", bg=PAGE_BG, fg=INK_SEC,
+                 font=(FONT, 9)).pack(side=tk.LEFT, padx=(8, 0))
 
-        # Buttons
-        btn_frame = tk.Frame(body, bg=PAGE_BG)
-        btn_frame.pack(fill=tk.X)
-        tk.Button(btn_frame, text="确定", font=(FONT, 9),
-                  bg=ACCENT, fg=INK_INV, relief="flat", padx=20, pady=2,
-                  activebackground=ACCENT_DEEP, cursor="hand2",
-                  command=self._on_ok).pack(side=tk.RIGHT, padx=(8, 0))
-        tk.Button(btn_frame, text="取消", font=(FONT, 9),
-                  bg=CARD_BG, fg=INK, relief="flat", padx=20, pady=2,
-                  activebackground=CARD_ALT, cursor="hand2",
-                  command=self.destroy).pack(side=tk.RIGHT)
-
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.wait_visibility()
-        self.center_on_parent()
-
-    def center_on_parent(self):
-        self.update_idletasks()
-        pw = self.master.winfo_width()
-        ph = self.master.winfo_height()
-        px = self.master.winfo_x()
-        py = self.master.winfo_y()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        self._make_buttons(body, self._on_ok)
 
     def _on_ok(self):
         try:
@@ -208,65 +186,31 @@ class _PageNumDialog(tk.Toplevel):
         self.destroy()
 
 
-class _MetadataDialog(tk.Toplevel):
+class _MetadataDialog(_DialogBase):
     def __init__(self, parent, current: dict):
-        super().__init__(parent)
-        self.title("编辑元数据")
-        self.geometry("360x260")
-        self.transient(parent)
-        self.grab_set()
-        self.resizable(False, False)
-        self.result = None
+        super().__init__(parent, "编辑元数据", "400x300")
 
-        body = tk.Frame(self, bg=PAGE_BG, padx=16, pady=12)
+        body = tk.Frame(self, bg=PAGE_BG, padx=20, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
 
+        tk.Label(body, text="文档属性", bg=PAGE_BG, fg=INK,
+                 font=(FONT, 12, "bold")).pack(anchor=tk.W, pady=(0, 12))
+
         fields = [
-            ("标题", "title", 300),
-            ("作者", "author", 300),
-            ("主题", "subject", 300),
-            ("关键词", "keywords", 300),
+            ("标题", "title"),
+            ("作者", "author"),
+            ("主题", "subject"),
+            ("关键词", "keywords"),
         ]
         self._entries = {}
-        for i, (label, key, width) in enumerate(fields):
-            row = tk.Frame(body, bg=PAGE_BG)
-            row.pack(fill=tk.X, pady=(0, 8))
-            tk.Label(row, text=label, bg=PAGE_BG, fg=INK,
-                     font=(FONT, 9), width=6, anchor=tk.W).pack(side=tk.LEFT)
-            e = tk.Entry(row, font=(FONT, 9), bg=CARD_BG, fg=INK,
-                         relief="solid", highlightthickness=1,
-                         highlightbackground=BORDER)
+        for label, key in fields:
+            row = self._make_row(body, label)
+            e = self._make_entry(row, None)
             e.insert(0, current.get(key, ""))
             e.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self._entries[key] = e
 
-        # Buttons
-        btn_frame = tk.Frame(body, bg=PAGE_BG)
-        btn_frame.pack(fill=tk.X, pady=(8, 0))
-        tk.Button(btn_frame, text="确定", font=(FONT, 9),
-                  bg=ACCENT, fg=INK_INV, relief="flat", padx=20, pady=2,
-                  activebackground=ACCENT_DEEP, cursor="hand2",
-                  command=self._on_ok).pack(side=tk.RIGHT, padx=(8, 0))
-        tk.Button(btn_frame, text="取消", font=(FONT, 9),
-                  bg=CARD_BG, fg=INK, relief="flat", padx=20, pady=2,
-                  activebackground=CARD_ALT, cursor="hand2",
-                  command=self.destroy).pack(side=tk.RIGHT)
-
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.wait_visibility()
-        self.center_on_parent()
-
-    def center_on_parent(self):
-        self.update_idletasks()
-        pw = self.master.winfo_width()
-        ph = self.master.winfo_height()
-        px = self.master.winfo_x()
-        py = self.master.winfo_y()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        self._make_buttons(body, self._on_ok, pady=(16, 0))
 
     def _on_ok(self):
         self.result = {key: e.get() for key, e in self._entries.items()}
@@ -294,71 +238,110 @@ class PdfEditorPanel(tk.Frame):
         self._status_label = None
         self._render_gen = 0
 
+        # 响应式布局参数
+        self._columns = 4
+        self._thumb_scale = 1.0
+
         self._build_ui()
 
     # ── UI Construction ──────────────────────────────────────
 
     def _build_ui(self):
-        # Top bar: file operations + info
+        # ═══ Top bar ═══
         top_bar = tk.Frame(self, bg=PAGE_BG)
-        top_bar.pack(fill=tk.X, padx=8, pady=(6, 2))
+        top_bar.pack(fill=tk.X, padx=12, pady=(10, 4))
 
-        btn_style = dict(font=(FONT, 9), relief="flat", padx=10, pady=2,
-                         cursor="hand2")
+        # Left: file buttons
+        left_frame = tk.Frame(top_bar, bg=PAGE_BG)
+        left_frame.pack(side=tk.LEFT)
 
-        tk.Button(top_bar, text=" 打开", bg=CARD_BG, fg=INK,
-                  activebackground=CARD_ALT, **btn_style,
-                  command=self._open_file).pack(side=tk.LEFT, padx=(0, 4))
-        tk.Button(top_bar, text=" 保存", bg=ACCENT, fg=INK_INV,
-                  activebackground=ACCENT_DEEP, **btn_style,
-                  command=self._save_file).pack(side=tk.LEFT, padx=(0, 4))
-        tk.Button(top_bar, text="另存为", bg=CARD_BG, fg=INK,
-                  activebackground=CARD_ALT, **btn_style,
-                  command=self._save_as).pack(side=tk.LEFT)
+        btn_open = tk.Button(left_frame, text="📂  打开文件", font=(FONT, 10),
+                             bg=CARD_BG, fg=INK, relief="solid", bd=1,
+                             padx=14, pady=5, cursor="hand2",
+                             activebackground=CARD_ALT, highlightbackground=BORDER,
+                             command=self._open_file)
+        btn_open.pack(side=tk.LEFT, padx=(0, 6))
 
+        btn_save = tk.Button(left_frame, text="💾  保存", font=(FONT, 10, "bold"),
+                             bg=ACCENT, fg=INK_INV, relief="flat",
+                             padx=14, pady=5, cursor="hand2",
+                             activebackground=ACCENT_DEEP,
+                             command=self._save_file)
+        btn_save.pack(side=tk.LEFT, padx=(0, 6))
+
+        btn_save_as = tk.Button(left_frame, text="另存为", font=(FONT, 10),
+                                bg=CARD_BG, fg=INK, relief="solid", bd=1,
+                                padx=14, pady=5, cursor="hand2",
+                                activebackground=CARD_ALT, highlightbackground=BORDER,
+                                command=self._save_as)
+        btn_save_as.pack(side=tk.LEFT)
+
+        # Right: file info
         self._info_label = tk.Label(top_bar, text="未打开文件", bg=PAGE_BG,
                                     fg=INK_DIS, font=(FONT, 9), anchor=tk.E)
-        self._info_label.pack(side=tk.RIGHT, padx=(8, 4))
+        self._info_label.pack(side=tk.RIGHT, padx=(8, 0))
 
-        # Toolbar
-        toolbar = tk.Frame(self, bg=CARD_BG, bd=1, relief="solid",
-                           highlightbackground=BORDER, highlightthickness=1)
-        toolbar.pack(fill=tk.X, padx=8, pady=2)
+        # ═══ Toolbar ═══
+        toolbar = tk.Frame(self, bg=CARD_BG, highlightbackground=BORDER,
+                           highlightthickness=1)
+        toolbar.pack(fill=tk.X, padx=12, pady=(4, 8))
 
-        tool_ops = [
-            ("旋转", self._rotate_90),
-            ("删除", self._delete_selected),
-            ("插入PDF", self._insert_pdf),
-            ("插入图片", self._insert_image),
-            ("复制", self._duplicate_selected),
-            ("空白页", self._insert_blank),
-            ("水印", self._add_watermark),
-            ("页码", self._add_page_numbers),
-            ("元数据", self._edit_metadata),
-            ("撤销", self._undo),
+        # Tool groups with separators
+        tool_groups = [
+            # (text, command, accent)
+            [
+                ("🔀 旋转", self._rotate_90, False),
+                ("🗑 删除", self._delete_selected, False),
+                ("📋 复制", self._duplicate_selected, False),
+            ],
+            [
+                ("📄 插入PDF", self._insert_pdf, False),
+                ("🖼 插入图片", self._insert_image, False),
+                ("⬜ 空白页", self._insert_blank, False),
+            ],
+            [
+                ("🏷 水印", self._add_watermark, False),
+                ("🔢 页码", self._add_page_numbers, False),
+                ("📝 元数据", self._edit_metadata, False),
+            ],
+            [
+                ("↩ 撤销", self._undo, False),
+            ],
         ]
-        for text, cmd in tool_ops:
-            tk.Button(toolbar, text=text, font=(FONT, 9), bg=CARD_BG, fg=INK,
-                      relief="flat", padx=8, pady=3, cursor="hand2",
-                      activebackground=CARD_ALT,
-                      command=cmd).pack(side=tk.LEFT, padx=1)
 
-        # Separator
-        sep = tk.Frame(toolbar, bg=BORDER, width=1)
-        sep.pack(side=tk.LEFT, fill=tk.Y, padx=4, pady=3)
+        for gi, group in enumerate(tool_groups):
+            if gi > 0:
+                sep = tk.Frame(toolbar, bg=BORDER, width=1)
+                sep.pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=4)
 
-        tk.Button(toolbar, text="全选", font=(FONT, 9), bg=CARD_BG, fg=ACCENT,
-                  relief="flat", padx=8, pady=3, cursor="hand2",
-                  activebackground=CARD_ALT,
+            for text, cmd, accent in group:
+                fg = ACCENT if accent else INK
+                btn = tk.Button(toolbar, text=text, font=(FONT, 9),
+                                bg=CARD_BG, fg=fg, relief="flat",
+                                padx=8, pady=3, cursor="hand2",
+                                activebackground=ACCENT_PALE if accent else CARD_ALT,
+                                activeforeground=ACCENT_DEEP if accent else INK,
+                                command=cmd)
+                btn.pack(side=tk.LEFT, padx=1)
+
+        # Right side: select all / invert
+        right_tools = tk.Frame(toolbar, bg=CARD_BG)
+        right_tools.pack(side=tk.RIGHT)
+
+        tk.Button(right_tools, text="全选", font=(FONT, 9),
+                  bg=CARD_BG, fg=ACCENT, relief="flat",
+                  padx=8, pady=3, cursor="hand2",
+                  activebackground=ACCENT_PALE,
                   command=self._toggle_select_all).pack(side=tk.LEFT, padx=1)
-        tk.Button(toolbar, text="反选", font=(FONT, 9), bg=CARD_BG, fg=INK_SEC,
-                  relief="flat", padx=8, pady=3, cursor="hand2",
+        tk.Button(right_tools, text="反选", font=(FONT, 9),
+                  bg=CARD_BG, fg=INK_SEC, relief="flat",
+                  padx=8, pady=3, cursor="hand2",
                   activebackground=CARD_ALT,
                   command=self._invert_selection).pack(side=tk.LEFT, padx=1)
 
-        # Canvas area
+        # ═══ Canvas area ═══
         canvas_frame = tk.Frame(self, bg=PAGE_BG)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=2)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 4))
 
         self.canvas = tk.Canvas(canvas_frame, bg=PAGE_BG,
                                 highlightthickness=0, relief="flat")
@@ -378,51 +361,95 @@ class PdfEditorPanel(tk.Frame):
         self.canvas.bind("<Button-1>", self._on_click)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_drop)
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
 
-        # 空状态提示 — 显示在 Canvas 上
-        self._empty_hint = self.canvas.create_text(
-            400, 300, text="点击「打开」按钮选择 PDF 文件\n\n操作流程：选中页面 → 使用工具栏操作 → 保存",
-            fill=INK_DIS, font=(FONT, 14), anchor=tk.CENTER, justify=tk.CENTER,
-            tags="hint"
-        )
-        # 工作流提示栏
-        guide_bar = tk.Frame(self, bg=ACCENT_PALE, bd=1, relief="solid",
-                             highlightbackground=ACCENT, highlightthickness=1)
-        guide_bar.pack(fill=tk.X, padx=8, pady=(0, 2))
+        # ═══ Guide bar ═══
+        guide_bar = tk.Frame(self, bg=ACCENT_LIGHT, highlightbackground=ACCENT,
+                             highlightthickness=1)
+        guide_bar.pack(fill=tk.X, padx=12, pady=(0, 4))
         self._guide_label = tk.Label(guide_bar,
-            text="💡 操作即时生效 — 选中页面 → 点击工具栏按钮 → 完成后「保存」",
-            bg=ACCENT_PALE, fg=ACCENT_DEEP, font=(FONT, 9), anchor=tk.W, padx=8, pady=3)
+            text="💡  操作即时生效 — 选中页面 → 点击工具栏按钮 → 完成后「保存」",
+            bg=ACCENT_LIGHT, fg=ACCENT_DEEP, font=(FONT, 9), anchor=tk.W,
+            padx=10, pady=4)
         self._guide_label.pack(fill=tk.X)
 
-        # Status bar
-        status_bar = tk.Frame(self, bg=PAGE_BG, bd=1, relief="solid",
-                              highlightbackground=BORDER, highlightthickness=1)
-        status_bar.pack(fill=tk.X, padx=8, pady=(2, 6))
+        # ═══ Status bar ═══
+        status_bar = tk.Frame(self, bg=CARD_BG, highlightbackground=BORDER,
+                              highlightthickness=1)
+        status_bar.pack(fill=tk.X, padx=12, pady=(0, 8))
 
-        self._status_label = tk.Label(status_bar, text="就绪", bg=PAGE_BG,
+        self._status_label = tk.Label(status_bar, text="就绪", bg=CARD_BG,
                                       fg=INK_SEC, font=(FONT, 9), anchor=tk.W,
-                                      padx=8)
+                                      padx=10, pady=3)
         self._status_label.pack(fill=tk.X)
+
+    # ── Responsive Layout ───────────────────────────────────
+
+    def _calc_columns(self):
+        """根据 Canvas 宽度计算合适的列数"""
+        try:
+            cw = self.canvas.winfo_width()
+        except Exception:
+            return 4
+        if cw <= 1:
+            return 4
+        avail = cw - PADDING * 2
+        tw = THUMB_BASE_W * self._thumb_scale + MIN_GAP
+        cols = max(MIN_COLUMNS, min(MAX_COLUMNS, int(avail / tw)))
+        return cols
+
+    def _on_canvas_resize(self, event=None):
+        new_cols = self._calc_columns()
+        if new_cols != self._columns:
+            self._columns = new_cols
+            if self.editor.page_count > 0:
+                self._render_thumbnails()
+
+    def _get_thumb_size(self):
+        w = int(THUMB_BASE_W * self._thumb_scale)
+        h = int(THUMB_BASE_H * self._thumb_scale)
+        return w, h
+
+    def _get_thumb_pos(self, page_num):
+        tw, th = self._get_thumb_size()
+        gap = MIN_GAP
+        col = page_num % self._columns
+        row = page_num // self._columns
+        x = PADDING + col * (tw + gap)
+        y = PADDING + row * (th + TEXT_H + gap)
+        return x, y
 
     # ── File Operations ──────────────────────────────────────
 
+    def _get_last_dir(self, key):
+        """获取上次使用的目录"""
+        return USER_PREFS.get("pdf_editor", key, os.path.expanduser("~"))
+
+    def _save_last_dir(self, key, path):
+        """保存最后使用的目录"""
+        if path and os.path.isdir(path):
+            USER_PREFS.set("pdf_editor", key, path)
+        elif path and os.path.isfile(path):
+            USER_PREFS.set("pdf_editor", key, os.path.dirname(path))
+
     def _open_file(self):
+        last_dir = self._get_last_dir("open")
         path = filedialog.askopenfilename(
             title="打开 PDF 文件",
+            initialdir=last_dir,
             filetypes=[("PDF 文件", "*.pdf"), ("所有文件", "*.*")]
         )
         if not path:
             return
+        self._save_last_dir("open", path)
         try:
             self.editor.open(path)
             self.selected.clear()
             self._last_clicked_page = None
+            self._columns = self._calc_columns()
             self._render_thumbnails()
             self._update_status()
-            self._info_label.config(
-                text=os.path.basename(path),
-                fg=INK
-            )
+            self._info_label.config(text=os.path.basename(path), fg=INK)
             self._log(f"已打开: {path}")
         except RuntimeError as e:
             messagebox.showerror("打开失败", str(e))
@@ -445,13 +472,16 @@ class PdfEditorPanel(tk.Frame):
     def _save_as(self):
         if not self.editor.page_count:
             return
+        last_dir = self._get_last_dir("save")
         path = filedialog.asksaveasfilename(
             title="另存为",
+            initialdir=last_dir,
             defaultextension=".pdf",
             filetypes=[("PDF 文件", "*.pdf"), ("所有文件", "*.*")]
         )
         if not path:
             return
+        self._save_last_dir("save", path)
         try:
             self.editor.compact()
             self.editor.save(path)
@@ -466,48 +496,51 @@ class PdfEditorPanel(tk.Frame):
     def _render_thumbnails(self):
         self._render_gen += 1
         self.canvas.delete("thumb")
-        self._thumb_refs.clear()
-        self._page_items.clear()
-        self._item_to_page.clear()
+        self._thumb_refs = []
+        self._page_items = {}
+        self._item_to_page = {}
 
         n = self.editor.page_count
         if n == 0:
-            self.canvas.itemconfig(self._empty_hint, state="normal")
             self.canvas.config(scrollregion=(0, 0, 1, 1))
             return
-        self.canvas.itemconfig(self._empty_hint, state="hidden")
 
-        rows = (n + COLUMNS - 1) // COLUMNS
-        total_w = COLUMNS * (THUMB_W + PADDING) + PADDING
-        total_h = rows * (THUMB_H + PADDING + TEXT_H) + PADDING
+        tw, th = self._get_thumb_size()
+        gap = MIN_GAP
+        rows = math.ceil(n / self._columns)
+        total_w = self._columns * (tw + gap) + PADDING * 2
+        total_h = rows * (th + TEXT_H + gap) + PADDING * 2
 
         for i in range(n):
             x, y = self._get_thumb_pos(i)
+
+            # Shadow (subtle)
+            self.canvas.create_rectangle(
+                x + 2, y + 2, x + tw + 2, y + th + 2,
+                fill=SHADOW, outline="", tags="thumb"
+            )
+
+            # Thumbnail background
             rect = self.canvas.create_rectangle(
-                x, y, x + THUMB_W, y + THUMB_H,
+                x, y, x + tw, y + th,
                 fill=CARD_BG, outline=BORDER, width=1,
                 tags="thumb"
             )
+
+            # Page number label
             text = self.canvas.create_text(
-                x + THUMB_W // 2, y + THUMB_H + 6,
+                x + tw // 2, y + th + 8,
                 text=f"第 {i + 1} 页",
                 font=(FONT, 9), fill=INK_SEC,
                 tags="thumb"
             )
+
             self._page_items[i] = {"rect": rect, "img": None, "text": text}
             self._item_to_page[rect] = i
             self._item_to_page[text] = i
 
         self.canvas.config(scrollregion=(0, 0, total_w, total_h))
         self._load_visible_thumbnails()
-        self.canvas.bind("<Configure>", self._on_canvas_scroll, add="+")
-
-    def _get_thumb_pos(self, page_num):
-        col = page_num % COLUMNS
-        row = page_num // COLUMNS
-        x = PADDING + col * (THUMB_W + PADDING)
-        y = PADDING + row * (THUMB_H + PADDING + TEXT_H)
-        return x, y
 
     def _load_thumbnails(self, start, end):
         gen = self._render_gen
@@ -533,10 +566,19 @@ class PdfEditorPanel(tk.Frame):
         if items["img"] is not None:
             self.canvas.delete(items["img"])
 
+        # Scale image to fit thumbnail size
+        tw, th = self._get_thumb_size()
+        from PIL import Image as PILImage
+        orig_w, orig_h = pil_img.size
+        scale = min((tw - 4) / orig_w, (th - 4) / orig_h)
+        new_w = max(1, int(orig_w * scale))
+        new_h = max(1, int(orig_h * scale))
+        pil_img = pil_img.resize((new_w, new_h), PILImage.LANCZOS)
+
         tk_img = ImageTk.PhotoImage(pil_img)
         x, y = self._get_thumb_pos(page_num)
         img_id = self.canvas.create_image(
-            x + THUMB_W // 2, y + THUMB_H // 2,
+            x + tw // 2, y + th // 2,
             image=tk_img, tags="thumb"
         )
         self._thumb_refs.append(tk_img)
@@ -576,9 +618,6 @@ class PdfEditorPanel(tk.Frame):
             start = max(0, start - margin)
             end = min(n - 1, end + margin)
             self._load_thumbnails(start, end)
-
-    def _on_canvas_scroll(self, event=None):
-        self._load_visible_thumbnails()
 
     # ── Selection Handling ───────────────────────────────────
 
@@ -635,8 +674,12 @@ class PdfEditorPanel(tk.Frame):
         if not items:
             return
         selected = page_num in self.selected
-        outline = ACCENT if selected else BORDER
-        width = 3 if selected else 1
+        if selected:
+            outline = ACCENT
+            width = 3
+        else:
+            outline = BORDER
+            width = 1
         self.canvas.itemconfig(items["rect"], outline=outline, width=width)
 
     # ── Drag & Drop Reordering ──────────────────────────────
@@ -699,12 +742,15 @@ class PdfEditorPanel(tk.Frame):
     def _insert_pdf(self):
         if not self.editor.page_count:
             return
+        last_dir = self._get_last_dir("insert")
         path = filedialog.askopenfilename(
             title="插入 PDF 文件",
+            initialdir=last_dir,
             filetypes=[("PDF 文件", "*.pdf"), ("所有文件", "*.*")]
         )
         if not path:
             return
+        self._save_last_dir("insert", path)
         at = min(self.selected) if self.selected else self.editor.page_count
         if self.editor.insert_pdf(at, path):
             self._render_thumbnails()
@@ -714,13 +760,16 @@ class PdfEditorPanel(tk.Frame):
     def _insert_image(self):
         if not self.editor.page_count:
             return
+        last_dir = self._get_last_dir("insert")
         path = filedialog.askopenfilename(
             title="插入图片",
+            initialdir=last_dir,
             filetypes=[("图片文件", "*.png *.jpg *.jpeg *.bmp *.tiff *.webp"),
                        ("所有文件", "*.*")]
         )
         if not path:
             return
+        self._save_last_dir("insert", path)
         at = min(self.selected) if self.selected else self.editor.page_count
         if self.editor.insert_image(at, path):
             self._render_thumbnails()
@@ -821,10 +870,12 @@ class PdfEditorPanel(tk.Frame):
             self._status_label.config(text="就绪")
             return
         sel = len(self.selected)
-        parts = [f"共 {n} 页", f"选中 {sel} 页"]
+        parts = [f"共 {n} 页"]
+        if sel > 0:
+            parts.append(f"选中 {sel} 页")
         if self.editor.modified:
-            parts.append("未保存")
-        self._status_label.config(text=" | ".join(parts))
+            parts.append("● 未保存")
+        self._status_label.config(text="  |  ".join(parts))
 
     def _log(self, msg, level="info"):
         if self.log_func:

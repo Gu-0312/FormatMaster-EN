@@ -45,6 +45,8 @@ from core.video_downloader import VideoDownloader
 from core.image_cropper import PRESETS as CROP_PRESETS
 from core.m3u8_downloader import M3U8Downloader
 from gui.pdf_editor_panel import PdfEditorPanel
+from utils.combobox_style import style_combobox
+
 
 # ═══════════════════════════════════════════════
 #  异常 → 中文提示映射
@@ -111,9 +113,9 @@ D = {
     "input_focus":  "#F05A42",
     "prog_trough":  "#E5E7EB",
     "prog_fill":    "#F05A42",
-    "select_bg":    "#FEE2DE",
+    "select_bg":    "#FDDBD6",
     "select_fg":    "#C0392B",
-    "select_bold":  "#B03A2E",
+    "select_bold":  "#A83228",
 }
 
 # 字体
@@ -196,15 +198,28 @@ class FormatMaster:
         s.configure("TFrame", background=D["page"])
         s.configure("TLabel", background=D["page"], foreground=D["ink"], font=BODY)
         
+        # Combobox 样式优化
         s.configure("TCombobox",
                      fieldbackground=D["input_bg"], foreground="#000000",
-                     selectbackground=D["select_bg"], selectforeground=D["select_fg"],
+                     selectbackground="#ea580c", selectforeground="#FFFFFF",
                      font=BODY, padding=6, arrowcolor=D["ink_sec"])
         s.map("TCombobox",
                fieldbackground=[("readonly", D["input_bg"])],
-               foreground=[("readonly", "#000000")],
+               foreground=[("readonly", "#000000"), ("!disabled", "#000000")],
+               selectbackground=[("!disabled", "#ea580c")],
+               selectforeground=[("!disabled", "#FFFFFF")],
                bordercolor=[("focus", D["input_focus"])],
                arrowcolor=[("active", D["ink"]), ("!disabled", D["ink_sec"])])
+
+        # 下拉列表 Listbox - Hover 深蓝 + Active 橙色
+        self.root.option_add("*TCombobox*Listbox.background", "#FFFFFF")
+        self.root.option_add("*TCombobox*Listbox.foreground", "#1A1A2E")
+        self.root.option_add("*TCombobox*Listbox.selectBackground", "#1e40af")
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
+        self.root.option_add("*TCombobox*Listbox.font", BODY)
+        self.root.option_add("*TCombobox*Listbox.relief", "flat")
+        self.root.option_add("*TCombobox*Listbox.activeBackground", "#1e40af")
+        self.root.option_add("*TCombobox*Listbox.activeForeground", "#FFFFFF")
         
         s.configure("Horizontal.TProgressbar",
                      troughcolor=D["prog_trough"], background=D["prog_fill"],
@@ -404,11 +419,20 @@ class FormatMaster:
                 lbl.pack(fill=tk.X)
                 for w in (row, ind, badge, lbl):
                     w.bind("<Button-1>", lambda e, k=key: self._switch(k))
-                    def on_enter(e, r=row, k=key):
+                    def on_enter(e, r=row, i=ind, l=lbl, k=key):
                         if k != self.current_tab.get():
                             r.configure(bg=D["select_bg"])
-                    def on_leave(e, r=row, k=key):
-                        r.configure(bg=D["select_bg"] if k == self.current_tab.get() else D["sidebar"])
+                            i.configure(bg=D["accent_soft"])
+                            l.configure(fg=D["select_fg"])
+                    def on_leave(e, r=row, i=ind, l=lbl, k=key):
+                        if k == self.current_tab.get():
+                            r.configure(bg=D["select_bg"])
+                            i.configure(bg=D["accent"])
+                            l.configure(fg=D["select_bold"], font=NAV_B)
+                        else:
+                            r.configure(bg=D["sidebar"])
+                            i.configure(bg=D["sidebar"])
+                            l.configure(fg=D["ink_sec"], font=NAV)
                     w.bind("<Enter>", on_enter)
                     w.bind("<Leave>", on_leave)
                 self.nav[key] = (row, ind, badge, lbl)
@@ -449,6 +473,7 @@ class FormatMaster:
         self._p_crop()
         self._p_m3u8()
         self._switch("video")
+        self._style_all_combos()
         
         self._create_bottom_panel()
         
@@ -456,6 +481,18 @@ class FormatMaster:
         self._process_status_queue()
         
         self._process_task_queue()
+
+    def _style_all_combos(self):
+        """遍历所有 Combobox，应用自定义下拉列表样式"""
+        def _walk(widget):
+            for child in widget.winfo_children():
+                if isinstance(child, ttk.Combobox):
+                    try:
+                        style_combobox(child)
+                    except Exception:
+                        pass
+                _walk(child)
+        _walk(self.root)
 
     def _enable_double_buffering(self):
         try:
@@ -516,13 +553,15 @@ class FormatMaster:
         cur = self.current_tab.get()
         for k, (row, ind, badge, lbl) in self.nav.items():
             if k == cur:
+                # 选中状态：背景加深 + 左侧指示条加宽 + 文字加粗变色
                 row.configure(bg=D["select_bg"])
-                ind.configure(bg=D["accent"])
+                ind.configure(bg=D["accent"], width=6)
                 badge.configure(bg=D["accent"], fg=D["ink_inv"])
                 lbl.configure(bg=D["select_bg"], fg=D["select_bold"], font=NAV_B)
             else:
+                # 默认状态
                 row.configure(bg=D["sidebar"])
-                ind.configure(bg=D["sidebar"])
+                ind.configure(bg=D["sidebar"], width=5)
                 badge.configure(bg=D["accent_pale"], fg=D["accent"])
                 lbl.configure(bg=D["sidebar"], fg=D["ink_sec"], font=NAV)
     
@@ -1496,7 +1535,7 @@ class FormatMaster:
         prefs = USER_PREFS.get_panel(panel)
         if not prefs:
             return
-        
+
         if panel == "video":
             if prefs.get("fmt") and hasattr(self, 'v_fmt'):
                 self.v_fmt.set(prefs["fmt"])
@@ -1619,12 +1658,6 @@ class FormatMaster:
     def _switch(self, tab):
         if getattr(self, 'panels_disabled', False):
             return
-        # 离开 PDF 面板时检查编辑器未保存状态
-        if hasattr(self, 'current_tab') and self.current_tab.get() == "pdf" and tab != "pdf":
-            if (hasattr(self, 'pdf_editor_panel') and self.pdf_editor_panel and
-                self.pdf_editor_panel.is_modified()):
-                if not messagebox.askyesno("未保存", "PDF 编辑器中有未保存的修改，确定要切换吗？"):
-                    return
         if hasattr(self, 'current_tab') and self.current_tab.get():
             self._save_panel_prefs(self.current_tab.get())
         self.current_tab.set(tab)
@@ -1711,9 +1744,23 @@ class FormatMaster:
 
         return f
 
+    def _get_last_dir(self, panel_key):
+        """获取面板上次使用的目录"""
+        return USER_PREFS.get("last_dirs", panel_key, os.path.expanduser("~"))
+
+    def _save_last_dir(self, panel_key, path):
+        """保存面板最后使用的目录"""
+        if path and os.path.isdir(path):
+            USER_PREFS.set("last_dirs", panel_key, path)
+        elif path and os.path.isfile(path):
+            USER_PREFS.set("last_dirs", panel_key, os.path.dirname(path))
+
     def _add(self, key):
         d = self.panel_data[key]
-        fs = filedialog.askopenfilenames(filetypes=d["filetypes"])
+        last_dir = self._get_last_dir(key)
+        fs = filedialog.askopenfilenames(initialdir=last_dir, filetypes=d["filetypes"])
+        if fs:
+            self._save_last_dir(key, fs[0])
         for f in fs:
             if f not in d["files"]:
                 d["files"].append(f)
@@ -1726,8 +1773,10 @@ class FormatMaster:
 
     def _add_dir(self, key):
         d = self.panel_data[key]
-        folder = filedialog.askdirectory()
+        last_dir = self._get_last_dir(key)
+        folder = filedialog.askdirectory(initialdir=last_dir)
         if not folder: return
+        self._save_last_dir(key, folder)
         exts = {x[1:].lower() for ft in d["filetypes"] for x in ft[1].split() if x.startswith("*.")}
         for rd, _, fns in os.walk(folder):
             for fn in fns:
@@ -2274,11 +2323,14 @@ class FormatMaster:
             "rename": ("rn_out_dir_combo", "rn_out_dir_path"),
             "crop": ("crp_out_dir_combo", "crp_out_dir_path"),
         }
-        
-        dir_path = filedialog.askdirectory()
+
+        last_dir = self._get_last_dir(panel_key)
+        dir_path = filedialog.askdirectory(initialdir=last_dir)
         if not dir_path:
             return
-        
+
+        self._save_last_dir(panel_key, dir_path)
+
         if panel_key in attr_map:
             combo_attr, path_attr = attr_map[panel_key]
             if hasattr(self, combo_attr) and hasattr(self, path_attr):
@@ -2550,10 +2602,12 @@ class FormatMaster:
         
         self.detect_file_list = []
         self.detect_file_vars = []
-    
+
     def _detect_browse(self):
-        path = filedialog.askdirectory(title="选择文件夹")
+        last_dir = self._get_last_dir("detect")
+        path = filedialog.askdirectory(title="选择文件夹", initialdir=last_dir)
         if path:
+            self._save_last_dir("detect", path)
             self.detect_path.delete(0, tk.END)
             self.detect_path.insert(0, path)
     
@@ -3020,27 +3074,34 @@ class FormatMaster:
         p = tk.Frame(self.content, bg=D["page"])
         self.panels["pdf"] = p
         self._hdr(p, "PDF 工具", "合并、拆分、加密、解密、压缩")
-        
-        # 模式选择器（始终可见，放在最上方）
+        self._file_sec(p, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
         s = self._card(p, "操作设置")
-        self._pdf_mode_card_outer = s.master.master  # outer card frame, for hide/show
 
-        # 模式切换
-        tk.Label(s, text="操作模式", bg=D["card"], fg=D["ink"],
-                 font=SM).grid(row=0, column=0, sticky="w", pady=10)
-        self.pdf_mode = ttk.Combobox(s, values=["合并（多个→一个）", "拆分（一个→多个）", 
-                                                  "加密（设置密码）", "解密（移除密码）", "压缩",
-                                                  "编辑器（可视化）"],
-                                      state="readonly", width=22)
+        # 模式切换行
+        mode_row = tk.Frame(s, bg=D["card"])
+        mode_row.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(mode_row, text="操作模式", bg=D["card"], fg=D["ink"],
+                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
+        self.pdf_mode = ttk.Combobox(mode_row, values=["合并（多个→一个）", "拆分（一个→多个）",
+                                                        "加密（设置密码）", "解密（移除密码）", "压缩"],
+                                      state="readonly", width=20)
         self.pdf_mode.set("合并（多个→一个）")
-        self.pdf_mode.grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=10)
+        self.pdf_mode.pack(side=tk.LEFT)
         self.pdf_mode.bind("<<ComboboxSelected>>", lambda e: self._pdf_mode_changed())
 
-        # 拆分页码输入（仅拆分模式可见）
+        # 编辑按钮 - 靠右
+        edit_btn = tk.Button(mode_row, text="✏️ 编辑器", font=(BODY[0], BODY[1], "bold"),
+                             bg=D["accent"], fg=D["ink_inv"], relief="flat",
+                             padx=12, pady=3, cursor="hand2",
+                             activebackground=D["accent_deep"],
+                             command=self._open_pdf_editor)
+        edit_btn.pack(side=tk.RIGHT)
+
+        # ── 拆分设置 ──
         self.pdf_range_frame = tk.Frame(s, bg=D["card"])
-        self.pdf_range_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
         tk.Label(self.pdf_range_frame, text="页码范围", bg=D["card"], fg=D["ink"],
-                 font=SM).pack(side=tk.LEFT)
+                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_range = tk.Entry(self.pdf_range_frame, font=BODY,
                                    bg=D["input_bg"], fg="#000000",
                                    insertbackground="#000000",
@@ -3048,64 +3109,64 @@ class FormatMaster:
                                    highlightbackground=D["input_bd"],
                                    highlightcolor=D["accent"])
         self.pdf_range.insert(0, "1-3,5,7-10")
-        self.pdf_range.pack(side=tk.LEFT, padx=(6, 0), fill=tk.X, expand=True)
-        self.pdf_range_frame.grid_remove()
+        self.pdf_range.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(self.pdf_range_frame, text="示例: 1-3,5,7-10", bg=D["card"],
+                 fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(8, 0))
+        self.pdf_range_frame.pack_forget()
 
-        # 加密设置（仅加密模式可见）
+        # ── 加密设置 ──
         self.pdf_encrypt_frame = tk.Frame(s, bg=D["card"])
-        self.pdf_encrypt_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
-        
-        encrypt_row1 = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
-        encrypt_row1.pack(fill=tk.X, pady=(0, 6))
-        
-        def make_pwd_field(parent, label, attr_name, row_frame):
-            f = tk.Frame(row_frame, bg=D["card"])
-            f.pack(side=tk.LEFT, padx=(0, 24))
-            tk.Label(f, text=label, bg=D["card"], fg=D["ink"], font=SM).pack(anchor=tk.W)
-            ef = tk.Frame(f, bg=D["card"])
-            ef.pack(fill=tk.X, pady=(4, 0))
-            entry = tk.Entry(ef, font=BODY, bg=D["input_bg"], fg="#000000",
+
+        # 密码行
+        pwd_row = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
+        pwd_row.pack(fill=tk.X, pady=(0, 8))
+
+        def make_pwd_field(parent, label, attr_name):
+            f = tk.Frame(parent, bg=D["card"])
+            f.pack(side=tk.LEFT, padx=(0, 16))
+            tk.Label(f, text=label, bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 4))
+            entry = tk.Entry(f, font=BODY, bg=D["input_bg"], fg="#000000",
                              insertbackground="#000000", relief="flat", highlightthickness=1,
                              highlightbackground=D["input_bd"], highlightcolor=D["accent"],
-                             show="•", width=18)
+                             show="•", width=16)
             entry.pack(side=tk.LEFT)
             def toggle_show(e=entry):
                 e.configure(show="" if e.cget("show") else "•")
-            btn = tk.Button(ef, text="👁", font=("Segoe UI Symbol", 10),
-                           bg=D["card"], relief="flat", cursor="hand2",
-                           activebackground=D["card_alt"], bd=0, command=toggle_show)
-            btn.pack(side=tk.LEFT, padx=(4, 0))
+            tk.Button(f, text="👁", font=("Segoe UI Symbol", 10),
+                      bg=D["card"], relief="flat", cursor="hand2",
+                      activebackground=D["card_alt"], bd=0,
+                      command=toggle_show).pack(side=tk.LEFT, padx=(2, 0))
             setattr(self, attr_name, entry)
             return entry
-        
-        self.pdf_open_pwd = make_pwd_field(encrypt_row1, "打开密码", "pdf_open_pwd", encrypt_row1)
-        self.pdf_owner_pwd = make_pwd_field(encrypt_row1, "权限密码", "pdf_owner_pwd", encrypt_row1)
-        
-        encrypt_row2 = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
-        encrypt_row2.pack(fill=tk.X, pady=(6, 4))
-        tk.Label(encrypt_row2, text="加密方式", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.pdf_encrypt_method = ttk.Combobox(encrypt_row2, values=["AES-256", "AES-128"], 
+
+        self.pdf_open_pwd = make_pwd_field(pwd_row, "打开密码", "pdf_open_pwd")
+        self.pdf_owner_pwd = make_pwd_field(pwd_row, "权限密码", "pdf_owner_pwd")
+
+        # 加密方式行
+        method_row = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
+        method_row.pack(fill=tk.X, pady=(0, 6))
+        tk.Label(method_row, text="加密方式", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_encrypt_method = ttk.Combobox(method_row, values=["AES-256", "AES-128"],
                                                  state="readonly", width=10)
         self.pdf_encrypt_method.set("AES-256")
-        self.pdf_encrypt_method.pack(side=tk.LEFT, padx=(8, 0))
-        
-        hist_btn_frame = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
-        hist_btn_frame.pack(fill=tk.X, pady=(0, 2))
-        tk.Button(hist_btn_frame, text="📋 密码历史记录", font=("Microsoft YaHei UI", 9),
-                  bg=D["card"], fg=D["accent"], relief="flat", cursor="hand2",
-                  activebackground=D["card_alt"], padx=12, pady=2,
-                  command=self._show_pwd_history).pack(anchor=tk.W)
-        self.pdf_encrypt_frame.grid_remove()
+        self.pdf_encrypt_method.pack(side=tk.LEFT, padx=(8, 16))
 
-        # 解密设置（仅解密模式可见）
+        tk.Button(method_row, text="📋 密码历史", font=BODY,
+                  bg=D["card"], fg=D["accent"], relief="flat", cursor="hand2",
+                  activebackground=D["card_alt"],
+                  command=self._show_pwd_history).pack(side=tk.LEFT)
+
+        self.pdf_encrypt_frame.pack_forget()
+
+        # ── 解密设置 ──
         self.pdf_decrypt_frame = tk.Frame(s, bg=D["card"])
-        self.pdf_decrypt_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
-        tk.Label(self.pdf_decrypt_frame, text="输入密码", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        tk.Label(self.pdf_decrypt_frame, text="输入密码", bg=D["card"], fg=D["ink"],
+                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_decrypt_pwd = tk.Entry(self.pdf_decrypt_frame, font=BODY, bg=D["input_bg"], fg="#000000",
                                           insertbackground="#000000", relief="flat", highlightthickness=1,
                                           highlightbackground=D["input_bd"], highlightcolor=D["accent"],
-                                          show="•", width=34)
-        self.pdf_decrypt_pwd.pack(side=tk.LEFT, padx=(8, 0))
+                                          show="•", width=30)
+        self.pdf_decrypt_pwd.pack(side=tk.LEFT)
         def toggle_decrypt_show():
             e = self.pdf_decrypt_pwd
             e.configure(show="" if e.cget("show") else "•")
@@ -3113,34 +3174,28 @@ class FormatMaster:
                   bg=D["card"], relief="flat", cursor="hand2",
                   activebackground=D["card_alt"], bd=0,
                   command=toggle_decrypt_show).pack(side=tk.LEFT, padx=(4, 0))
-        self.pdf_decrypt_frame.grid_remove()
+        self.pdf_decrypt_frame.pack_forget()
 
-        # 压缩设置（仅压缩模式可见）
+        # ── 压缩设置 ──
         self.pdf_compress_frame = tk.Frame(s, bg=D["card"])
-        self.pdf_compress_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
         compress_row = tk.Frame(self.pdf_compress_frame, bg=D["card"])
         compress_row.pack(fill=tk.X)
-        tk.Label(compress_row, text="目标分辨率", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.pdf_compress_dpi = ttk.Combobox(compress_row, values=["72dpi", "100dpi", "150dpi", "200dpi"], 
+        tk.Label(compress_row, text="目标分辨率", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_compress_dpi = ttk.Combobox(compress_row, values=["72dpi", "100dpi", "150dpi", "200dpi"],
                                                state="readonly", width=10)
         self.pdf_compress_dpi.set("150dpi")
         self.pdf_compress_dpi.pack(side=tk.LEFT, padx=(8, 16))
-        tk.Label(compress_row, text="图片质量", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.pdf_compress_quality = ttk.Combobox(compress_row, values=["60", "70", "80", "90"], 
+        tk.Label(compress_row, text="图片质量", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_compress_quality = ttk.Combobox(compress_row, values=["60", "70", "80", "90"],
                                                   state="readonly", width=8)
         self.pdf_compress_quality.set("80")
         self.pdf_compress_quality.pack(side=tk.LEFT, padx=(8, 0))
-        self.pdf_compress_frame.grid_remove()
-        
-        # 传统控件容器（编辑器模式时隐藏，含文件选择/输出目录/进度条）
-        self.pdf_traditional = tk.Frame(p, bg=D["page"])
-        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
-        
-        self._file_sec(self.pdf_traditional, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
-        
-        out_dir_frame = tk.Frame(self.pdf_traditional, bg=D["page"])
+        self.pdf_compress_frame.pack_forget()
+
+        # ── 输出目录 ──
+        out_dir_frame = tk.Frame(p, bg=D["page"])
         out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.pdf_out_dir_combo.set("与源文件同目录")
         self.pdf_out_dir_combo.pack(side=tk.LEFT)
@@ -3150,58 +3205,53 @@ class FormatMaster:
         self.pdf_out_dir_label = tk.Label(out_dir_frame, textvariable=self.pdf_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
         self.pdf_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
 
-        self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(self.pdf_traditional)
+        self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(p)
         self.pdf_go.configure(command=lambda: self._go("pdf"))
         self.pdf_ca.configure(command=lambda: self._stop("pdf"))
 
-        # 编辑器容器（默认隐藏，选择"编辑器"模式时显示）
-        self.pdf_editor_container = tk.Frame(p, bg=D["page"])
-        self.pdf_editor_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
-        self.pdf_editor_container.pack_forget()
-        self.pdf_editor_panel = None
-
     def _pdf_mode_changed(self):
+        self.pdf_range_frame.pack_forget()
+        self.pdf_encrypt_frame.pack_forget()
+        self.pdf_decrypt_frame.pack_forget()
+        self.pdf_compress_frame.pack_forget()
+
         mode = self.pdf_mode.get()
-        
-        if "编辑器" in mode:
-            self._show_pdf_editor()
-            return
-        
-        self._hide_pdf_editor()
-        self.pdf_range_frame.grid_remove()
-        self.pdf_encrypt_frame.grid_remove()
-        self.pdf_decrypt_frame.grid_remove()
-        self.pdf_compress_frame.grid_remove()
-        
         if "拆分" in mode:
-            self.pdf_range_frame.grid()
+            self.pdf_range_frame.pack(fill=tk.X, pady=(8, 0))
         elif "加密" in mode:
-            self.pdf_encrypt_frame.grid()
+            self.pdf_encrypt_frame.pack(fill=tk.X, pady=(8, 0))
         elif "解密" in mode:
-            self.pdf_decrypt_frame.grid()
+            self.pdf_decrypt_frame.pack(fill=tk.X, pady=(8, 0))
         elif "压缩" in mode:
-            self.pdf_compress_frame.grid()
+            self.pdf_compress_frame.pack(fill=tk.X, pady=(8, 0))
 
-    def _show_pdf_editor(self):
-        """显示 PDF 编辑器面板，隐藏传统控件"""
-        self._pdf_mode_card_outer.pack_forget()
-        self.pdf_traditional.pack_forget()
-        self.pdf_editor_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
-        if self.pdf_editor_panel is None:
-            self.pdf_editor_panel = PdfEditorPanel(
-                self.pdf_editor_container,
-                log_func=lambda msg, level="info": self._log_status(msg, level),
-            )
+    def _open_pdf_editor(self):
+        w = tk.Toplevel(self.root)
+        w.title("PDF 可视化编辑")
 
-    def _hide_pdf_editor(self):
-        """隐藏编辑器面板，恢复传统控件"""
-        if self.pdf_editor_panel and self.pdf_editor_panel.is_modified():
-            if not messagebox.askyesno("未保存", "编辑器中有未保存的修改，确定要切换吗？"):
-                self.pdf_mode.set("编辑器（可视化）")
+        # 适配屏幕并居中
+        screen_w = w.winfo_screenwidth()
+        screen_h = w.winfo_screenheight()
+        win_w = int(screen_w * 0.75)
+        win_h = int(screen_h * 0.75)
+        if win_w < 800: win_w = 800
+        if win_h < 560: win_h = 560
+        x = (screen_w - win_w) // 2
+        y = (screen_h - win_h) // 2
+        w.geometry(f"{win_w}x{win_h}+{x}+{y}")
+        w.minsize(640, 480)
+        w.transient(self.root)
+        w.grab_set()
+        w.configure(bg="#F5F6FA")
+        panel = PdfEditorPanel(w, log_func=lambda msg, level="info": self._log_status(msg, level))
+        panel.pack(fill=tk.BOTH, expand=True)
+        def on_close():
+            if panel.is_modified() and not messagebox.askyesno("未保存", 
+                "编辑器中有未保存的修改，确定要关闭吗？"):
                 return
-        self.pdf_editor_container.pack_forget()
-        self._pdf_mode_card_outer.pack(fill=tk.X, pady=(0, 16), expand=False)
-        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
+            panel.cleanup()
+            w.destroy()
+        w.protocol("WM_DELETE_WINDOW", on_close)
 
     # ── 图片压缩 ──────────────────────────────
     def _p_compress_img(self):
@@ -3316,8 +3366,10 @@ class FormatMaster:
         self.dl_ca.configure(command=self._dl_cancel)
 
     def _select_dl_dir(self):
-        d = filedialog.askdirectory(title="选择下载目录")
+        last_dir = self._get_last_dir("download")
+        d = filedialog.askdirectory(title="选择下载目录", initialdir=last_dir)
         if d:
+            self._save_last_dir("download", d)
             self.dl_dir.set(d)
 
     def _clean_url(self, raw):
@@ -3592,8 +3644,11 @@ class FormatMaster:
         self.m3u8_go.configure(command=self._go_m3u8)
 
     def _select_m3u8_dir(self):
-        d = filedialog.askdirectory(title="选择保存目录")
-        if d: self.m3u8_out_dir.set(d)
+        last_dir = self._get_last_dir("m3u8")
+        d = filedialog.askdirectory(title="选择保存目录", initialdir=last_dir)
+        if d:
+            self._save_last_dir("m3u8", d)
+            self.m3u8_out_dir.set(d)
 
     def _m3u8_parse_url(self):
         url = self.m3u8_url.get().strip()
@@ -3752,8 +3807,11 @@ class FormatMaster:
         self.m3u8_count_label.configure(text="0 个任务")
 
     def _m3u8_batch_import(self):
-        path = filedialog.askopenfilename(title="选择链接文件", filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")])
+        last_dir = self._get_last_dir("m3u8")
+        path = filedialog.askopenfilename(title="选择链接文件", initialdir=last_dir,
+                                          filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")])
         if not path: return
+        self._save_last_dir("m3u8", path)
         try:
             with open(path, "r", encoding="utf-8") as f: lines = f.readlines()
         except:
@@ -4463,10 +4521,6 @@ class FormatMaster:
         if w and "ca" in w: w["ca"].configure(state=tk.DISABLED)
 
     def _on_close(self):
-        if (hasattr(self, 'pdf_editor_panel') and self.pdf_editor_panel and
-            self.pdf_editor_panel.is_modified()):
-            if not messagebox.askyesno("未保存", "PDF 编辑器中有未保存的修改，确定要退出吗？"):
-                return
         if hasattr(self, 'current_tab') and self.current_tab.get():
             self._save_panel_prefs(self.current_tab.get())
         self.root.destroy()
@@ -4531,16 +4585,19 @@ class FormatMaster:
         if new_version:
             def show():
                 try:
-                    update_frame = tk.Frame(self.root, bg="#E7F5FF", padx=16, pady=8)
-                    update_frame.pack(fill=tk.X)
-                    tk.Label(update_frame, text=f"发现新版本 v{new_version}，点击前往下载",
+                    # 去重：移除已有的通知条
+                    if hasattr(self, '_update_bar') and self._update_bar and self._update_bar.winfo_exists():
+                        self._update_bar.destroy()
+                    self._update_bar = tk.Frame(self.root, bg="#E7F5FF", padx=16, pady=8)
+                    self._update_bar.pack(fill=tk.X)
+                    tk.Label(self._update_bar, text=f"发现新版本 v{new_version}，点击前往下载",
                              bg="#E7F5FF", fg="#1971C2", font=SM).pack(side=tk.LEFT)
                     update_url = USER_PREFS.get("global", "update_url", "")
                     if not update_url:
                         update_url = "https://github.com/2048895034qq/FormatMaster-EN/releases/latest"
-                    self._btn(update_frame, "下载", lambda: webbrowser.open(update_url),
+                    self._btn(self._update_bar, "下载", lambda: webbrowser.open(update_url),
                               style="ghost", padx=8).pack(side=tk.RIGHT)
-                    close_btn = self._btn(update_frame, "×", lambda: update_frame.pack_forget(),
+                    close_btn = self._btn(self._update_bar, "×", lambda: self._update_bar.destroy(),
                                           style="ghost", padx=4)
                     close_btn.pack(side=tk.RIGHT, padx=(8, 0))
                 except Exception:
