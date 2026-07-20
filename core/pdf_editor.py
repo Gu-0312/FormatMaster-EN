@@ -1,4 +1,5 @@
 """PDF 可视化编辑器核心引擎"""
+import threading
 import fitz
 from typing import Optional
 from PIL import Image
@@ -18,6 +19,7 @@ class PdfEditor:
         self._thumb_cache = {}
         self._thumb_access = []
         self._modified = False
+        self._lock = threading.Lock()
 
     # ── Lifecycle ────────────────────────────────────────────
 
@@ -98,15 +100,16 @@ class PdfEditor:
     # ── Thumbnails ─────────────────────────────────────────
 
     def get_thumbnail(self, page_num: int) -> Optional[ImageTk.PhotoImage]:
-        if not self._doc or page_num < 0 or page_num >= self.page_count:
-            return None
-        real_idx = self._page_order[page_num]
-        if real_idx in self._thumb_cache:
-            self._thumb_access.remove(real_idx)
-            self._thumb_access.append(real_idx)
-            return self._thumb_cache[real_idx]
-        self._ensure_thumb(real_idx)
-        return self._thumb_cache.get(real_idx)
+        with self._lock:
+            if not self._doc or page_num < 0 or page_num >= self.page_count:
+                return None
+            real_idx = self._page_order[page_num]
+            if real_idx in self._thumb_cache:
+                self._thumb_access.remove(real_idx)
+                self._thumb_access.append(real_idx)
+                return self._thumb_cache[real_idx]
+            self._ensure_thumb(real_idx)
+            return self._thumb_cache.get(real_idx)
 
     def _ensure_thumb(self, real_idx: int):
         page = self._doc[real_idx]
@@ -123,8 +126,9 @@ class PdfEditor:
         self._thumb_access.append(real_idx)
 
     def _clear_thumb_cache(self):
-        self._thumb_cache.clear()
-        self._thumb_access = []
+        with self._lock:
+            self._thumb_cache.clear()
+            self._thumb_access = []
 
     # ── Page operations ─────────────────────────────────────
 

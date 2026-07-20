@@ -291,6 +291,7 @@ class PdfEditorPanel(tk.Frame):
         self._thumb_refs = []
         self._info_label = None
         self._status_label = None
+        self._render_gen = 0
 
         self._build_ui()
 
@@ -445,6 +446,7 @@ class PdfEditorPanel(tk.Frame):
     # ── Thumbnail Rendering ──────────────────────────────────
 
     def _render_thumbnails(self):
+        self._render_gen += 1
         self.canvas.delete("thumb")
         self._thumb_refs.clear()
         self._page_items.clear()
@@ -477,7 +479,8 @@ class PdfEditorPanel(tk.Frame):
             self._item_to_page[text] = i
 
         self.canvas.config(scrollregion=(0, 0, total_w, total_h))
-        self._load_thumbnails(0, n - 1)
+        self._load_visible_thumbnails()
+        self.canvas.bind("<Configure>", self._on_canvas_scroll, add="+")
 
     def _get_thumb_pos(self, page_num):
         col = page_num % COLUMNS
@@ -487,19 +490,23 @@ class PdfEditorPanel(tk.Frame):
         return x, y
 
     def _load_thumbnails(self, start, end):
+        gen = self._render_gen
         def _worker():
             for i in range(start, end + 1):
                 try:
                     tk_img = self.editor.get_thumbnail(i)
                     if tk_img:
-                        self.after(0, self._place_thumb, i, tk_img)
+                        self.after(0, self._place_thumb, i, tk_img, gen)
                 except Exception:
-                    pass
+                    import traceback
+                    traceback.print_exc()
 
         t = threading.Thread(target=_worker, daemon=True)
         t.start()
 
-    def _place_thumb(self, page_num, tk_img):
+    def _place_thumb(self, page_num, tk_img, gen=0):
+        if gen != self._render_gen:
+            return
         if page_num not in self._page_items:
             return
         items = self._page_items[page_num]
@@ -516,6 +523,39 @@ class PdfEditorPanel(tk.Frame):
         self._item_to_page[img_id] = page_num
         if items["text"]:
             self.canvas.tag_lower(img_id, items["text"])
+
+    def _load_visible_thumbnails(self):
+        canvas = self.canvas
+        left = canvas.canvasx(0)
+        top = canvas.canvasy(0)
+        right = canvas.canvasx(canvas.winfo_width())
+        bottom = canvas.canvasy(canvas.winfo_height())
+        if right <= left or bottom <= top:
+            self._load_thumbnails(0, self.editor.page_count - 1)
+            return
+        n = self.editor.page_count
+        start = None
+        end = None
+        for i in range(n):
+            items = self._page_items.get(i)
+            if not items:
+                continue
+            coords = self.canvas.coords(items["rect"])
+            if not coords or len(coords) < 4:
+                continue
+            cx, cy = (coords[0] + coords[2]) / 2, (coords[1] + coords[3]) / 2
+            if left <= cx <= right and top <= cy <= bottom:
+                if start is None:
+                    start = i
+                end = i
+        if start is not None:
+            margin = 4
+            start = max(0, start - margin)
+            end = min(n - 1, end + margin)
+            self._load_thumbnails(start, end)
+
+    def _on_canvas_scroll(self, event=None):
+        self._load_visible_thumbnails()
 
     # ── Selection Handling ───────────────────────────────────
 
@@ -579,10 +619,7 @@ class PdfEditorPanel(tk.Frame):
     # ── Drag & Drop Reordering ──────────────────────────────
 
     def _on_drag(self, event):
-        if self.drag_data is None:
-            return
-        self.drag_data["x"] = event.x_root
-        self.drag_data["y"] = event.y_root
+        pass
 
     def _on_drop(self, event):
         if self.drag_data is None:
