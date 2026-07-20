@@ -698,6 +698,7 @@ class PdfEditorPanel(tk.Frame):
         if dialog.result:
             text, pos, opacity = dialog.result
             if self.editor.add_watermark(text, pos, opacity):
+                self._render_thumbnails()
                 self._update_status()
                 self._log("已添加水印")
 
@@ -709,6 +710,7 @@ class PdfEditorPanel(tk.Frame):
         if dialog.result:
             start, pos, fmt = dialog.result
             if self.editor.add_page_numbers(start, pos, fmt):
+                self._render_thumbnails()
                 self._update_status()
                 self._log("已添加页码")
 
