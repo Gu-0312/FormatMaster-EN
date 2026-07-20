@@ -379,6 +379,21 @@ class PdfEditorPanel(tk.Frame):
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_drop)
 
+        # 空状态提示 — 显示在 Canvas 上
+        self._empty_hint = self.canvas.create_text(
+            400, 300, text="点击「打开」按钮选择 PDF 文件\n\n操作流程：选中页面 → 使用工具栏操作 → 保存",
+            fill=INK_DIS, font=(FONT, 14), anchor=tk.CENTER, justify=tk.CENTER,
+            tags="hint"
+        )
+        # 工作流提示栏
+        guide_bar = tk.Frame(self, bg=ACCENT_PALE, bd=1, relief="solid",
+                             highlightbackground=ACCENT, highlightthickness=1)
+        guide_bar.pack(fill=tk.X, padx=8, pady=(0, 2))
+        self._guide_label = tk.Label(guide_bar,
+            text="💡 操作即时生效 — 选中页面 → 点击工具栏按钮 → 完成后「保存」",
+            bg=ACCENT_PALE, fg=ACCENT_DEEP, font=(FONT, 9), anchor=tk.W, padx=8, pady=3)
+        self._guide_label.pack(fill=tk.X)
+
         # Status bar
         status_bar = tk.Frame(self, bg=PAGE_BG, bd=1, relief="solid",
                               highlightbackground=BORDER, highlightthickness=1)
@@ -457,8 +472,10 @@ class PdfEditorPanel(tk.Frame):
 
         n = self.editor.page_count
         if n == 0:
+            self.canvas.itemconfig(self._empty_hint, state="normal")
             self.canvas.config(scrollregion=(0, 0, 1, 1))
             return
+        self.canvas.itemconfig(self._empty_hint, state="hidden")
 
         rows = (n + COLUMNS - 1) // COLUMNS
         total_w = COLUMNS * (THUMB_W + PADDING) + PADDING
