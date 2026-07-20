@@ -1,4 +1,5 @@
 """PDF 可视化编辑器核心引擎"""
+import fitz
 from typing import Optional
 from PIL import Image
 from PIL import ImageTk
@@ -17,10 +18,10 @@ class PdfEditor:
         self._thumb_cache = {}
         self._thumb_access = []
         self._modified = False
-        self._closed = False
+
+    # ── Lifecycle ────────────────────────────────────────────
 
     def open(self, path: str) -> bool:
-        import fitz
         try:
             doc = fitz.open(path)
         except Exception as e:
@@ -36,11 +37,9 @@ class PdfEditor:
         self._thumb_cache = {}
         self._thumb_access = []
         self._modified = False
-        self._closed = False
         return True
 
     def save(self, path: str) -> bool:
-        import fitz
         if not self._doc:
             raise RuntimeError("没有打开的文档")
         try:
@@ -57,7 +56,6 @@ class PdfEditor:
 
     def close(self):
         self._close_doc()
-        self._closed = True
 
     def _close_doc(self):
         if self._doc:
@@ -71,6 +69,8 @@ class PdfEditor:
         self._undo_stack = []
         self._thumb_cache = {}
         self._thumb_access = []
+
+    # ── Properties ──────────────────────────────────────────
 
     @property
     def page_count(self) -> int:
@@ -95,6 +95,8 @@ class PdfEditor:
     def file_path(self) -> Optional[str]:
         return self._path
 
+    # ── Thumbnails ─────────────────────────────────────────
+
     def get_thumbnail(self, page_num: int) -> Optional[ImageTk.PhotoImage]:
         if not self._doc or page_num < 0 or page_num >= self.page_count:
             return None
@@ -107,7 +109,6 @@ class PdfEditor:
         return self._thumb_cache.get(real_idx)
 
     def _ensure_thumb(self, real_idx: int):
-        import fitz
         page = self._doc[real_idx]
         w, h = self.THUMB_SIZE
         zoom = min(w / page.rect.width, h / page.rect.height)
@@ -124,6 +125,8 @@ class PdfEditor:
     def _clear_thumb_cache(self):
         self._thumb_cache.clear()
         self._thumb_access = []
+
+    # ── Page operations ─────────────────────────────────────
 
     def reorder_pages(self, new_order: list[int]) -> bool:
         if not self._doc:
@@ -145,16 +148,12 @@ class PdfEditor:
         self._snapshot()
         for i in sorted_idx:
             if 0 <= i < len(self._page_order):
-                real_idx = self._page_order[i]
-                self._doc.delete_page(real_idx)
                 self._page_order.pop(i)
-                self._page_order = [r if r < real_idx else r - 1 for r in self._page_order]
         self._modified = True
         self._clear_thumb_cache()
         return True
 
     def insert_pdf(self, at_index: int, pdf_path: str) -> bool:
-        import fitz
         if not self._doc:
             return False
         if at_index < 0 or at_index > self.page_count:
@@ -166,8 +165,8 @@ class PdfEditor:
         self._snapshot()
         new_indices = []
         for i in range(len(src)):
-            self._doc.insert_pdf(src, from_page=i, to_page=i,
-                                 start_at=len(self._doc) - 1)
+            start_at = len(self._doc) - 1 if len(self._doc) > 0 else -1
+            self._doc.insert_pdf(src, from_page=i, to_page=i, start_at=start_at)
             new_indices.append(len(self._doc) - 1)
         src.close()
         self._page_order = (self._page_order[:at_index] +
@@ -178,14 +177,12 @@ class PdfEditor:
         return True
 
     def insert_image(self, at_index: int, img_path: str) -> bool:
-        import fitz
         if not self._doc:
             return False
         if at_index < 0 or at_index > self.page_count:
             at_index = self.page_count
         try:
-            from PIL import Image as PILImage
-            pil_img = PILImage.open(img_path)
+            pil_img = Image.open(img_path)
             if pil_img.mode != "RGB":
                 pil_img = pil_img.convert("RGB")
             img_bytes = pil_img.tobytes("jpeg", "RGB")
@@ -193,9 +190,12 @@ class PdfEditor:
             page = self._doc.new_page(width=pil_img.width, height=pil_img.height)
             page.insert_image(rect, stream=img_bytes)
         except Exception:
-            img = fitz.Pixmap(img_path)
-            page = self._doc.new_page(width=img.width, height=img.height)
-            page.insert_image(fitz.Rect(0, 0, img.width, img.height), pixmap=img)
+            try:
+                img = fitz.Pixmap(img_path)
+                page = self._doc.new_page(width=img.width, height=img.height)
+                page.insert_image(fitz.Rect(0, 0, img.width, img.height), pixmap=img)
+            except Exception:
+                return False
         self._snapshot()
         new_idx = len(self._doc) - 1
         self._page_order.insert(at_index, new_idx)
@@ -208,7 +208,6 @@ class PdfEditor:
             return False
         if angle not in (90, 180, 270):
             return False
-        self._snapshot()
         for i in indices:
             if 0 <= i < len(self._page_order):
                 real_idx = self._page_order[i]
@@ -219,7 +218,6 @@ class PdfEditor:
         return True
 
     def duplicate_pages(self, indices: list[int], at_index: int) -> bool:
-        import fitz
         if not self._doc:
             return False
         if at_index < 0 or at_index > self.page_count:
@@ -231,8 +229,8 @@ class PdfEditor:
                 real_idx = self._page_order[i]
                 tmp = fitz.open()
                 tmp.insert_pdf(self._doc, from_page=real_idx, to_page=real_idx)
-                self._doc.insert_pdf(tmp, from_page=0, to_page=0,
-                                     start_at=len(self._doc) - 1)
+                start_at = len(self._doc) - 1 if len(self._doc) > 0 else -1
+                self._doc.insert_pdf(tmp, from_page=0, to_page=0, start_at=start_at)
                 tmp.close()
                 new_indices.append(len(self._doc) - 1)
         self._page_order = (self._page_order[:at_index] +
@@ -243,7 +241,6 @@ class PdfEditor:
         return True
 
     def insert_blank(self, at_index: int, width: int = 595, height: int = 842) -> bool:
-        import fitz
         if not self._doc:
             return False
         if at_index < 0 or at_index > self.page_count:
@@ -255,6 +252,8 @@ class PdfEditor:
         self._modified = True
         self._clear_thumb_cache()
         return True
+
+    # ── Undo ────────────────────────────────────────────────
 
     def undo(self) -> bool:
         if not self._undo_stack:
@@ -270,9 +269,10 @@ class PdfEditor:
         if len(self._undo_stack) > self.MAX_UNDO:
             self._undo_stack.pop(0)
 
+    # ── Enhancement operations ──────────────────────────────
+
     def add_watermark(self, text: str, pos: str = "右下角",
                       opacity: float = 0.3, rotation: int = 0) -> bool:
-        import fitz
         if not self._doc or not text:
             return False
         positions = {
@@ -283,7 +283,6 @@ class PdfEditor:
             "居中":   (0.35, 0.45),
         }
         rx, ry = positions.get(pos, (0.65, 0.85))
-        self._snapshot()
         for real_idx in self._page_order:
             page = self._doc[real_idx]
             r = page.rect
@@ -307,7 +306,6 @@ class PdfEditor:
 
     def add_page_numbers(self, start: int = 1, pos: str = "底部居中",
                          fmt: str = "{n}") -> bool:
-        import fitz
         if not self._doc:
             return False
         positions = {
@@ -317,7 +315,6 @@ class PdfEditor:
             "顶部居中": (0.5, 0.03),
         }
         rx, ry = positions.get(pos, (0.5, 0.95))
-        self._snapshot()
         for i, real_idx in enumerate(self._page_order):
             page = self._doc[real_idx]
             r = page.rect
@@ -345,11 +342,9 @@ class PdfEditor:
         return True
 
     def crop_pages(self, indices: list[int], margin: tuple) -> bool:
-        import fitz
         if not self._doc:
             return False
         left, top, right, bottom = margin
-        self._snapshot()
         for i in indices:
             if 0 <= i < len(self._page_order):
                 real_idx = self._page_order[i]
