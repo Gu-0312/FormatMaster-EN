@@ -3020,8 +3020,13 @@ class FormatMaster:
         p = tk.Frame(self.content, bg=D["page"])
         self.panels["pdf"] = p
         self._hdr(p, "PDF 工具", "合并、拆分、加密、解密、压缩")
-        self._file_sec(p, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
-        s = self._card(p, "操作设置")
+        
+        # 传统控件容器（编辑器模式时隐藏）
+        self.pdf_traditional = tk.Frame(p, bg=D["page"])
+        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
+        
+        self._file_sec(self.pdf_traditional, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
+        s = self._card(self.pdf_traditional, "操作设置")
 
         # 模式切换
         tk.Label(s, text="操作模式", bg=D["card"], fg=D["ink"],
@@ -3130,7 +3135,7 @@ class FormatMaster:
         self.pdf_compress_quality.pack(side=tk.LEFT, padx=(8, 0))
         self.pdf_compress_frame.grid_remove()
         
-        out_dir_frame = tk.Frame(p, bg=D["page"])
+        out_dir_frame = tk.Frame(self.pdf_traditional, bg=D["page"])
         out_dir_frame.pack(fill=tk.X, pady=(12, 0))
         tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
@@ -3142,7 +3147,7 @@ class FormatMaster:
         self.pdf_out_dir_label = tk.Label(out_dir_frame, textvariable=self.pdf_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
         self.pdf_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
 
-        self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(p)
+        self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(self.pdf_traditional)
         self.pdf_go.configure(command=lambda: self._go("pdf"))
         self.pdf_ca.configure(command=lambda: self._stop("pdf"))
 
@@ -3176,13 +3181,8 @@ class FormatMaster:
 
     def _show_pdf_editor(self):
         """显示 PDF 编辑器面板，隐藏传统控件"""
-        for w in [self.pdf_range_frame, self.pdf_encrypt_frame, self.pdf_decrypt_frame,
-                  self.pdf_compress_frame]:
-            w.grid_remove()
-        # 隐藏文件选择、输出目录、操作按钮等
+        self.pdf_traditional.pack_forget()
         self.pdf_editor_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
-        self.pdf_go.pack_forget()
-        self.pdf_ca.pack_forget()
         if self.pdf_editor_panel is None:
             self.pdf_editor_panel = PdfEditorPanel(
                 self.pdf_editor_container,
@@ -3196,8 +3196,7 @@ class FormatMaster:
                 self.pdf_mode.set("编辑器（可视化）")
                 return
         self.pdf_editor_container.pack_forget()
-        self.pdf_go.pack()
-        self.pdf_ca.pack()
+        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
 
     # ── 图片压缩 ──────────────────────────────
     def _p_compress_img(self):
