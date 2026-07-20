@@ -3021,12 +3021,9 @@ class FormatMaster:
         self.panels["pdf"] = p
         self._hdr(p, "PDF 工具", "合并、拆分、加密、解密、压缩")
         
-        # 传统控件容器（编辑器模式时隐藏）
-        self.pdf_traditional = tk.Frame(p, bg=D["page"])
-        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
-        
-        self._file_sec(self.pdf_traditional, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
-        s = self._card(self.pdf_traditional, "操作设置")
+        # 模式选择器（始终可见，放在最上方）
+        s = self._card(p, "操作设置")
+        self._pdf_mode_card_outer = s.master.master  # outer card frame, for hide/show
 
         # 模式切换
         tk.Label(s, text="操作模式", bg=D["card"], fg=D["ink"],
@@ -3135,6 +3132,12 @@ class FormatMaster:
         self.pdf_compress_quality.pack(side=tk.LEFT, padx=(8, 0))
         self.pdf_compress_frame.grid_remove()
         
+        # 传统控件容器（编辑器模式时隐藏，含文件选择/输出目录/进度条）
+        self.pdf_traditional = tk.Frame(p, bg=D["page"])
+        self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
+        
+        self._file_sec(self.pdf_traditional, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
+        
         out_dir_frame = tk.Frame(self.pdf_traditional, bg=D["page"])
         out_dir_frame.pack(fill=tk.X, pady=(12, 0))
         tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
@@ -3181,6 +3184,7 @@ class FormatMaster:
 
     def _show_pdf_editor(self):
         """显示 PDF 编辑器面板，隐藏传统控件"""
+        self._pdf_mode_card_outer.pack_forget()
         self.pdf_traditional.pack_forget()
         self.pdf_editor_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
         if self.pdf_editor_panel is None:
@@ -3196,6 +3200,7 @@ class FormatMaster:
                 self.pdf_mode.set("编辑器（可视化）")
                 return
         self.pdf_editor_container.pack_forget()
+        self._pdf_mode_card_outer.pack(fill=tk.X, pady=(0, 16), expand=False)
         self.pdf_traditional.pack(fill=tk.BOTH, expand=True)
 
     # ── 图片压缩 ──────────────────────────────
