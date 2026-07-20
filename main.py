@@ -4459,6 +4459,10 @@ class FormatMaster:
         if w and "ca" in w: w["ca"].configure(state=tk.DISABLED)
 
     def _on_close(self):
+        if (hasattr(self, 'pdf_editor_panel') and self.pdf_editor_panel and
+            self.pdf_editor_panel.is_modified()):
+            if not messagebox.askyesno("未保存", "PDF 编辑器中有未保存的修改，确定要退出吗？"):
+                return
         if hasattr(self, 'current_tab') and self.current_tab.get():
             self._save_panel_prefs(self.current_tab.get())
         self.root.destroy()

@@ -418,6 +418,7 @@ class PdfEditorPanel(tk.Frame):
         path = self.editor.file_path
         if path:
             try:
+                self.editor.compact()
                 self.editor.save(path)
                 self._update_status()
                 self._log(f"已保存: {path}")
@@ -437,6 +438,7 @@ class PdfEditorPanel(tk.Frame):
         if not path:
             return
         try:
+            self.editor.compact()
             self.editor.save(path)
             self._info_label.config(text=os.path.basename(path), fg=INK)
             self._update_status()
@@ -521,6 +523,8 @@ class PdfEditorPanel(tk.Frame):
             image=tk_img, tags="thumb"
         )
         self._thumb_refs.append(tk_img)
+        if len(self._thumb_refs) > self.editor.page_count * 2:
+            self._thumb_refs = self._thumb_refs[-self.editor.page_count:]
         items["img"] = img_id
         self._item_to_page[img_id] = page_num
         if items["text"]:

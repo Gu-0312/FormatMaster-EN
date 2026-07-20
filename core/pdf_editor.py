@@ -55,6 +55,20 @@ class PdfEditor:
         except Exception as e:
             raise RuntimeError(f"保存失败：{e}")
 
+    def compact(self):
+        """移除孤儿页面，压缩底层文档。保存后或内存敏感时调用。"""
+        if not self._doc or not self._page_order:
+            return
+        with self._lock:
+            old_page_count = len(self._doc)
+            new_doc = fitz.open()
+            for idx in self._page_order:
+                new_doc.insert_pdf(self._doc, from_page=idx, to_page=idx)
+            self._doc.close()
+            self._doc = new_doc
+            self._page_order = list(range(len(new_doc)))
+            self._clear_thumb_cache()
+
     def close(self):
         self._close_doc()
 
