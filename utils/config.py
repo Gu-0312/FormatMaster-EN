@@ -51,25 +51,32 @@ def get_writable_bin_dir() -> str:
 def get_bin_dir():
     return get_writable_bin_dir()
 
-def _find_ffmpeg(name: str):
-    """
-    按优先级查找FFmpeg/FFprobe:
-    1. 用户可写目录（下载/更新后的版本，优先级最高）
-    2. 打包嵌入的资源（_internal/bin，只读）
-    3. 系统环境变量PATH
-    """
-    # 1. 用户数据目录
+def _find_bin(name: str):
+    """通用二进制查找（用户目录 → 打包嵌入 → 系统PATH）"""
+    # 1. 用户可写目录
     user_path = os.path.join(get_writable_bin_dir(), name)
     if os.path.exists(user_path):
         return user_path
-
-    # 2. 打包嵌入的资源
-    bundled_path = get_resource_path(f"bin/{name}")
-    if os.path.exists(bundled_path):
-        return bundled_path
-
+    # 2. 打包嵌入的资源 — 遍历所有可能位置
+    if _is_frozen():
+        candidates = [
+            os.path.join(sys._MEIPASS, "bin", name),
+            os.path.join(sys._MEIPASS, name),
+            os.path.join(os.path.dirname(sys.executable), "bin", name),
+            os.path.join(os.path.dirname(sys.executable), name),
+        ]
+    else:
+        candidates = [
+            os.path.join(get_app_dir(), "bin", name),
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
     # 3. 系统PATH
     return shutil.which(name.replace(".exe", ""))
+
+def _find_ffmpeg(name: str):
+    return _find_bin(name)
 
 # ═══════════════════════════════════════════════
 #  FFmpeg 错误信息中文翻译
@@ -105,16 +112,32 @@ def get_ffprobe_path():
     return _find_ffmpeg(name)
 
 def get_ytdlp_path():
-    """获取 yt-dlp 可执行文件路径"""
+    """获取 yt-dlp 可执行文件路径（支持所有打包布局）"""
     name = "yt-dlp.exe"
-    # 1. 用户可写目录（下载的版本）
+    # 1. 用户可写目录（已下载/更新的版本）
     user_path = os.path.join(get_writable_bin_dir(), name)
     if os.path.exists(user_path):
         return user_path
-    # 2. 打包嵌入的资源
-    bundled_path = get_resource_path(f"bin/{name}")
-    if os.path.exists(bundled_path):
-        return bundled_path
+    # 2. 打包嵌入的资源 — 遍历所有可能位置
+    if _is_frozen():
+        candidates = [
+            # _internal/bin/yt-dlp.exe（标准 --onedir 布局）
+            os.path.join(sys._MEIPASS, "bin", name),
+            # _internal/yt-dlp.exe（直接放在解压根目录）
+            os.path.join(sys._MEIPASS, name),
+            # exe 同级的 bin/yt-dlp.exe
+            os.path.join(os.path.dirname(sys.executable), "bin", name),
+            # exe 同级（用户手动放入便携版）
+            os.path.join(os.path.dirname(sys.executable), name),
+        ]
+    else:
+        candidates = [
+            # 开发环境: bin/yt-dlp.exe
+            os.path.join(get_app_dir(), "bin", name),
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
     # 3. 系统PATH
     return shutil.which(name.replace(".exe", ""))
 

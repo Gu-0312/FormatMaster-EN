@@ -29,4 +29,5 @@ data/
 *.json
 assets/*.ico
 bin/
-.trae/
+.trae/.mimocode/
+FormatMaster/
