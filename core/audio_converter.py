@@ -1,8 +1,9 @@
 """音频格式转换"""
 import os
 import re
+import json
 import subprocess
-from utils.config import get_ffmpeg_path
+from utils.config import get_ffmpeg_path, get_ffprobe_path, translate_ffmpeg_error
 
 class AudioConverter:
     def __init__(self):
@@ -10,6 +11,22 @@ class AudioConverter:
 
     def cancel(self):
         self._cancel = True
+
+    def _get_duration(self, input_path):
+        ffprobe = get_ffprobe_path()
+        if not ffprobe:
+            return 0
+        try:
+            cmd = [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", input_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
+                                    errors='ignore', timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            if result.returncode == 0 and result.stdout:
+                data = json.loads(result.stdout)
+                return float(data.get("format", {}).get("duration", 0))
+        except Exception:
+            pass
+        return 0
 
     def convert(self, input_path, output_path, codec=None, bitrate="192k",
                 sample_rate=None, channels=None, volume=None, progress_callback=None):
@@ -20,6 +37,7 @@ class AudioConverter:
                 progress_callback(-1, "错误: FFmpeg未安装")
             return False
 
+        duration = self._get_duration(input_path)
         cmd = [ffmpeg, "-y", "-i", input_path]
 
         if volume is not None and volume != 100:
@@ -65,9 +83,14 @@ class AudioConverter:
                     h, m, s, ms = match.groups()
                     current = int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 100
                     if current > 0:
-                        pct = min(99, int(current % 100))
-                        if progress_callback:
-                            progress_callback(pct, f"转换中...")
+                        if duration > 0:
+                            pct = min(99, int(current * 100 / duration))
+                            if progress_callback:
+                                progress_callback(pct, f"转换中...")
+                        else:
+                            pct = min(99, int(current) % 100)
+                            if progress_callback:
+                                progress_callback(pct, f"处理中... ({int(current)}s)")
 
             if process.returncode == 0:
                 if progress_callback:
@@ -75,8 +98,12 @@ class AudioConverter:
                 return True
             else:
                 err = ''.join(error_output[-5:])
+                chn_msg = translate_ffmpeg_error(err)
+                detail = err.strip()[-80:] if err.strip() else ""
                 if progress_callback:
-                    progress_callback(-1, f"转换失败: {err[:200]}")
+                    progress_callback(-1, f"转换失败：{chn_msg}")
+                    if detail and chn_msg not in detail:
+                        progress_callback(-1, f"详细信息：{detail}")
                 return False
 
         except Exception as e:

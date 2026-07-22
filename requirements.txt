@@ -8,3 +8,4 @@ python-pptx>=1.0.2
 pypdf>=6.0.0
 reportlab>=4.5.0
 PyMuPDF>=1.27.0
+yt-dlp>=2024.0.0

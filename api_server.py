@@ -122,7 +122,7 @@ def api_video_convert():
         w, h = res_str.split("x", 1)
         resolution = (int(w), int(h))
     fps      = request.form.get("fps", type=int)
-    bitrate  = request.form.get(" bitrate")
+    bitrate  = request.form.get("bitrate")
 
     ok = video_conv.convert(src, out, ext, codec, preset, resolution, bitrate, fps)
     if ok and os.path.exists(out):

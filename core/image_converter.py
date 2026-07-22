@@ -50,6 +50,8 @@ class ImageConverter:
 
     def convert(self, input_path, output_path, quality=95, resize=None,
                 watermark_text=None, watermark_position="右下角",
+                rotate=0, crop_mode="原始比例", grayscale=False,
+                resize_factor=1.0,
                 progress_callback=None):
         self._cancel = False
         try:
@@ -61,7 +63,7 @@ class ImageConverter:
                 return False
 
             if progress_callback:
-                progress_callback(30, "处理中...")
+                progress_callback(20, "处理中...")
 
             if img.mode == 'RGBA' and output_path.lower().endswith(('.jpg', '.jpeg', '.bmp')):
                 bg = Image.new('RGB', img.size, (255, 255, 255))
@@ -70,8 +72,38 @@ class ImageConverter:
             elif img.mode not in ('RGB', 'RGBA', 'L', 'P'):
                 img = img.convert('RGB')
 
-            if resize:
+            if rotate != 0:
+                img = img.rotate(rotate, expand=True)
+                if progress_callback:
+                    progress_callback(25, f"旋转{rotate}°...")
+
+            if crop_mode == "裁剪为正方形":
+                width, height = img.size
+                size = min(width, height)
+                left = (width - size) // 2
+                top = (height - size) // 2
+                right = left + size
+                bottom = top + size
+                img = img.crop((left, top, right, bottom))
+                if progress_callback:
+                    progress_callback(30, "裁剪为正方形...")
+
+            if grayscale:
+                img = img.convert('L')
+                if progress_callback:
+                    progress_callback(35, "转为灰度...")
+
+            if resize_factor != 1.0:
+                width, height = img.size
+                new_width = int(width * resize_factor)
+                new_height = int(height * resize_factor)
+                img = img.resize((new_width, new_height), Image.LANCZOS)
+                if progress_callback:
+                    progress_callback(40, f"缩放{int(resize_factor*100)}%...")
+            elif resize:
                 img = img.resize(resize, Image.LANCZOS)
+                if progress_callback:
+                    progress_callback(40, "调整大小...")
 
             if self._cancel:
                 if progress_callback:
@@ -81,7 +113,7 @@ class ImageConverter:
             if watermark_text:
                 img = self._add_watermark(img, watermark_text, watermark_position)
                 if progress_callback:
-                    progress_callback(45, "添加水印...")
+                    progress_callback(50, "添加水印...")
 
             if self._cancel:
                 if progress_callback:
@@ -89,7 +121,7 @@ class ImageConverter:
                 return False
 
             if progress_callback:
-                progress_callback(60, "保存中...")
+                progress_callback(70, "保存中...")
 
             save_kwargs = {}
             ext = os.path.splitext(output_path)[1].lower()
@@ -110,13 +142,23 @@ class ImageConverter:
                 progress_callback(100, "转换完成")
             return True
 
+        except FileNotFoundError:
+            if progress_callback:
+                progress_callback(-1, "错误：找不到输入图片文件")
+            return False
+        except (IOError, OSError) as e:
+            if progress_callback:
+                msg = "文件无法打开或保存，文件可能已损坏或被占用"
+                progress_callback(-1, f"错误：{msg}（{e}）")
+            return False
         except Exception as e:
             if progress_callback:
-                progress_callback(-1, f"错误: {e}")
+                progress_callback(-1, f"错误：{e}")
             return False
 
     def batch_convert(self, files, output_dir, fmt_ext, quality=95,
-                      resize=None, progress_callback=None):
+                      resize=None, rotate=0, crop_mode="原始比例", grayscale=False,
+                      progress_callback=None):
         self._cancel = False
         total = len(files)
         success = 0
@@ -135,7 +177,9 @@ class ImageConverter:
                 if progress_callback:
                     progress_callback(overall, f"[{i+1}/{total}] {msg}")
 
-            if self.convert(fp, out, quality, resize, file_progress):
+            if self.convert(fp, out, quality, resize, rotate=rotate, 
+                           crop_mode=crop_mode, grayscale=grayscale, 
+                           progress_callback=file_progress):
                 success += 1
 
         if progress_callback:
