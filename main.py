@@ -3388,10 +3388,15 @@ class FormatMaster:
     def _yt(self, ok, msg):
         if ok:
             ver = self.ytdlp_mgr.get_version() or ""
-            vtxt = f" · {ver}" if ver else ""
-            self.yt_lbl.configure(text=f"yt-dlp{vtxt} ✓", fg=D["ok"])
+            if ver:
+                self.yt_lbl.configure(text=f"yt-dlp · {ver} ✓", fg=D["ok"])
+            else:
+                self.yt_lbl.configure(text="yt-dlp · 已就绪 ✓", fg=D["ok"])
         else:
-            self.yt_lbl.configure(text="yt-dlp · 未安装 ✗", fg=D["err"])
+            err = str(msg)[:30] if msg else ""
+            self.yt_lbl.configure(
+                text=f"yt-dlp · 未安装 {err}" if err else "yt-dlp · 未安装 ✗",
+                fg=D["err"])
 
     # ══════════════════════════════════════════
     #  转换调度

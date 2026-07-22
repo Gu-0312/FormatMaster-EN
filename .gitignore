@@ -31,3 +31,7 @@ assets/*.ico
 bin/
 .trae/.mimocode/
 FormatMaster/
+
+.mimocode/
+.trae/
+FormatMaster/
