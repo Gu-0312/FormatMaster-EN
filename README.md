@@ -252,7 +252,7 @@
 
 #### Download
 
-Download the latest release from [Releases](https://github.com/2048895034qq/FormatMaster-EN/releases/tag/v1.2.0) page — no installation required, just double-click `格式大师.exe`.
+Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.2.0) page — no installation required, just double-click `格式大师.exe`.
 
 #### Build from Source
 
@@ -566,7 +566,7 @@ FormatMaster/
 
 #### 下载使用
 
-从 [Releases](https://github.com/2048895034qq/FormatMaster-EN/releases/tag/v1.2.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
+从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.2.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
 
 #### 从源码运行
 

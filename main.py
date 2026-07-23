@@ -1198,12 +1198,12 @@ class FormatMaster:
         tk.Label(github_frame, text="GitHub: ", bg="#f8f9fa", fg="#333333", font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
         github_link = tk.Label(github_frame,
-                               text="github.com/2048895034qq/FormatMaster-EN",
+                               text="github.com/Gu-0312/FormatMaster-EN",
                                bg="#f8f9fa", fg="#0d6efd", font=("Segoe UI", 10, "underline"),
                                cursor="hand2")
         github_link.pack(side=tk.LEFT)
 
-        github_link.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/2048895034qq/FormatMaster-EN"))
+        github_link.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Gu-0312/FormatMaster-EN"))
 
         sep = tk.Frame(about_win, bg="#E5E7EB", height=1)
         sep.pack(fill=tk.X, padx=28, pady=(16, 12))
@@ -1238,7 +1238,7 @@ class FormatMaster:
         import urllib.error
         import json
         import socket
-        GITHUB_REPO = "2048895034qq/FormatMaster-EN"
+        GITHUB_REPO = "Gu-0312/FormatMaster-EN"
         try:
             socket.setdefaulttimeout(5)
             url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -3821,7 +3821,7 @@ class FormatMaster:
         """后台线程检查 GitHub 最新版本
         风险规避：所有网络请求 try...except 包裹，超时或失败时静默忽略，绝不阻塞 UI 启动。
         """
-        GITHUB_REPO = "2048895034qq/FormatMaster-EN"
+        GITHUB_REPO = "Gu-0312/FormatMaster-EN"
         def check():
             try:
                 import urllib.request
@@ -3883,7 +3883,7 @@ class FormatMaster:
                              bg="#E7F5FF", fg="#1971C2", font=SM).pack(side=tk.LEFT)
                     update_url = USER_PREFS.get("global", "update_url", "")
                     if not update_url:
-                        update_url = "https://github.com/2048895034qq/FormatMaster-EN/releases/latest"
+                        update_url = "https://github.com/Gu-0312/FormatMaster-EN/releases/latest"
                     self._btn(update_frame, "下载", lambda: webbrowser.open(update_url),
                               style="ghost", padx=8).pack(side=tk.RIGHT)
                     close_btn = self._btn(update_frame, "×", lambda: update_frame.pack_forget(),
