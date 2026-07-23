@@ -1,5 +1,7 @@
 """格式大师 - 主程序  ·  Editorial White 设计"""
-import os, sys, re, ctypes, time, queue, webbrowser
+import os, sys, re, ctypes, time, queue, webbrowser, datetime
+import warnings
+warnings.filterwarnings("ignore", category=Warning, module="requests")
 
 try:
     import windnd
@@ -32,6 +34,7 @@ else:
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
+import subprocess
 
 from utils.config import *
 from utils.ffmpeg_manager import FFmpegManager
@@ -118,6 +121,38 @@ D = {
     "select_bold":  "#A83228",
 }
 
+D_LIGHT = dict(D)
+
+D_DARK = {
+    "page":         "#1E1E2E",
+    "card":         "#2A2A3C",
+    "card_alt":     "#323248",
+    "sidebar":      "#252536",
+    "sidebar_sel":  "#323248",
+    "accent":       "#F05A42",
+    "accent_soft":  "#FF7B69",
+    "accent_pale":  "#3D2A28",
+    "accent_deep":  "#D04532",
+    "ink":          "#E4E4E7",
+    "ink_sec":      "#A1A1AA",
+    "ink_dis":      "#71717A",
+    "ink_inv":      "#FFFFFF",
+    "border":       "#3F3F50",
+    "border_hi":    "#525266",
+    "divider":      "#323248",
+    "ok":           "#22C55E",
+    "warn":         "#F59E0B",
+    "err":          "#EF4444",
+    "input_bg":     "#1A1A2E",
+    "input_bd":     "#3F3F50",
+    "input_focus":  "#F05A42",
+    "prog_trough":  "#3F3F50",
+    "prog_fill":    "#F05A42",
+    "select_bg":    "#3D2A28",
+    "select_fg":    "#FF7B69",
+    "select_bold":  "#FF7B69",
+}
+
 # 字体
 FT  = "Microsoft YaHei UI"
 DISPLAY = (FT, 22, "bold")
@@ -129,6 +164,11 @@ XS      = (FT, 8)
 NAV     = (FT, 10)
 NAV_B   = (FT, 10, "bold")
 BTN     = (FT, 10, "bold")
+
+
+def _extract_urls(text):
+    """从文本中提取所有 http(s) URL"""
+    return list(set(re.findall(r"https?://[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef<>\"']+", text)))
 
 
 class FormatMaster:
@@ -147,12 +187,16 @@ class FormatMaster:
         self.root.geometry(f"{w}x{h}+{x}+{y}")
         
         self.root.minsize(880, 620)
-        self.root.configure(bg='#F5F6FA')
-        self.root.bind("<Configure>", self._on_resize)
-        self.root.bind('<Map>', self._fix_black_border)
+        self.root.configure(bg=D["page"])
+        self.root.bind("<Map>", self._fix_black_border)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         
         self._check_update()
+        self._theme = USER_PREFS.get("global", "theme", "light")
+        # 在构建UI前初始化D为已保存的主题，避免先以浅色创建再切换导致的映射碰撞bug
+        if self._theme == "dark":
+            for k, v in D_DARK.items():
+                D[k] = v
         
         self._enable_double_buffering()
         self.root.after(100, self._force_redraw)
@@ -190,6 +234,7 @@ class FormatMaster:
         self._setup_drag_drop()
         self._check_ffmpeg()
         self._check_ytdlp()
+        self._apply_theme()
 
     # ── ttk 主题 ──────────────────────────────
     def _ttk(self):
@@ -200,26 +245,16 @@ class FormatMaster:
         
         # Combobox 样式优化
         s.configure("TCombobox",
-                     fieldbackground=D["input_bg"], foreground="#000000",
-                     selectbackground="#ea580c", selectforeground="#FFFFFF",
+                     fieldbackground=D["input_bg"], foreground=D["ink"],
+                     selectbackground=D["accent"], selectforeground=D["ink_inv"],
                      font=BODY, padding=6, arrowcolor=D["ink_sec"])
         s.map("TCombobox",
                fieldbackground=[("readonly", D["input_bg"])],
-               foreground=[("readonly", "#000000"), ("!disabled", "#000000")],
-               selectbackground=[("!disabled", "#ea580c")],
-               selectforeground=[("!disabled", "#FFFFFF")],
+               foreground=[("readonly", D["ink"]), ("!disabled", D["ink"])],
+               selectbackground=[("!disabled", D["accent"])],
+               selectforeground=[("!disabled", D["ink_inv"])],
                bordercolor=[("focus", D["input_focus"])],
                arrowcolor=[("active", D["ink"]), ("!disabled", D["ink_sec"])])
-
-        # 下拉列表 Listbox - Hover 深蓝 + Active 橙色
-        self.root.option_add("*TCombobox*Listbox.background", "#FFFFFF")
-        self.root.option_add("*TCombobox*Listbox.foreground", "#1A1A2E")
-        self.root.option_add("*TCombobox*Listbox.selectBackground", "#1e40af")
-        self.root.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
-        self.root.option_add("*TCombobox*Listbox.font", BODY)
-        self.root.option_add("*TCombobox*Listbox.relief", "flat")
-        self.root.option_add("*TCombobox*Listbox.activeBackground", "#1e40af")
-        self.root.option_add("*TCombobox*Listbox.activeForeground", "#FFFFFF")
         
         s.configure("Horizontal.TProgressbar",
                      troughcolor=D["prog_trough"], background=D["prog_fill"],
@@ -227,12 +262,12 @@ class FormatMaster:
         
         s.configure("AboutText.TButton",
                      font=("Segoe UI", 10),
-                     foreground="#666666",
+                     foreground=D["ink_sec"],
                      borderwidth=0,
                      padding=(12, 6))
         s.map("AboutText.TButton",
-              foreground=[("active", "#333333")],
-              background=[("pressed", "#e8e8e8"), ("active", "#f5f5f5")])
+              foreground=[("active", D["ink"])],
+              background=[("pressed", D["card_alt"]), ("active", D["card"])])
         
         s.configure("Treeview",
                      background=D["input_bg"], foreground=D["ink"],
@@ -240,16 +275,16 @@ class FormatMaster:
                      fieldbackground=D["input_bg"],
                      borderwidth=0, relief="flat")
         s.configure("Treeview.Heading",
-                     background="#F8F9FA", foreground="#333333",
+                     background=D["card_alt"], foreground=D["ink"],
                      font=(FT, 10, "bold"),
-                     borderwidth=1, bordercolor="#E0E0E0",
+                     borderwidth=1, bordercolor=D["border"],
                      relief="flat", padding=6)
         s.map("Treeview",
               background=[("selected", D["accent_pale"])],
               foreground=[("selected", D["ink"])])
         s.map("Treeview.Heading",
-              background=[("active", "#E9ECEF")])
-        
+              background=[("active", D["card_alt"])])
+
         s.configure("Flat.TButton",
                      font=BTN,
                      foreground=D["ink"],
@@ -286,13 +321,13 @@ class FormatMaster:
         s.configure("Danger.TButton",
                      font=BTN,
                      foreground=D["err"],
-                     background="#FEF2F2",
+                     background=D["accent_pale"],
                      borderwidth=1,
                      relief="solid",
-                     bordercolor="#FECACA",
+                     bordercolor=D["err"],
                      padding=(16, 8))
         s.map("Danger.TButton",
-              background=[("active", "#FEE2E2"), ("pressed", "#FEE2E2")],
+              background=[("active", D["accent_pale"]), ("pressed", D["accent_pale"])],
               foreground=[("active", D["err"])])
         
         s.configure("Ghost.TButton",
@@ -305,10 +340,6 @@ class FormatMaster:
         s.map("Ghost.TButton",
               background=[("active", D["card_alt"])],
               foreground=[("active", D["ink"])])
-        
-        self.root.option_add("*TCombobox*Listbox.background", D["input_bg"])
-        self.root.option_add("*TCombobox*Listbox.foreground", D["ink"])
-        self.root.option_add("*TCombobox*Listbox.selectBackground", D["accent_pale"])
 
     # ── 按钮工厂 ──────────────────────────────
     def _btn(self, parent, text, cmd, style="secondary", **kw):
@@ -342,27 +373,36 @@ class FormatMaster:
         toolbar.pack(side=tk.TOP, fill=tk.X)
         toolbar.pack_propagate(False)
         
-        about_lbl = tk.Label(toolbar, text="关于", bg=D["page"], fg="#666666",
+        # 关于按钮（最右侧）
+        about_lbl = tk.Label(toolbar, text="关于", bg=D["page"], fg=D["ink_sec"],
                              font=("Segoe UI", 10), cursor="hand2",
                              padx=12, pady=6)
-        about_lbl.pack(side=tk.RIGHT, padx=16, pady=6)
+        about_lbl.pack(side=tk.RIGHT, padx=(0, 16), pady=6)
+        
+        # 主题切换按钮
+        self._theme_btn = tk.Button(toolbar, text="☾", font=("Segoe UI", 16),
+                                    bg=D["page"], fg=D["ink_sec"], relief="flat",
+                                    cursor="hand2", bd=0, padx=6,
+                                    activebackground=D["card_alt"],
+                                    command=self._toggle_theme)
+        self._theme_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=4)
         
         def on_about_enter(e):
             about_lbl.configure(bg=D["card_alt"], fg=D["ink"])
         
         def on_about_leave(e):
-            about_lbl.configure(bg=D["page"], fg="#666666")
+            about_lbl.configure(bg=D["page"], fg=D["ink_sec"])
         
         about_lbl.bind("<Enter>", on_about_enter)
         about_lbl.bind("<Leave>", on_about_leave)
         about_lbl.bind("<Button-1>", lambda e: self._show_about())
         
         # 侧边栏
-        sb = tk.Frame(self.root, bg=D["sidebar"], width=220)
+        sb = tk.Frame(self.root, bg=D["sidebar"], width=230)
         sb.pack(side=tk.LEFT, fill=tk.Y)
         sb.pack_propagate(False)
 
-        sep = tk.Frame(self.root, bg='#E8E8EE', width=1)
+        sep = tk.Frame(self.root, bg=D["border"], width=1)
         sep.pack(side=tk.LEFT, fill=tk.Y)
 
         # Logo
@@ -393,10 +433,14 @@ class FormatMaster:
                 ("compress","压"),
                 ("crop",   "裁"),
             ]),
-            ("_tool",      "其他工具", [
+            ("_tool",      "工具箱", [
                 ("detect", "检"),
+                ("ocr",   "识"),
+                ("qrcode","码"),
+            ]),
+            ("_net",       "网络工具", [
                 ("download", "载"),
-                ("m3u8",  "M3U8"),
+                ("m3u8",  "M8"),
             ]),
         ]
         for section_key, section_title, items in nav_items:
@@ -407,11 +451,11 @@ class FormatMaster:
 
             for key, marker in items:
                 row = tk.Frame(sb, bg=D["sidebar"], cursor="hand2")
-                row.pack(fill=tk.X, padx=12, pady=1)
+                row.pack(fill=tk.X, padx=8, pady=1)
                 ind = tk.Frame(row, bg=D["sidebar"], width=5)
                 ind.pack(side=tk.LEFT, fill=tk.Y, padx=(2, 8))
                 badge = tk.Label(row, text=marker, bg=D["accent_pale"], fg=D["accent"],
-                                 font=("Microsoft YaHei UI", 8, "bold"), width=5, height=1,
+                                 font=("Microsoft YaHei UI", 8, "bold"), width=4, height=1,
                                  anchor=tk.CENTER)
                 badge.pack(side=tk.LEFT, padx=(0, 8))
                 lbl = tk.Label(row, text=self._nav_label(key), bg=D["sidebar"], fg=D["ink_sec"],
@@ -438,21 +482,20 @@ class FormatMaster:
                 self.nav[key] = (row, ind, badge, lbl)
 
         # 底部状态
-        status_frame = tk.Frame(sb, bg=D["sidebar"])
-        status_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 16))
-        tk.Frame(status_frame, bg=D["divider"], height=1).pack(fill=tk.X, padx=20, pady=(0, 12))
-        self.yt_lbl = tk.Label(status_frame, text="yt-dlp · 检测中", bg=D["sidebar"],
+        self.status_frame = tk.Frame(sb, bg=D["sidebar"])
+        self.status_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 16))
+        tk.Frame(self.status_frame, bg=D["divider"], height=1).pack(fill=tk.X, padx=20, pady=(0, 12))
+        self.yt_lbl = tk.Label(self.status_frame, text="yt-dlp · 检测中", bg=D["sidebar"],
                                 fg=D["ink_dis"], font=XS, anchor=tk.W, padx=28, cursor="hand2")
         self.yt_lbl.pack(fill=tk.X)
         self.yt_lbl.bind("<Button-1>", lambda e: self._check_ytdlp())
-        self.ff_lbl = tk.Label(status_frame, text="FFmpeg · 检测中", bg=D["sidebar"],
+        self.ff_lbl = tk.Label(self.status_frame, text="FFmpeg · 检测中", bg=D["sidebar"],
                                 fg=D["ink_dis"], font=XS, anchor=tk.W, padx=28)
         self.ff_lbl.pack(fill=tk.X, pady=(6, 0))
-
         # 主内容容器
-        self.main_content = tk.Frame(self.root, bg='#F5F6FA')
+        self.main_content = tk.Frame(self.root, bg=D["page"])
         self.main_content.pack(side=tk.RIGHT, fill='both', expand=True)
-        
+
         # 功能面板区
         self.content = tk.Frame(self.main_content, bg=D["page"])
         self.content.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -472,14 +515,17 @@ class FormatMaster:
         self._p_download()
         self._p_crop()
         self._p_m3u8()
+        self._p_ocr()
+        self._p_qrcode()
         self._switch("video")
         self._style_all_combos()
-        
+
+        # 底部面板 - 放在内容之后
         self._create_bottom_panel()
-        
+
         self.status_queue = queue.Queue()
         self._process_status_queue()
-        
+
         self._process_task_queue()
 
     def _style_all_combos(self):
@@ -495,14 +541,16 @@ class FormatMaster:
         _walk(self.root)
 
     def _enable_double_buffering(self):
+        self._set_title_bar_theme()
+    
+    def _set_title_bar_theme(self):
         try:
             hwnd = self.root.winfo_id()
-            
+            dark_mode = 1 if getattr(self, '_theme', 'light') == 'dark' else 0
             DWMWA_USE_IMMERSIVE_DARK_MODE = 20
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_USE_IMMERSIVE_DARK_MODE,
-                ctypes.byref(ctypes.c_int(0)),
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(ctypes.c_int(dark_mode)),
                 ctypes.sizeof(ctypes.c_int)
             )
         except Exception:
@@ -545,9 +593,169 @@ class FormatMaster:
             "compress_img": "图片压缩", "rename": "批量重命名", "extract": "提取音频",
             "compress": "视频压缩", "detect": "格式检测", "download": "视频下载",
             "crop": "预设裁剪", "m3u8": "M3U8下载",
-            "crop": "预设裁剪",
+            "ocr": "OCR 识别", "qrcode": "二维码生成",
         }
         return names.get(key, key)
+
+    def _toggle_theme(self):
+        self._theme = "dark" if self._theme == "light" else "light"
+        USER_PREFS.set("global", "theme", self._theme)
+        self._apply_theme()
+
+    def _apply_theme(self):
+        colors = D_DARK if self._theme == "dark" else D_LIGHT
+        for k, v in colors.items():
+            D[k] = v
+
+        self._ttk()
+
+        self.root.configure(bg=D["page"])
+        if hasattr(self, 'toolbar'):
+            self.toolbar.configure(bg=D["page"])
+        if hasattr(self, 'main_content'):
+            self.main_content.configure(bg=D["page"])
+        if hasattr(self, 'content'):
+            self.content.configure(bg=D["page"])
+        if hasattr(self, 'bottom_frame'):
+            self.bottom_frame.configure(bg=D["card"])
+            self._recolor_bottom_panel()
+
+        self._set_title_bar_theme()
+        self._recolor_sidebar()
+
+        if hasattr(self, 'status_frame'):
+            self._recolor_widget(self.status_frame)
+
+        if hasattr(self, '_theme_btn'):
+            self._theme_btn.configure(text="☀" if self._theme == "dark" else "☾")
+
+        cur = self.current_tab.get() if hasattr(self, 'current_tab') else "video"
+        if cur:
+            self._switch(cur)
+
+    def _recolor_bottom_panel(self):
+        if not hasattr(self, 'bottom_frame'):
+            return
+        cmap = self._build_theme_color_map()
+        self._recolor_widget_recursive(self.bottom_frame, cmap)
+        # Reconfigure treeview tag colors
+        if hasattr(self, 'task_tree'):
+            try:
+                self.task_tree.tag_configure("even", background=D["card"])
+                self.task_tree.tag_configure("odd", background=D["card_alt"])
+                self.task_tree.tag_configure("waiting", foreground=D["ink_sec"])
+                self.task_tree.tag_configure("processing", foreground=D["accent"])
+                self.task_tree.tag_configure("success", foreground=D["ok"])
+                self.task_tree.tag_configure("failed", foreground=D["err"])
+            except Exception:
+                pass
+        if hasattr(self, 'history_tree'):
+            try:
+                self.history_tree.tag_configure("success", foreground=D["ok"])
+                self.history_tree.tag_configure("failed", foreground=D["err"])
+            except Exception:
+                pass
+        # Reconfigure status text tags
+        if hasattr(self, 'status_text'):
+            try:
+                self.status_text.configure(bg=D["card"], fg=D["ink"])
+                self.status_text.tag_configure("info", foreground=D["ink_sec"])
+                self.status_text.tag_configure("success", foreground=D["ok"])
+                self.status_text.tag_configure("error", foreground=D["err"])
+                self.status_text.tag_configure("warning", foreground=D["warn"])
+                self.status_text.tag_configure("system", foreground=D["accent"])
+                self.status_text.tag_configure("time", foreground=D["ink_dis"])
+            except Exception:
+                pass
+        if hasattr(self, 'notebook'):
+            try:
+                self.notebook.configure()
+            except Exception:
+                pass
+
+    def _build_theme_color_map(self):
+        """Build per-attribute color map from both light and dark theme values.
+        
+        Returns {hex: {"fg": color, "bg": color}} so that ambiguous hex values
+        (e.g. #FFFFFF used by both ink_inv as fg and card/sidebar/input_bg as bg)
+        are correctly resolved based on the attribute being recolored.
+        """
+        # Classify D keys by their primary visual role
+        fg_keys = {"ink", "ink_sec", "ink_dis", "ink_inv",
+                    "select_fg", "select_bold", "ok", "warn", "err"}
+        # All other keys are treated as bg-oriented
+        bg_keys = set(D_LIGHT.keys()) - fg_keys
+
+        def classify_hex(key, src_map):
+            """Return ('fg', val) or ('bg', val) for a (key, source-theme) pair."""
+            v = src_map[key].upper()
+            grp = "fg" if key in fg_keys else "bg"
+            return (v, grp, D[key])
+
+        m = {}
+        # Deterministic order: D_DARK first, then D_LIGHT
+        for k in D_DARK:
+            hex_val, grp, cur = classify_hex(k, D_DARK)
+            if hex_val not in m:
+                m[hex_val] = {"fg": cur, "bg": cur}
+            else:
+                m[hex_val][grp] = cur
+        for k in D_LIGHT:
+            hex_val, grp, cur = classify_hex(k, D_LIGHT)
+            if hex_val not in m:
+                m[hex_val] = {"fg": cur, "bg": cur}
+            else:
+                m[hex_val][grp] = cur
+
+        # Extra colors used in UI that aren't in theme dicts
+        extras = {
+            "#E8E8EE": D["border"],
+            "#666666": D["ink_sec"],
+            "#F0F1F5": D["sidebar_sel"],
+            "#333333": D["ink"],
+            "#E0E0E0": D["border"],
+            "#999999": D["ink_dis"],
+            "#CCCCCC": D["ink_dis"],
+            "#6B7280": D["ink_sec"],
+            "#374151": D["ink"],
+        }
+        for src, dst in extras.items():
+            h = src.upper()
+            m[h] = {"fg": dst, "bg": dst}
+        return m
+
+    def _recolor_sidebar(self):
+        cmap = self._build_theme_color_map()
+        for widget in self.root.winfo_children():
+            self._recolor_widget_recursive(widget, cmap)
+
+    def _recolor_widget(self, widget):
+        cmap = self._build_theme_color_map()
+        self._recolor_widget_recursive(widget, cmap)
+
+    def _recolor_widget_recursive(self, widget, color_map):
+        fg_attrs = {"fg", "foreground", "activeforeground", "selectforeground", "disabledforeground"}
+        bg_attrs = {"bg", "background", "highlightbackground", "highlightcolor",
+                     "activebackground", "selectbackground", "troughcolor",
+                     "fieldbackground"}
+        for attr in ["fg", "bg", "highlightbackground", "highlightcolor",
+                     "activebackground", "activeforeground",
+                     "selectbackground", "selectforeground",
+                     "disabledforeground", "troughcolor"]:
+            try:
+                val = widget.cget(attr)
+                if val:
+                    key = val.upper() if val.startswith("#") else val
+                    if key in color_map:
+                        grp = "fg" if attr in fg_attrs else "bg"
+                        widget.configure(**{attr: color_map[key][grp]})
+            except Exception:
+                pass
+        try:
+            for child in widget.winfo_children():
+                self._recolor_widget_recursive(child, color_map)
+        except Exception:
+            pass
 
     def _nav_update(self):
         cur = self.current_tab.get()
@@ -566,57 +774,58 @@ class FormatMaster:
                 lbl.configure(bg=D["sidebar"], fg=D["ink_sec"], font=NAV)
     
     def _create_bottom_panel(self):
-        self.bottom_frame = tk.Frame(self.main_content, bg="#ffffff",
-                                      highlightbackground="#e0e0e0", highlightthickness=1)
-        self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(8, 0))
+        self.bottom_frame = tk.Frame(self.main_content, bg=D["card"],
+                                      highlightbackground=D["border"], highlightthickness=1)
+        self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0))
         self.bottom_frame.pack_propagate(False)
         self.bottom_frame.grid_propagate(False)
-        self.bottom_frame.configure(height=450)
-        
+        self.bottom_frame.configure(height=550)
+
         self.notebook = ttk.Notebook(self.bottom_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
+
         self._create_task_tab()
         self._create_log_tab()
+        self._create_history_tab()
     
     def _create_task_tab(self):
-        task_tab = tk.Frame(self.notebook, bg="#ffffff")
+        task_tab = tk.Frame(self.notebook, bg=D["card"])
         task_tab.columnconfigure(0, weight=1)
         task_tab.rowconfigure(1, weight=1)
         
-        header = tk.Frame(task_tab, bg="#ffffff")
+        header = tk.Frame(task_tab, bg=D["card"])
         header.grid(row=0, column=0, sticky="ew", padx=12, pady=(6, 4))
         header.columnconfigure(0, weight=1)
         
-        tk.Label(header, text="📋 任务进度", bg="#ffffff", fg="#333333", 
+        tk.Label(header, text="📋 任务进度", bg=D["card"], fg=D["ink"], 
                  font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
         
-        self.task_count_label = tk.Label(header, text="0 个任务", bg="#ffffff", fg="#999999", 
+        self.task_count_label = tk.Label(header, text="0 个任务", bg=D["card"], fg=D["ink_dis"], 
                                          font=("Segoe UI", 8))
         self.task_count_label.grid(row=0, column=1, sticky="e", padx=(0, 8))
         
         self.task_clear_btn = tk.Button(header, text="清空", 
                                         command=self._clear_task_list,
-                                        bg="#ffffff", fg="#666666", 
+                                        bg=D["card"], fg=D["ink_sec"], 
                                         font=("Segoe UI", 8),
                                         relief="flat", cursor="hand2", 
                                         padx=8, pady=1)
         self.task_clear_btn.grid(row=0, column=2, sticky="e")
         
-        inner_frame = tk.Frame(task_tab, bg="#ffffff")
-        inner_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        inner_frame = tk.Frame(task_tab, bg=D["card"])
+        inner_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         inner_frame.columnconfigure(0, weight=1)
         inner_frame.rowconfigure(0, weight=1)
         
         self.task_tree = ttk.Treeview(inner_frame, columns=("name", "status", "progress"), 
-                                       show="headings")
+                                       show="headings", height=12)
         self.task_tree.heading("name", text="任务名称")
         self.task_tree.heading("status", text="状态")
         self.task_tree.heading("progress", text="进度")
         
         self.task_tree.column("name", width=350, stretch=True)
-        self.task_tree.column("status", width=70, stretch=False, anchor="center")
-        self.task_tree.column("progress", width=70, stretch=False, anchor="center")
+        self.task_tree.column("status", width=80, stretch=False, anchor="center")
+        self.task_tree.column("progress", width=80, stretch=False, anchor="center")
         
         scrollbar = ttk.Scrollbar(inner_frame, orient=tk.VERTICAL, command=self.task_tree.yview)
         self.task_tree.configure(yscrollcommand=scrollbar.set)
@@ -625,17 +834,17 @@ class FormatMaster:
         scrollbar.grid(row=0, column=1, sticky="ns")
         
         self.task_empty_label = tk.Label(inner_frame, text="暂无正在处理的任务", 
-                                         bg="#ffffff", fg="#cccccc", 
+                                         bg=D["card"], fg=D["ink_dis"], 
                                          font=("Segoe UI", 10))
         self.task_empty_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         
-        self.task_tree.tag_configure("waiting", foreground="#6B7280")
-        self.task_tree.tag_configure("processing", foreground="#F05A42")
-        self.task_tree.tag_configure("success", foreground="#10B981")
-        self.task_tree.tag_configure("failed", foreground="#EF4444")
+        self.task_tree.tag_configure("waiting", foreground=D["ink_sec"])
+        self.task_tree.tag_configure("processing", foreground=D["accent"])
+        self.task_tree.tag_configure("success", foreground=D["ok"])
+        self.task_tree.tag_configure("failed", foreground=D["err"])
         
-        self.task_tree.tag_configure("even", background="#FFFFFF")
-        self.task_tree.tag_configure("odd", background="#F9FAFB")
+        self.task_tree.tag_configure("even", background=D["card"])
+        self.task_tree.tag_configure("odd", background=D["card_alt"])
         
         self.notebook.add(task_tab, text="📋 任务进度")
     
@@ -643,27 +852,27 @@ class FormatMaster:
         self.log_line_count = 0
         self.MAX_LOG_LINES = 50
         
-        log_tab = tk.Frame(self.notebook, bg="#ffffff")
+        log_tab = tk.Frame(self.notebook, bg=D["card"])
         log_tab.columnconfigure(0, weight=1)
         log_tab.rowconfigure(1, weight=1)
         
-        header = tk.Frame(log_tab, bg="#ffffff")
+        header = tk.Frame(log_tab, bg=D["card"])
         header.grid(row=0, column=0, sticky="ew", padx=12, pady=(6, 4))
         header.columnconfigure(0, weight=1)
         
-        tk.Label(header, text="📝 运行日志", bg="#ffffff", fg="#333333", 
+        tk.Label(header, text="📝 运行日志", bg=D["card"], fg=D["ink"], 
                  font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
         
         self.status_clear_btn = tk.Button(header, text="清空", 
                                           command=self._clear_status_stream,
-                                          bg="#ffffff", fg="#666666", 
+                                          bg=D["card"], fg=D["ink_sec"], 
                                           font=("Segoe UI", 8),
                                           relief="flat", cursor="hand2", 
                                           padx=8, pady=1)
         self.status_clear_btn.grid(row=0, column=1, sticky="e")
         
-        inner_frame = tk.Frame(log_tab, bg="#ffffff")
-        inner_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        inner_frame = tk.Frame(log_tab, bg=D["card"])
+        inner_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         inner_frame.columnconfigure(0, weight=1)
         inner_frame.rowconfigure(0, weight=1)
         
@@ -671,8 +880,8 @@ class FormatMaster:
         scrollbar.grid(row=0, column=1, sticky="ns")
         
         self.status_text = tk.Text(inner_frame, wrap="word",
-                                   bg="#ffffff", fg="#333333", 
-                                   font=("Segoe UI", 10),
+                                   bg=D["card"], fg=D["ink"], 
+                                   font=("Segoe UI", 11),
                                    bd=0, padx=10, pady=6,
                                    yscrollcommand=scrollbar.set,
                                    xscrollcommand=None,
@@ -683,16 +892,103 @@ class FormatMaster:
         self.status_text.grid(row=0, column=0, sticky="nsew")
         scrollbar.config(command=self.status_text.yview)
         
-        self.status_text.tag_configure("success", foreground="#22c55e")
-        self.status_text.tag_configure("error", foreground="#dc3545")
-        self.status_text.tag_configure("warning", foreground="#f59e0b")
-        self.status_text.tag_configure("info", foreground="#3b82f6")
-        self.status_text.tag_configure("time", foreground="#999999", font=("Segoe UI", 9))
+        self.status_text.tag_configure("success", foreground=D["ok"])
+        self.status_text.tag_configure("error", foreground=D["err"])
+        self.status_text.tag_configure("warning", foreground=D["warn"])
+        self.status_text.tag_configure("info", foreground=D["ink_sec"])
+        self.status_text.tag_configure("time", foreground=D["ink_dis"], font=("Segoe UI", 9))
         
         self.status_text.bind("<Double-1>", self._copy_log_line)
         
         self.notebook.add(log_tab, text="📝 运行日志")
     
+    def _create_history_tab(self):
+        self.history_tab = tk.Frame(self.notebook, bg=D["card"])
+        self.history_tab.columnconfigure(0, weight=1)
+        self.history_tab.rowconfigure(1, weight=1)
+
+        header = tk.Frame(self.history_tab, bg=D["card"])
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(6, 4))
+        header.columnconfigure(0, weight=1)
+
+        tk.Label(header, text="📜 转换历史", bg=D["card"], fg=D["ink"],
+                 font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
+
+        self.history_count_label = tk.Label(header, text="0 条记录", bg=D["card"], fg=D["ink_dis"],
+                                            font=("Segoe UI", 8))
+        self.history_count_label.grid(row=0, column=1, sticky="e", padx=(0, 8))
+
+        self.history_clear_btn = tk.Button(header, text="清空历史",
+                                           command=self._clear_history,
+                                           bg=D["card"], fg=D["ink_sec"],
+                                           font=("Segoe UI", 8),
+                                           relief="flat", cursor="hand2",
+                                           padx=8, pady=1)
+        self.history_clear_btn.grid(row=0, column=2, sticky="e")
+
+        inner_frame = tk.Frame(self.history_tab, bg=D["card"])
+        inner_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        inner_frame.columnconfigure(0, weight=1)
+        inner_frame.rowconfigure(0, weight=1)
+
+        columns = ("time", "type", "source", "target", "status")
+        self.history_tree = ttk.Treeview(inner_frame, columns=columns,
+                                          show="headings", height=12)
+        self.history_tree.heading("time", text="时间")
+        self.history_tree.heading("type", text="类型")
+        self.history_tree.heading("source", text="源文件")
+        self.history_tree.heading("target", text="目标")
+        self.history_tree.heading("status", text="状态")
+
+        self.history_tree.column("time", width=150, minwidth=130)
+        self.history_tree.column("type", width=90, minwidth=70, anchor="center")
+        self.history_tree.column("source", width=250, minwidth=100)
+        self.history_tree.column("target", width=160, minwidth=80)
+        self.history_tree.column("status", width=70, minwidth=50, anchor="center")
+
+        scrollbar = ttk.Scrollbar(inner_frame, orient=tk.VERTICAL, command=self.history_tree.yview)
+        self.history_tree.configure(yscrollcommand=scrollbar.set)
+
+        self.history_tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.history_tree.tag_configure("success", foreground=D["ok"])
+        self.history_tree.tag_configure("failed", foreground=D["err"])
+
+        self.history_empty_label = tk.Label(inner_frame, text="暂无转换记录",
+                                            bg=D["card"], fg=D["ink_dis"],
+                                            font=("Segoe UI", 10))
+        self.history_empty_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+        self.notebook.add(self.history_tab, text="📜 转换历史")
+
+        # 窗口初始化完成后再加载历史记录
+        self.root.after(200, self._refresh_history_view)
+
+    def _refresh_history_view(self):
+        for item in self.history_tree.get_children():
+            self.history_tree.delete(item)
+        records = CONV_HISTORY.get_all()
+        for i, rec in enumerate(records):
+            tag = "success" if rec.get("status") == "success" else "failed"
+            self.history_tree.insert("", tk.END, values=(
+                rec.get("time", ""),
+                rec.get("type", ""),
+                rec.get("source", ""),
+                rec.get("target", ""),
+                "✅" if rec.get("status") == "success" else "❌"
+            ), tags=(tag,))
+        self.history_count_label.configure(text=f"{len(records)} 条记录")
+        if records:
+            self.history_empty_label.place_forget()
+        else:
+            self.history_empty_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+    def _clear_history(self):
+        if messagebox.askyesno("确认", "确定清空所有转换历史记录吗？"):
+            CONV_HISTORY.clear()
+            self._refresh_history_view()
+
     def _clear_task_list(self):
         for item in self.task_tree.get_children():
             self.task_tree.delete(item)
@@ -713,6 +1009,12 @@ class FormatMaster:
             for existing_task in self.tasks:
                 if existing_task["status"] in ["waiting", "processing"]:
                     if existing_task["name"] == name:
+                        # 对于下载类任务，URL 不同也算不同任务
+                        if task_type in ("download", "m3u8"):
+                            old_url = existing_task.get("params", {}).get("params", {}).get("url", "")
+                            new_url = params.get("params", {}).get("url", "")
+                            if old_url != new_url:
+                                continue
                         return None
         
         self.task_id_counter += 1
@@ -785,54 +1087,109 @@ class FormatMaster:
             params = task["params"]
             
             def on_task_complete(success):
-                self.processing_task = False
-                
-                def on_complete_main():
-                    self._update_task_status(task["id"], "success" if success else "failed", 100)
-                    
-                    all_done = True
-                    success_count = 0
-                    failed_count = 0
-                    for t in self.tasks:
-                        if t["status"] in ["waiting", "processing"]:
-                            all_done = False
-                            break
-                        if t["status"] == "success":
-                            success_count += 1
-                        elif t["status"] == "failed":
-                            failed_count += 1
-                    
-                    if all_done:
-                        self.converting = False
-                        self._disable_all_panels(disable=False)
-                        
-                        panel_name = params.get("panel_name", task_type)
-                        w = self._w(panel_name)
-                        if w and "pg" in w:
-                            w["pg"].configure(value=0)
-                        if w and "st" in w:
-                            w["st"].configure(text="")
-                        
-                        total = success_count + failed_count
-                        if failed_count == 0:
-                            self._log_status(f"全部完成，成功 {total} 个任务", "success")
-                            self.root.after(100, lambda: messagebox.showinfo("完成", f"成功处理 {total} 个文件"))
-                        elif success_count > 0:
-                            self._log_status(f"部分完成，成功 {success_count}/{total}", "warning")
-                            self.root.after(100, lambda: messagebox.showwarning("完成", f"成功 {success_count}/{total} 个文件，失败 {failed_count} 个"))
-                        else:
-                            self._log_status(f"全部失败，{total} 个任务均未通过", "error")
-                            self.root.after(100, lambda: messagebox.showerror("失败", f"全部 {total} 个文件处理失败"))
-                
-                self.root.after(0, on_complete_main)
+                self.root.after(0, lambda: self._on_task_complete_main(task, params, task_type, success))
             
             if task_type == "video":
                 threading.Thread(target=self._run_task_video, args=(params, on_task_complete), daemon=True).start()
-            elif task_type in ["audio", "image", "doc", "gif", "pdf", "compress_img", "rename", "extract", "compress", "crop", "m3u8"]:
+            elif task_type in ["audio", "image", "doc", "gif", "pdf", "compress_img", "rename", "extract", "compress", "crop", "m3u8", "ocr", "download"]:
                 threading.Thread(target=self._run_task_general, args=(task_type, params, on_task_complete), daemon=True).start()
         
         self.root.after(500, self._process_task_queue)
-    
+
+    def _on_task_complete_main(self, task, params, task_type, success):
+        self.processing_task = False
+
+        target = ""
+        try:
+            fn = os.path.basename(params.get("file_path", ""))
+            module_params = params.get("params", {})
+            if task_type == "video":
+                target = module_params.get("fmt", "")
+            elif task_type == "audio":
+                target = module_params.get("fmt", "")
+            elif task_type == "image":
+                target = module_params.get("fmt", "")
+            elif task_type == "doc":
+                target = module_params.get("target", "")
+            elif task_type == "pdf":
+                target = module_params.get("mode", "")
+            elif task_type == "extract":
+                target = module_params.get("fmt", "")
+            elif task_type == "compress":
+                target = "压缩"
+            elif task_type == "gif":
+                target = "GIF"
+            elif task_type == "compress_img":
+                target = "图片压缩"
+            elif task_type == "rename":
+                target = "重命名"
+            elif task_type == "crop":
+                target = module_params.get("preset", "")
+            elif task_type == "m3u8":
+                target = "M3U8下载"
+            elif task_type == "download":
+                target = "视频下载"
+            elif task_type == "ocr":
+                target = "OCR"
+            type_names = {
+                "video": "视频转换", "audio": "音频转换", "image": "图片转换",
+                "doc": "文档转换", "pdf": "PDF处理", "extract": "提取音频",
+                "compress": "视频压缩", "gif": "视频转GIF", "compress_img": "图片压缩",
+                "rename": "批量重命名", "crop": "图像裁剪", "m3u8": "M3U8下载",
+                "ocr": "OCR识别", "download": "视频下载",
+            }
+            CONV_HISTORY.add({
+                "type": type_names.get(task_type, task_type),
+                "source": fn or task.get("name", ""),
+                "target": str(target),
+                "status": "success" if success else "failed",
+                "output_path": params.get("output_path", ""),
+            })
+        except Exception:
+            pass
+
+        self._update_task_status(task["id"], "success" if success else "failed", 100)
+        self._refresh_history_view()
+
+        all_done = True
+        success_count = 0
+        failed_count = 0
+        for t in self.tasks:
+            if t["status"] in ["waiting", "processing"]:
+                all_done = False
+                break
+            if t["status"] == "success":
+                success_count += 1
+            elif t["status"] == "failed":
+                failed_count += 1
+
+        if all_done:
+            self.converting = False
+            self._disable_all_panels(disable=False)
+
+            panel_name = params.get("panel_name", task_type)
+            w = self._w(panel_name)
+            if w and "pg" in w:
+                w["pg"].configure(value=0)
+            if w and "st" in w:
+                w["st"].configure(text="")
+
+            total = success_count + failed_count
+            if task_type == "rename" and success_count > 0:
+                cnt = getattr(self, '_rn_file_count', 0)
+                self._log_status(f"共重命名了 {cnt} 个文件", "success")
+                self.root.after(100, lambda: messagebox.showinfo("完成", f"成功重命名 {cnt} 个文件"))
+                self._rn_file_count = 0
+            elif failed_count == 0:
+                self._log_status(f"全部完成，成功 {total} 个任务", "success")
+                self.root.after(100, lambda: messagebox.showinfo("完成", f"成功处理 {total} 个文件"))
+            elif success_count > 0:
+                self._log_status(f"部分完成，成功 {success_count}/{total}", "warning")
+                self.root.after(100, lambda: messagebox.showwarning("完成", f"成功 {success_count}/{total} 个文件，失败 {failed_count} 个"))
+            else:
+                self._log_status(f"全部失败，{total} 个任务均未通过", "error")
+                self.root.after(100, lambda: messagebox.showerror("失败", f"全部 {total} 个文件处理失败"))
+
     def _run_task_video(self, params, callback):
         file_path = params.get("file_path", "")
         output_path = params.get("output_path", "")
@@ -1093,6 +1450,30 @@ class FormatMaster:
                     dpi = int(module_params.get("compress_dpi", "150").replace("dpi", ""))
                     quality = int(module_params.get("compress_quality", "80"))
                     result = pdf_compress(file_path, output_path, dpi, quality, prog)
+                elif "水印" in mode:
+                    wm_text = module_params.get("wm_text", "")
+                    if not wm_text:
+                        if prog: prog(-1, "水印文字不能为空")
+                        result = False
+                    else:
+                        from core.tools import pdf_add_watermark
+                        result = pdf_add_watermark(
+                            file_path, output_path,
+                            text=wm_text,
+                            pos=module_params.get("wm_pos", "居中"),
+                            opacity=module_params.get("wm_opacity", 0.3),
+                            rotation=module_params.get("wm_rotate", 0),
+                            progress_cb=prog,
+                        )
+                elif "页码" in mode:
+                    from core.tools import pdf_add_page_numbers
+                    result = pdf_add_page_numbers(
+                        file_path, output_path,
+                        start=module_params.get("pn_start", 1),
+                        pos=module_params.get("pn_pos", "底部居中"),
+                        fmt=module_params.get("pn_fmt", "{n}"),
+                        progress_cb=prog,
+                    )
             
             elif task_type == "compress_img":
                 q = int(module_params.get("quality", "75"))
@@ -1106,7 +1487,15 @@ class FormatMaster:
             elif task_type == "rename":
                 pattern = module_params.get("pattern", "文件_{n:03d}")
                 start_num = int(module_params.get("start", "1"))
-                renamed_files = batch_rename(params.get("files", [file_path]), pattern, start_num, prog, output_dir=output_path)
+                search_text = module_params.get("search", "")
+                replace_text = module_params.get("replace", "")
+                case = module_params.get("case", "none")
+                regex_pattern = module_params.get("regex_pattern", "")
+                regex_replace = module_params.get("regex_replace", "")
+                renamed_files = batch_rename(params.get("files", [file_path]), pattern, start_num, prog,
+                                             output_dir=output_path, search_text=search_text,
+                                             replace_text=replace_text, case=case,
+                                             regex_pattern=regex_pattern, regex_replace=regex_replace)
                 result = len(renamed_files) > 0
 
             elif task_type == "crop":
@@ -1156,6 +1545,39 @@ class FormatMaster:
                 if result and notify:
                     try: import winsound; winsound.MessageBeep(winsound.MB_OK)
                     except: pass
+
+            elif task_type == "download":
+                url = module_params.get("url", "")
+                vd = getattr(self, 'dl_obj', None)
+                if not vd:
+                    from core.video_downloader import VideoDownloader
+                    vd = VideoDownloader()
+                    self.dl_obj = vd
+                dl_params = {}
+                if module_params.get("cookie"): dl_params["cookie"] = module_params["cookie"]
+                if module_params.get("headers"): dl_params["headers"] = module_params["headers"]
+                if module_params.get("proxy"): dl_params["proxy"] = module_params["proxy"]
+                sl = module_params.get("speed_limit", 0)
+                if sl > 0: dl_params["speed_limit"] = sl
+                if module_params.get("audio_only"): dl_params["audio_only"] = True
+                if module_params.get("audio_format"): dl_params["audio_format"] = module_params["audio_format"]
+                if module_params.get("subtitles"): dl_params["subtitles"] = True
+                if module_params.get("output_template"): dl_params["output_template"] = module_params["output_template"]
+                result = vd.download(url, output_path, progress_callback=prog, **dl_params)
+
+            elif task_type == "ocr":
+                from core.ocr_tool import ocr_image
+                text = ocr_image(file_path, module_params.get("lang", "chi_sim+eng"), prog)
+                if text:
+                    def show_result(t=text):
+                        self.ocr_text.delete(1.0, tk.END)
+                        self.ocr_text.insert(1.0, t)
+                        self._log_status(f"识别完成：{len(t)} 字符", "success")
+                    self.root.after(0, show_result)
+                    result = True
+                else:
+                    prog(-1, "识别失败，未提取到文字")
+                    result = False
 
             callback(result)
         except Exception as ex:
@@ -1252,7 +1674,6 @@ class FormatMaster:
         update_btn.pack(side=tk.LEFT)
 
         def on_check_update(e):
-            import threading
             def manual_check():
                 try:
                     if self._check_for_updates():
@@ -1275,12 +1696,12 @@ class FormatMaster:
         tk.Label(github_frame, text="GitHub: ", bg="#f8f9fa", fg="#333333", font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
         github_link = tk.Label(github_frame,
-                               text="github.com/2048895034qq/FormatMaster-EN",
+                               text="github.com/Gu-0312/FormatMaster-EN",
                                bg="#f8f9fa", fg="#0d6efd", font=("Segoe UI", 10, "underline"),
                                cursor="hand2")
         github_link.pack(side=tk.LEFT)
 
-        github_link.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/2048895034qq/FormatMaster-EN"))
+        github_link.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Gu-0312/FormatMaster-EN"))
 
         sep = tk.Frame(about_win, bg="#E5E7EB", height=1)
         sep.pack(fill=tk.X, padx=28, pady=(16, 12))
@@ -1315,7 +1736,7 @@ class FormatMaster:
         import urllib.error
         import json
         import socket
-        GITHUB_REPO = "2048895034qq/FormatMaster-EN"
+        GITHUB_REPO = "Gu-0312/FormatMaster-EN"
         try:
             socket.setdefaulttimeout(5)
             url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -1419,6 +1840,9 @@ class FormatMaster:
             prefs = {
                 "pattern": self.rn_pattern.get(),
                 "start": self.rn_start.get(),
+                "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
+                "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
+                "case": self.rn_case.get() if hasattr(self, 'rn_case') else "不转换",
                 "out_dir_combo": self.rn_out_dir_combo.get() if hasattr(self, 'rn_out_dir_combo') else "与源文件同目录",
                 "out_dir_path": self.rn_out_dir_path.get() if hasattr(self, 'rn_out_dir_path') else "",
             }
@@ -1428,6 +1852,29 @@ class FormatMaster:
                 "mode": self.crp_mode.get(),
                 "out_dir_combo": self.crp_out_dir_combo.get() if hasattr(self, 'crp_out_dir_combo') else "与源文件同目录",
                 "out_dir_path": self.crp_out_dir_path.get() if hasattr(self, 'crp_out_dir_path') else "",
+            }
+        elif panel == "ocr":
+            prefs = {
+                "lang": self.ocr_lang.get(),
+                "out_dir_combo": self.ocr_out_dir_combo.get() if hasattr(self, 'ocr_out_dir_combo') else "与源文件同目录",
+                "out_dir_path": self.ocr_out_dir_path.get() if hasattr(self, 'ocr_out_dir_path') else "",
+            }
+        elif panel == "download":
+            prefs = {
+                "dl_dir": self.dl_dir.get(),
+            }
+        elif panel == "m3u8":
+            prefs = {
+                "out_dir": self.m3u8_out_dir.get(),
+                "threads": self.m3u8_threads.get(),
+                "format": self.m3u8_format.get(),
+                "speed": self.m3u8_speed.get(),
+                "cookie": self.m3u8_cookie.get(),
+                "proxy": self.m3u8_proxy.get(),
+                "headers": self.m3u8_headers.get(),
+                "resume": self.m3u8_resume.get(),
+                "notify": self.m3u8_notify.get(),
+                "download_sub": self.m3u8_download_sub.get(),
             }
         if prefs:
             USER_PREFS.save_panel(panel, prefs)
@@ -1482,7 +1929,7 @@ class FormatMaster:
             lb_frame = tk.Frame(f, bg=D["card"])
             lb_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
             lb = tk.Listbox(lb_frame, font=("Consolas", 9), bg=D["input_bg"],
-                            fg="#000000", relief="flat", highlightthickness=1,
+                            fg=D["ink"], relief="flat", highlightthickness=1,
                             highlightbackground=D["border"], selectbackground=D["select_bg"],
                             selectforeground=D["select_fg"])
             lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1641,6 +2088,14 @@ class FormatMaster:
                 self.rn_pattern.set(prefs["pattern"])
             if prefs.get("start") and hasattr(self, 'rn_start'):
                 self.rn_start.set(prefs["start"])
+            if prefs.get("search") and hasattr(self, 'rn_search'):
+                self.rn_search.delete(0, tk.END)
+                self.rn_search.insert(0, prefs["search"])
+            if prefs.get("replace") and hasattr(self, 'rn_replace'):
+                self.rn_replace.delete(0, tk.END)
+                self.rn_replace.insert(0, prefs["replace"])
+            if prefs.get("case") and hasattr(self, 'rn_case'):
+                self.rn_case.set(prefs["case"])
             if prefs.get("out_dir_combo") and hasattr(self, 'rn_out_dir_combo'):
                 self.rn_out_dir_combo.set(prefs["out_dir_combo"])
             if prefs.get("out_dir_path") and hasattr(self, 'rn_out_dir_path'):
@@ -1654,7 +2109,40 @@ class FormatMaster:
                 self.crp_out_dir_combo.set(prefs["out_dir_combo"])
             if prefs.get("out_dir_path") and hasattr(self, 'crp_out_dir_path'):
                 self.crp_out_dir_path.set(prefs["out_dir_path"])
-
+        elif panel == "ocr":
+            if prefs.get("lang") and hasattr(self, 'ocr_lang'):
+                self.ocr_lang.set(prefs["lang"])
+            if prefs.get("out_dir_combo") and hasattr(self, 'ocr_out_dir_combo'):
+                self.ocr_out_dir_combo.set(prefs["out_dir_combo"])
+            if prefs.get("out_dir_path") and hasattr(self, 'ocr_out_dir_path'):
+                self.ocr_out_dir_path.set(prefs["out_dir_path"])
+        elif panel == "download":
+            if prefs.get("dl_dir") and hasattr(self, 'dl_dir'):
+                self.dl_dir.set(prefs["dl_dir"])
+        elif panel == "m3u8":
+            if prefs.get("out_dir") and hasattr(self, 'm3u8_out_dir'):
+                self.m3u8_out_dir.set(prefs["out_dir"])
+            if prefs.get("threads") and hasattr(self, 'm3u8_threads'):
+                self.m3u8_threads.set(prefs["threads"])
+            if prefs.get("format") and hasattr(self, 'm3u8_format'):
+                self.m3u8_format.set(prefs["format"])
+            if prefs.get("speed") and hasattr(self, 'm3u8_speed'):
+                self.m3u8_speed.set(prefs["speed"])
+            if prefs.get("cookie") and hasattr(self, 'm3u8_cookie'):
+                self.m3u8_cookie.delete(0, tk.END)
+                self.m3u8_cookie.insert(0, prefs["cookie"])
+            if prefs.get("proxy") and hasattr(self, 'm3u8_proxy'):
+                self.m3u8_proxy.delete(0, tk.END)
+                self.m3u8_proxy.insert(0, prefs["proxy"])
+            if prefs.get("headers") and hasattr(self, 'm3u8_headers'):
+                self.m3u8_headers.delete(0, tk.END)
+                self.m3u8_headers.insert(0, prefs["headers"])
+            if "resume" in prefs and hasattr(self, 'm3u8_resume'):
+                self.m3u8_resume.set(prefs["resume"])
+            if "notify" in prefs and hasattr(self, 'm3u8_notify'):
+                self.m3u8_notify.set(prefs["notify"])
+            if "download_sub" in prefs and hasattr(self, 'm3u8_download_sub'):
+                self.m3u8_download_sub.set(prefs["download_sub"])
     def _switch(self, tab):
         if getattr(self, 'panels_disabled', False):
             return
@@ -1664,7 +2152,7 @@ class FormatMaster:
         self._nav_update()
         for p in self.panels.values():
             p.pack_forget()
-        self.panels[tab].pack(fill=tk.BOTH, expand=True, padx=32, pady=28)
+        self.panels[tab].pack(fill=tk.BOTH, expand=True, padx=20, pady=12)
         self._load_panel_prefs(tab)
 
     # ── 面板标题 ──────────────────────────────
@@ -1674,10 +2162,10 @@ class FormatMaster:
         tk.Label(row, text=title, bg=D["page"], fg=D["ink"],
                  font=H2).pack(side=tk.LEFT)
         if badge:
-            tk.Label(row, text=badge, bg="#FFF3CD", fg="#856404",
+            tk.Label(row, text=badge, bg=D["accent_pale"], fg=D["accent"],
                      font=("Microsoft YaHei UI", 9), padx=6, pady=1).pack(side=tk.LEFT, padx=(10, 0))
         tk.Label(parent, text=sub, bg=D["page"], fg=D["ink_dis"],
-                 font=XS).pack(anchor=tk.W, pady=(4, 18))
+                 font=XS).pack(anchor=tk.W, pady=(2, 8))
 
     # ── 文件选择区 ────────────────────────────
     def _file_sec(self, parent, key, fts, accept_all=False):
@@ -1689,16 +2177,16 @@ class FormatMaster:
 
         # 按钮行
         br = tk.Frame(f, bg=D["page"])
-        br.pack(fill=tk.X, pady=(0, 12))
+        br.pack(fill=tk.X, pady=(0, 6))
         self._btn(br, "＋ 添加文件",  lambda k=key: self._add(k)).pack(side=tk.LEFT, padx=(0, 8))
         self._btn(br, "📁 文件夹",   lambda k=key: self._add_dir(k)).pack(side=tk.LEFT, padx=(0, 8))
         self._btn(br, "✕ 清空",      lambda k=key: self._clr(k), "ghost").pack(side=tk.LEFT)
-        
+
         if key in ["video", "audio", "image", "doc"]:
             hint_var = tk.StringVar(value="请先添加文件")
             hint_frame = tk.Frame(f, bg=D["page"])
-            hint_frame.pack(fill=tk.X, pady=(8, 0))
-            hint_label = tk.Label(hint_frame, textvariable=hint_var, bg=D["page"], fg="#6B7280",
+            hint_frame.pack(fill=tk.X, pady=(4, 0))
+            hint_label = tk.Label(hint_frame, textvariable=hint_var, bg=D["page"], fg=D["ink_sec"],
                                   font=XS, anchor=tk.W)
             hint_label.pack(side=tk.LEFT)
             d["format_hint_var"] = hint_var
@@ -1881,8 +2369,8 @@ class FormatMaster:
                 with Image.open(filepath) as img:
                     width, height = img.size
                     resolution = f"{width}×{height}"
-                    format = img.format or "-"
-                    self.root.after(0, lambda: self._set_props(key, "-", resolution, format))
+                    img_format = img.format or "-"
+                    self.root.after(0, lambda: self._set_props(key, "-", resolution, img_format))
             except Exception:
                 # 失败时保持 "-"，绝不抛出到主线程
                 pass
@@ -1912,7 +2400,7 @@ class FormatMaster:
         files = d.get("files", [])
         if not files:
             d["format_hint_var"].set("请先添加文件")
-            d["format_hint_label"].configure(fg="#6B7280")
+            d["format_hint_label"].configure(fg=D["ink_sec"])
             return
         
         selected_idx = d.get("listbox", tk.Listbox()).curselection()
@@ -1922,7 +2410,7 @@ class FormatMaster:
         filepath = files[selected_idx[0]] if selected_idx else ""
         if not filepath:
             d["format_hint_var"].set("请先添加文件")
-            d["format_hint_label"].configure(fg="#6B7280")
+            d["format_hint_label"].configure(fg=D["ink_sec"])
             return
         
         src_ext = os.path.splitext(filepath)[1].lower()
@@ -1946,7 +2434,7 @@ class FormatMaster:
             target_fmt = self.d_tgt.get() if hasattr(self, 'd_tgt') else ""
             if target_fmt == "请先添加文件":
                 d["format_hint_var"].set("请先添加文件并点击「检测格式」")
-                d["format_hint_label"].configure(fg="#6B7280")
+                d["format_hint_label"].configure(fg=D["ink_sec"])
                 return
             import re
             target_ext = "." + re.sub(r'[^a-zA-Z0-9]', '', target_fmt.lower())
@@ -1958,13 +2446,13 @@ class FormatMaster:
         
         if src_ext == target_ext:
             d["format_hint_var"].set(f"提示：源格式与目标格式一致{lossless_hint}")
-            d["format_hint_label"].configure(fg="#0d6efd")
+            d["format_hint_label"].configure(fg=D["accent"])
         elif src_ext in supported_exts:
             d["format_hint_var"].set("当前配置正常，准备转换为指定格式")
-            d["format_hint_label"].configure(fg="#374151")
+            d["format_hint_label"].configure(fg=D["ink"])
         else:
             d["format_hint_var"].set("警告：当前文件可能无法转换为该目标格式，请检查源文件编码")
-            d["format_hint_label"].configure(fg="#dc2626")
+            d["format_hint_label"].configure(fg=D["err"])
 
     def _setup_drag_drop(self):
         hwnd = self.root.winfo_id()
@@ -2067,19 +2555,19 @@ class FormatMaster:
     # ── 设置卡片（自适应网格布局）────────────────
     def _card(self, parent, title):
         outer = tk.Frame(parent, bg=D["border"], padx=1, pady=1)
-        outer.pack(fill=tk.X, pady=(0, 16), expand=False)
-        
+        outer.pack(fill=tk.X, pady=(0, 10), expand=False)
+
         card = tk.Frame(outer, bg=D["card"])
         card.pack(fill=tk.BOTH, expand=True)
-        
+
         header = tk.Frame(card, bg=D["card"])
-        header.pack(fill=tk.X, padx=20, pady=(16, 0))
+        header.pack(fill=tk.X, padx=16, pady=(10, 0))
         tk.Label(header, text=title, bg=D["card"], fg=D["ink_sec"],
                  font=(FT, 9, "bold")).pack(anchor=tk.W)
-        
+
         content = tk.Frame(card, bg=D["card"])
-        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=(12, 16))
-        
+        content.pack(fill=tk.BOTH, expand=True, padx=16, pady=(8, 12))
+
         content._col_count = 0
         content._max_cols = 3
         content._widgets = []
@@ -2128,7 +2616,7 @@ class FormatMaster:
     # ── 进度栏 ────────────────────────────────
     def _bar(self, parent):
         b = tk.Frame(parent, bg=D["page"])
-        b.pack(fill=tk.X, pady=(18, 0))
+        b.pack(fill=tk.X, pady=(10, 0))
         pg = ttk.Progressbar(b, style="Horizontal.TProgressbar")
         pg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 16))
         st = tk.Label(b, text="就绪", bg=D["page"], fg=D["ink_dis"], font=SM)
@@ -2156,28 +2644,30 @@ class FormatMaster:
         self._hdr(p, "视频格式转换", "MP4 · AVI · MKV · WMV · MOV · FLV · WEBM 等主流格式互转")
         self._file_sec(p, "video",
             [("视频文件","*.mp4 *.avi *.mkv *.wmv *.mov *.flv *.webm *.ts *.mpeg *.3gp"),("所有文件","*.*")])
-        
+
         settings_card = self._card(p, "输出设置")
-        
+
         copy_row = tk.Frame(settings_card, bg=D["card"])
         copy_row.pack(fill=tk.X, padx=16, pady=(10, 8))
         self.v_copy_mode = tk.BooleanVar(value=False)
+        check_bg = D["card"] if self._theme == "light" else "#6a6a7a"
         copy_cb = tk.Checkbutton(copy_row, text="⚡ 仅转封装（无损拷贝）", variable=self.v_copy_mode,
-                                  bg=D["card"], fg="#0d6efd", font=(FT, 10, "bold"),
+                                  bg=D["card"], selectcolor=check_bg,
+                                  fg=D["accent"], activeforeground=D["accent"],
+                                  font=(FT, 10, "bold"), bd=0, highlightthickness=0,
                                   command=self._toggle_copy_mode)
         copy_cb.pack(side=tk.LEFT)
-        tk.Label(copy_row, text="预计耗时 < 5秒", bg=D["card"], fg="#0d6efd", font=XS).pack(side=tk.RIGHT)
-        
-        self.v_copy_hint = tk.Label(settings_card, text="无损转封装，速度极快", bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.v_copy_hint.pack(fill=tk.X, padx=16, pady=(0, 8))
+        self.v_copy_hint = tk.Label(copy_row, text="无损转封装，速度极快", bg=D["card"], fg=D["ink_dis"], font=XS)
+        self.v_copy_hint.pack(side=tk.LEFT, padx=(8, 0))
         self.v_copy_hint.pack_forget()
-        
+        tk.Label(copy_row, text="预计耗时 < 5秒", bg=D["card"], fg=D["accent"], font=XS).pack(side=tk.RIGHT)
+
         grid_frame = tk.Frame(settings_card, bg=D["card"])
         grid_frame.pack(fill=tk.X, padx=16, pady=(0, 10))
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
         grid_frame.columnconfigure(2, weight=1)
-        
+
         self.v_fmt = self._grid_row(grid_frame, "目标格式", list(SUPPORTED_VIDEO.keys()), "MP4", 0, 0)
         self.v_fmt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("video"))
         self.v_codec = self._grid_row(grid_frame, "视频编码", list(VIDEO_CODECS.keys()), "默认", 0, 1)
@@ -2185,44 +2675,50 @@ class FormatMaster:
         self.v_res = self._grid_row(grid_frame, "分辨率", list(RESOLUTIONS.keys()), "原始分辨率", 1, 0)
         self.v_fps = self._grid_row(grid_frame, "帧率", ["原始帧率","24","25","30","60"], "原始帧率", 1, 1)
         self.v_br = self._grid_row(grid_frame, "码率", ["自动","1M","2M","5M","8M","10M","20M"], "自动", 1, 2)
-        
-        preset_row = tk.Frame(settings_card, bg=D["card"])
-        preset_row.pack(fill=tk.X, padx=16, pady=(0, 10))
-        tk.Label(preset_row, text="快速预设", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+
+        # 快速预设 + 输出目录 合并为一行
+        preset_out_row = tk.Frame(settings_card, bg=D["card"])
+        preset_out_row.pack(fill=tk.X, padx=16, pady=(0, 10))
+
+        # 快速预设（左侧）
+        preset_frame = tk.Frame(preset_out_row, bg=D["card"])
+        preset_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(preset_frame, text="快速预设", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
         video_presets = ["自定义"] + get_preset_names("video")
-        self.v_preset_combo = ttk.Combobox(preset_row, values=video_presets, state="readonly", width=16)
+        self.v_preset_combo = ttk.Combobox(preset_frame, values=video_presets, state="readonly", width=16)
         self.v_preset_combo.set("自定义")
         self.v_preset_combo.pack(side=tk.LEFT)
         self.v_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_video_preset())
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+
+        # 输出目录（右侧）
+        out_frame = tk.Frame(preset_out_row, bg=D["card"])
+        out_frame.pack(side=tk.RIGHT)
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 6))
         self.v_out_dir = tk.StringVar(value="与源文件同目录")
-        self.v_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+        self.v_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=12)
         self.v_out_dir_combo.set("与源文件同目录")
         self.v_out_dir_combo.pack(side=tk.LEFT)
-        self.v_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("video"), style="secondary")
-        self.v_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
+        self.v_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("video"), style="secondary")
+        self.v_out_dir_btn.pack(side=tk.LEFT, padx=(6, 0))
         self.v_out_dir_path = tk.StringVar(value="")
-        self.v_out_dir_label = tk.Label(out_dir_frame, textvariable=self.v_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
-        self.v_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+        self.v_out_dir_label = tk.Label(out_frame, textvariable=self.v_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
+        self.v_out_dir_label.pack(side=tk.LEFT, padx=(6, 0))
+
         bottom_bar = tk.Frame(p, bg=D["page"])
         bottom_bar.pack(fill=tk.X, pady=(12, 0))
-        
+
         self.v_pg = ttk.Progressbar(bottom_bar, style="Horizontal.TProgressbar")
         self.v_pg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 16))
-        
+
         self.v_st = tk.Label(bottom_bar, text="就绪", bg=D["page"], fg=D["ink_dis"], font=SM)
         self.v_st.pack(side=tk.LEFT, padx=(0, 12))
-        
+
         self._btn(bottom_bar, "📁 打开输出文件夹", self._open_output_folder, "ghost", padx=8).pack(side=tk.RIGHT, padx=(0, 8))
-        
+
         self.v_ca = self._btn(bottom_bar, "取消", None, "danger", state=tk.DISABLED)
         self.v_ca.pack(side=tk.RIGHT, padx=(0, 10))
         self.v_ca.configure(command=lambda: self._stop("video"))
-        
+
         self.v_go = self._btn(bottom_bar, "开始转换", None, "primary", padx=24)
         self.v_go.pack(side=tk.RIGHT)
         self.v_go.configure(command=lambda: self._go("video"))
@@ -2240,7 +2736,7 @@ class FormatMaster:
             for widget in [self.v_codec, self.v_preset, self.v_res, self.v_fps, self.v_br]:
                 widget.configure(state="disabled")
             
-            self.v_copy_hint.pack(fill=tk.X, padx=16, pady=(0, 8))
+            self.v_copy_hint.pack(side=tk.LEFT, padx=(8, 0))
             self._validate_copy_compatibility()
         else:
             self.v_fmt.configure(values=list(SUPPORTED_VIDEO.keys()))
@@ -2322,6 +2818,7 @@ class FormatMaster:
             "compress_img": ("ci_out_dir_combo", "ci_out_dir_path"),
             "rename": ("rn_out_dir_combo", "rn_out_dir_path"),
             "crop": ("crp_out_dir_combo", "crp_out_dir_path"),
+            "ocr": ("ocr_out_dir_combo", "ocr_out_dir_path"),
         }
 
         last_dir = self._get_last_dir(panel_key)
@@ -2349,7 +2846,7 @@ class FormatMaster:
         self.a_br   = self._row(s, "比特率", ["128k","192k","256k","320k"], "192k")
         self.a_sr   = self._row(s, "采样率", ["原始","22050","44100","48000","96000"], "原始")
         self.a_ch   = self._row(s, "声道",   ["原始","单声道","立体声"], "原始")
-        
+
         tk.Label(s, text="音量", bg=D["card"], fg=D["ink"], font=SM).grid(row=4, column=0, sticky="w")
         self.a_vol = tk.Scale(s, from_=20, to=200, orient=tk.HORIZONTAL,
                                bg=D["card"], fg=D["ink"], font=BODY,
@@ -2357,19 +2854,20 @@ class FormatMaster:
                                troughcolor=D["input_bg"], relief="flat")
         self.a_vol.set(100)
         self.a_vol.grid(row=4, column=1, sticky="ew", padx=(4, 0))
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.a_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内底部）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=5, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.a_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.a_out_dir_combo.set("与源文件同目录")
         self.a_out_dir_combo.pack(side=tk.LEFT)
-        self.a_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("audio"), style="secondary")
+        self.a_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("audio"), style="secondary")
         self.a_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.a_out_dir_path = tk.StringVar(value="")
-        self.a_out_dir_label = tk.Label(out_dir_frame, textvariable=self.a_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.a_out_dir_label = tk.Label(out_frame, textvariable=self.a_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.a_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.a_pg, self.a_st, self.a_go, self.a_ca, _ = self._bar(p)
         self.a_go.configure(command=lambda: self._go("audio"))
         self.a_ca.configure(command=lambda: self._stop("audio"))
@@ -2416,14 +2914,14 @@ class FormatMaster:
                                        bg=D["card"], fg=D["ink"], font=SM)
         grayscale_cb.grid(row=2, column=2, columnspan=2, sticky="w", padx=10, pady=8)
         
-        separator = tk.Frame(s, bg="#E5E7EB", height=1)
+        separator = tk.Frame(s, bg=D["border"], height=1)
         separator.grid(row=3, column=0, columnspan=4, sticky="ew", padx=10, pady=10)
         
-        tk.Label(s, text="水印处理", bg=D["card"], fg="#333333", font=(FT, 9, "bold")).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=(4, 4))
+        tk.Label(s, text="水印处理", bg=D["card"], fg=D["ink"], font=(FT, 9, "bold")).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=(4, 4))
         
         tk.Label(s, text="水印文字", bg=D["card"], fg=D["ink"], font=SM).grid(row=5, column=0, sticky="w", padx=(10, 8), pady=8)
-        self.i_watermark = tk.Entry(s, font=BODY, bg=D["input_bg"], fg="#000000",
-                                     insertbackground="#000000", relief="flat",
+        self.i_watermark = tk.Entry(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                     insertbackground=D["ink"], relief="flat",
                                      highlightthickness=1, highlightbackground=D["input_bd"],
                                      highlightcolor=D["accent"], width=16)
         self.i_watermark.grid(row=5, column=1, sticky="ew", padx=(0, 16), pady=8)
@@ -2432,19 +2930,20 @@ class FormatMaster:
         self.i_watermark_pos = ttk.Combobox(s, values=["右下角","左下角","右上角","左上角","居中"], state="readonly", width=14)
         self.i_watermark_pos.set("右下角")
         self.i_watermark_pos.grid(row=5, column=3, sticky="ew", padx=(0, 10), pady=8)
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(10, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.i_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内底部）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=6, column=0, columnspan=4, sticky="ew", padx=10, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.i_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.i_out_dir_combo.set("与源文件同目录")
         self.i_out_dir_combo.pack(side=tk.LEFT)
-        self.i_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("image"), style="secondary")
+        self.i_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("image"), style="secondary")
         self.i_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.i_out_dir_path = tk.StringVar(value="")
-        self.i_out_dir_label = tk.Label(out_dir_frame, textvariable=self.i_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.i_out_dir_label = tk.Label(out_frame, textvariable=self.i_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.i_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.i_pg, self.i_st, self.i_go, self.i_ca, _ = self._bar(p)
         self.i_go.configure(command=lambda: self._go("image"))
         self.i_ca.configure(command=lambda: self._stop("image"))
@@ -2466,19 +2965,20 @@ class FormatMaster:
         self.d_tgt.grid(row=1, column=1, sticky="ew", padx=(4, 10))
         self.d_tgt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("doc"))
         self._btn(s, "检测格式", self._detect).grid(row=1, column=2, sticky="w")
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.d_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.d_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.d_out_dir_combo.set("与源文件同目录")
         self.d_out_dir_combo.pack(side=tk.LEFT)
-        self.d_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("doc"), style="secondary")
+        self.d_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("doc"), style="secondary")
         self.d_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.d_out_dir_path = tk.StringVar(value="")
-        self.d_out_dir_label = tk.Label(out_dir_frame, textvariable=self.d_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.d_out_dir_label = tk.Label(out_frame, textvariable=self.d_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.d_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.d_pg, self.d_st, self.d_go, self.d_ca, _ = self._bar(p)
         self.d_go.configure(command=lambda: self._go("doc"))
         self.d_ca.configure(command=lambda: self._stop("doc"))
@@ -2509,19 +3009,20 @@ class FormatMaster:
         s = self._card(p, "输出设置")
         self.e_fmt = self._row(s, "音频格式", ["MP3","AAC","FLAC","WAV"], "MP3")
         self.e_br  = self._row(s, "比特率", ["128k","192k","256k","320k"], "192k")
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.e_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.e_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.e_out_dir_combo.set("与源文件同目录")
         self.e_out_dir_combo.pack(side=tk.LEFT)
-        self.e_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("extract"), style="secondary")
+        self.e_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("extract"), style="secondary")
         self.e_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.e_out_dir_path = tk.StringVar(value="")
-        self.e_out_dir_label = tk.Label(out_dir_frame, textvariable=self.e_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.e_out_dir_label = tk.Label(out_frame, textvariable=self.e_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.e_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.e_pg, self.e_st, self.e_go, self.e_ca, _ = self._bar(p)
         self.e_go.configure(command=lambda: self._go("extract"))
         self.e_ca.configure(command=lambda: self._stop("extract"))
@@ -2535,19 +3036,20 @@ class FormatMaster:
         s = self._card(p, "压缩设置")
         self.c_q   = self._row(s, "压缩质量", ["高质量（文件较大）","中等质量（推荐）","低质量（文件最小）"], "中等质量（推荐）", 20)
         self.c_res = self._row(s, "分辨率", list(RESOLUTIONS.keys()), "原始分辨率", 16)
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.c_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.c_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.c_out_dir_combo.set("与源文件同目录")
         self.c_out_dir_combo.pack(side=tk.LEFT)
-        self.c_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("compress"), style="secondary")
+        self.c_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("compress"), style="secondary")
         self.c_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.c_out_dir_path = tk.StringVar(value="")
-        self.c_out_dir_label = tk.Label(out_dir_frame, textvariable=self.c_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.c_out_dir_label = tk.Label(out_frame, textvariable=self.c_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.c_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.c_pg, self.c_st, self.c_go, self.c_ca, _ = self._bar(p)
         self.c_go.configure(command=lambda: self._go("compress"))
         self.c_ca.configure(command=lambda: self._stop("compress"))
@@ -2561,8 +3063,8 @@ class FormatMaster:
         s = self._card(p, "检测设置")
         
         tk.Label(s, text="目标文件夹", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
-        self.detect_path = tk.Entry(s, font=BODY, bg=D["input_bg"], fg="#000000",
-                                     insertbackground="#000000", relief="flat",
+        self.detect_path = tk.Entry(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                     insertbackground=D["ink"], relief="flat",
                                      highlightthickness=1, highlightbackground=D["input_bd"],
                                      highlightcolor=D["accent"], width=40)
         self.detect_path.grid(row=0, column=1, sticky="ew", padx=(4, 0))
@@ -2663,7 +3165,7 @@ class FormatMaster:
         if header[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1': return 'doc'
         if header[:4] == b'PK\x03\x04':
             low = fp.lower()
-            if any(e in low for e in ('.docx','.xlsx','.pptx','.docm','.xlsm','.pptm')):
+            if any(low.endswith(e) for e in ('.docx','.xlsx','.pptx','.docm','.xlsm','.pptm')):
                 return 'doc'
             return 'other'
         return None
@@ -2738,9 +3240,7 @@ class FormatMaster:
     def _batch_convert_from_detect(self, detected):
         task_names = {
             "video": "视频转换", "audio": "音频转换", "image": "图片转换",
-            "doc": "文档转换", "pdf": "PDF处理", "extract": "音频提取",
-            "compress": "视频压缩", "gif": "视频转GIF", "crop": "视频裁剪",
-            "rename": "批量重命名", "compress_img": "图片压缩"
+            "doc": "文档转换", "pdf": "PDF处理",
         }
         
         task_counts = {
@@ -2748,7 +3248,7 @@ class FormatMaster:
         }
         
         for key, files in detected.items():
-            if key not in ["video", "audio", "image", "doc", "pdf"]:
+            if key not in task_counts:
                 continue
             
             if key == "pdf":
@@ -2949,7 +3449,7 @@ class FormatMaster:
 
                 if content_type and content_type != cat:
                     display = f"{fn}  ⚠️ (内容检测: {type_names.get(content_type, content_type)})"
-                    fg_c = "#e67e22"
+                    fg_c = D["warn"]
                 else:
                     display = fn
                     fg_c = D["ink"]
@@ -3052,19 +3552,20 @@ class FormatMaster:
         self.gif_fps   = self._row(s, "帧率", ["10","15","20","24","30"], "15")
         self.gif_start = self._row(s, "开始(秒)", ["0"], "0")
         self.gif_dur   = self._row(s, "时长(秒)", ["5","10","15","30","60","全部"], "10")
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.gif_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.gif_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.gif_out_dir_combo.set("与源文件同目录")
         self.gif_out_dir_combo.pack(side=tk.LEFT)
-        self.gif_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("gif"), style="secondary")
+        self.gif_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("gif"), style="secondary")
         self.gif_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.gif_out_dir_path = tk.StringVar(value="")
-        self.gif_out_dir_label = tk.Label(out_dir_frame, textvariable=self.gif_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.gif_out_dir_label = tk.Label(out_frame, textvariable=self.gif_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.gif_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.gif_pg, self.gif_st, self.gif_go, self.gif_ca, _ = self._bar(p)
         self.gif_go.configure(command=lambda: self._go("gif"))
         self.gif_ca.configure(command=lambda: self._stop("gif"))
@@ -3082,10 +3583,11 @@ class FormatMaster:
         mode_row.pack(fill=tk.X, pady=(0, 12))
 
         tk.Label(mode_row, text="操作模式", bg=D["card"], fg=D["ink"],
-                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
+                  font=BODY).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_mode = ttk.Combobox(mode_row, values=["合并（多个→一个）", "拆分（一个→多个）",
-                                                        "加密（设置密码）", "解密（移除密码）", "压缩"],
-                                      state="readonly", width=20)
+                                                        "加密（设置密码）", "解密（移除密码）", "压缩",
+                                                        "添加水印", "添加页码"],
+                                      state="readonly", width=22)
         self.pdf_mode.set("合并（多个→一个）")
         self.pdf_mode.pack(side=tk.LEFT)
         self.pdf_mode.bind("<<ComboboxSelected>>", lambda e: self._pdf_mode_changed())
@@ -3103,8 +3605,8 @@ class FormatMaster:
         tk.Label(self.pdf_range_frame, text="页码范围", bg=D["card"], fg=D["ink"],
                  font=BODY).pack(side=tk.LEFT, padx=(0, 8))
         self.pdf_range = tk.Entry(self.pdf_range_frame, font=BODY,
-                                   bg=D["input_bg"], fg="#000000",
-                                   insertbackground="#000000",
+                                   bg=D["input_bg"], fg=D["ink"],
+                                   insertbackground=D["ink"],
                                    relief="flat", highlightthickness=1,
                                    highlightbackground=D["input_bd"],
                                    highlightcolor=D["accent"])
@@ -3125,8 +3627,8 @@ class FormatMaster:
             f = tk.Frame(parent, bg=D["card"])
             f.pack(side=tk.LEFT, padx=(0, 16))
             tk.Label(f, text=label, bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 4))
-            entry = tk.Entry(f, font=BODY, bg=D["input_bg"], fg="#000000",
-                             insertbackground="#000000", relief="flat", highlightthickness=1,
+            entry = tk.Entry(f, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                             insertbackground=D["ink"], relief="flat", highlightthickness=1,
                              highlightbackground=D["input_bd"], highlightcolor=D["accent"],
                              show="•", width=16)
             entry.pack(side=tk.LEFT)
@@ -3162,8 +3664,8 @@ class FormatMaster:
         self.pdf_decrypt_frame = tk.Frame(s, bg=D["card"])
         tk.Label(self.pdf_decrypt_frame, text="输入密码", bg=D["card"], fg=D["ink"],
                  font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_decrypt_pwd = tk.Entry(self.pdf_decrypt_frame, font=BODY, bg=D["input_bg"], fg="#000000",
-                                          insertbackground="#000000", relief="flat", highlightthickness=1,
+        self.pdf_decrypt_pwd = tk.Entry(self.pdf_decrypt_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                          insertbackground=D["ink"], relief="flat", highlightthickness=1,
                                           highlightbackground=D["input_bd"], highlightcolor=D["accent"],
                                           show="•", width=30)
         self.pdf_decrypt_pwd.pack(side=tk.LEFT)
@@ -3192,17 +3694,71 @@ class FormatMaster:
         self.pdf_compress_quality.pack(side=tk.LEFT, padx=(8, 0))
         self.pdf_compress_frame.pack_forget()
 
-        # ── 输出目录 ──
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+        # ── 水印设置 ──
+        self.pdf_wm_frame = tk.Frame(s, bg=D["card"])
+        wm_row1 = tk.Frame(self.pdf_wm_frame, bg=D["card"])
+        wm_row1.pack(fill=tk.X, pady=(0, 6))
+        tk.Label(wm_row1, text="水印文字", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
+        self.pdf_wm_text = tk.Entry(wm_row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                     insertbackground=D["ink"], relief="flat", highlightthickness=1,
+                                     highlightbackground=D["input_bd"], width=20)
+        self.pdf_wm_text.insert(0, "机密")
+        self.pdf_wm_text.pack(side=tk.LEFT)
+
+        wm_row2 = tk.Frame(self.pdf_wm_frame, bg=D["card"])
+        wm_row2.pack(fill=tk.X, pady=(2, 0))
+        tk.Label(wm_row2, text="位置", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
+        self.pdf_wm_pos = ttk.Combobox(wm_row2, values=["左上角","右上角","左下角","右下角","居中"],
+                                        state="readonly", width=8)
+        self.pdf_wm_pos.set("居中")
+        self.pdf_wm_pos.pack(side=tk.LEFT, padx=(0, 16))
+        tk.Label(wm_row2, text="透明度", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_wm_opacity = ttk.Combobox(wm_row2, values=["0.1","0.2","0.3","0.5","0.7","0.9"],
+                                            state="readonly", width=6)
+        self.pdf_wm_opacity.set("0.3")
+        self.pdf_wm_opacity.pack(side=tk.LEFT, padx=(8, 16))
+        tk.Label(wm_row2, text="旋转", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_wm_rotate = ttk.Combobox(wm_row2, values=["0°","45°","90°"],
+                                           state="readonly", width=6)
+        self.pdf_wm_rotate.set("0°")
+        self.pdf_wm_rotate.pack(side=tk.LEFT, padx=(8, 0))
+        self.pdf_wm_frame.pack_forget()
+
+        # ── 页码设置 ──
+        self.pdf_pn_frame = tk.Frame(s, bg=D["card"])
+        pn_row = tk.Frame(self.pdf_pn_frame, bg=D["card"])
+        pn_row.pack(fill=tk.X)
+        tk.Label(pn_row, text="起始页码", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
+        self.pdf_pn_start = tk.Entry(pn_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
+                                      highlightbackground=D["input_bd"], width=6)
+        self.pdf_pn_start.insert(0, "1")
+        self.pdf_pn_start.pack(side=tk.LEFT, padx=(0, 16))
+        tk.Label(pn_row, text="位置", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_pn_pos = ttk.Combobox(pn_row, values=["底部居中","底部左对齐","底部右对齐","顶部居中"],
+                                        state="readonly", width=12)
+        self.pdf_pn_pos.set("底部居中")
+        self.pdf_pn_pos.pack(side=tk.LEFT, padx=(8, 16))
+        tk.Label(pn_row, text="格式", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
+        self.pdf_pn_fmt = tk.Entry(pn_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                    insertbackground=D["ink"], relief="flat", highlightthickness=1,
+                                    highlightbackground=D["input_bd"], width=12)
+        self.pdf_pn_fmt.insert(0, "第{n}页")
+        self.pdf_pn_fmt.pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(pn_row, text="{n}=页码", bg=D["card"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(6, 0))
+        self.pdf_pn_frame.pack_forget()
+
+        # ── 输出目录（卡片内） ──
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.pack(fill=tk.X, padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 8))
+        self.pdf_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.pdf_out_dir_combo.set("与源文件同目录")
         self.pdf_out_dir_combo.pack(side=tk.LEFT)
-        self.pdf_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("pdf"), style="secondary")
+        self.pdf_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("pdf"), style="secondary")
         self.pdf_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.pdf_out_dir_path = tk.StringVar(value="")
-        self.pdf_out_dir_label = tk.Label(out_dir_frame, textvariable=self.pdf_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.pdf_out_dir_label = tk.Label(out_frame, textvariable=self.pdf_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.pdf_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
 
         self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(p)
@@ -3214,6 +3770,8 @@ class FormatMaster:
         self.pdf_encrypt_frame.pack_forget()
         self.pdf_decrypt_frame.pack_forget()
         self.pdf_compress_frame.pack_forget()
+        self.pdf_wm_frame.pack_forget()
+        self.pdf_pn_frame.pack_forget()
 
         mode = self.pdf_mode.get()
         if "拆分" in mode:
@@ -3224,6 +3782,10 @@ class FormatMaster:
             self.pdf_decrypt_frame.pack(fill=tk.X, pady=(8, 0))
         elif "压缩" in mode:
             self.pdf_compress_frame.pack(fill=tk.X, pady=(8, 0))
+        elif "水印" in mode:
+            self.pdf_wm_frame.pack(fill=tk.X, pady=(8, 0))
+        elif "页码" in mode:
+            self.pdf_pn_frame.pack(fill=tk.X, pady=(8, 0))
 
     def _open_pdf_editor(self):
         w = tk.Toplevel(self.root)
@@ -3242,7 +3804,7 @@ class FormatMaster:
         w.minsize(640, 480)
         w.transient(self.root)
         w.grab_set()
-        w.configure(bg="#F5F6FA")
+        w.configure(bg=D["page"])
         panel = PdfEditorPanel(w, log_func=lambda msg, level="info": self._log_status(msg, level))
         panel.pack(fill=tk.BOTH, expand=True)
         def on_close():
@@ -3263,19 +3825,20 @@ class FormatMaster:
         s = self._card(p, "压缩设置")
         self.ci_q  = self._row(s, "输出质量", ["95","85","75","60","50","40","30"], "75")
         self.ci_sz = self._row(s, "最大分辨率", ["不限制","1920x1080","1280x720","800x600"], "不限制")
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.ci_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.ci_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.ci_out_dir_combo.set("与源文件同目录")
         self.ci_out_dir_combo.pack(side=tk.LEFT)
-        self.ci_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("compress_img"), style="secondary")
+        self.ci_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("compress_img"), style="secondary")
         self.ci_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.ci_out_dir_path = tk.StringVar(value="")
-        self.ci_out_dir_label = tk.Label(out_dir_frame, textvariable=self.ci_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.ci_out_dir_label = tk.Label(out_frame, textvariable=self.ci_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.ci_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.ci_pg, self.ci_st, self.ci_go, self.ci_ca, _ = self._bar(p)
         self.ci_go.configure(command=lambda: self._go("compress_img"))
         self.ci_ca.configure(command=lambda: self._stop("compress_img"))
@@ -3284,10 +3847,11 @@ class FormatMaster:
     def _p_rename(self):
         p = tk.Frame(self.content, bg=D["page"])
         self.panels["rename"] = p
-        self._hdr(p, "批量重命名", "统一添加前缀/后缀、序号命名、替换文字等")
+        self._hdr(p, "批量重命名", "统一添加前缀/后缀、序号命名、正则替换等")
         self._file_sec(p, "rename", [("所有文件","*.*")])
+
         s = self._card(p, "命名规则")
-        tk.Label(s, text="占位符：{n}=序号  {name}=原名  {ext}=扩展名  {date}=日期",
+        tk.Label(s, text="占位符：{n}=序号  {name}=原名  {ext}=扩展名  {date}=日期  {time}=时间  {folder}=文件夹",
                  bg=D["card"], fg=D["ink_dis"], font=XS).grid(row=0, column=0, columnspan=3,
                                                               sticky="w", pady=(0, 8))
         self.rn_pattern = self._row(s, "命名模板", [], "文件_{n:03d}", 22)
@@ -3295,26 +3859,142 @@ class FormatMaster:
             "文件_{n:03d}",
             "{name}_压缩",
             "{name}_{date}",
+            "{name}_{time}",
+            "{folder}_{name}",
             "{name}_new",
             "IMG_{n:04d}",
+            "{date}_{name}",
         ])
         self.rn_start = self._row(s, "起始序号", ["1","0","100"], "1")
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.rn_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # Search & Replace
+        opt_card = tk.Frame(s, bg=D["card"])
+        opt_card.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        s.columnconfigure(0, weight=1)
+
+        tk.Label(opt_card, text="查找替换", bg=D["card"], fg=D["ink_sec"],
+                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=5, pady=(4, 4))
+
+        sr_row = tk.Frame(opt_card, bg=D["card"])
+        sr_row.pack(fill=tk.X, padx=5)
+        tk.Label(sr_row, text="查找", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
+        self.rn_search = tk.Entry(sr_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                  relief="flat", highlightthickness=1,
+                                  highlightbackground=D["input_bd"], width=14)
+        self.rn_search.pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Label(sr_row, text="替换为", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
+        self.rn_replace = tk.Entry(sr_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                   relief="flat", highlightthickness=1,
+                                   highlightbackground=D["input_bd"], width=14)
+        self.rn_replace.pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Label(sr_row, text="大小写", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(8, 4))
+        self.rn_case = ttk.Combobox(sr_row, values=["不转换", "全大写", "全小写", "首字母大写"],
+                                    state="readonly", width=10)
+        self.rn_case.set("不转换")
+        self.rn_case.pack(side=tk.LEFT)
+
+        # 高级替换（正则）
+        tk.Frame(opt_card, bg=D["border"], height=1).pack(fill=tk.X, padx=5, pady=(8, 6))
+        tk.Label(opt_card, text="高级替换（正则）", bg=D["card"], fg=D["ink_sec"],
+                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=5, pady=(0, 4))
+
+        adv_row = tk.Frame(opt_card, bg=D["card"])
+        adv_row.pack(fill=tk.X, padx=5)
+        tk.Label(adv_row, text="查找内容", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        self.rn_regex = tk.Entry(adv_row, font=("Consolas", 10), bg=D["input_bg"], fg=D["ink"],
+                                 relief="flat", highlightthickness=1,
+                                 highlightbackground=D["input_bd"], width=14)
+        self.rn_regex.pack(side=tk.LEFT, padx=(4, 8))
+
+        tk.Label(adv_row, text="替换为", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        self.rn_regex_replace = tk.Entry(adv_row, font=("Consolas", 10), bg=D["input_bg"], fg=D["ink"],
+                                         relief="flat", highlightthickness=1,
+                                         highlightbackground=D["input_bd"], width=14)
+        self.rn_regex_replace.pack(side=tk.LEFT, padx=(4, 8))
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.rn_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.rn_out_dir_combo.set("与源文件同目录")
         self.rn_out_dir_combo.pack(side=tk.LEFT)
-        self.rn_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("rename"), style="secondary")
+        self.rn_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("rename"), style="secondary")
         self.rn_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.rn_out_dir_path = tk.StringVar(value="")
-        self.rn_out_dir_label = tk.Label(out_dir_frame, textvariable=self.rn_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.rn_out_dir_label = tk.Label(out_frame, textvariable=self.rn_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.rn_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
+
         self.rn_pg, self.rn_st, self.rn_go, self.rn_ca, _ = self._bar(p)
-        self.rn_go.configure(command=lambda: self._go("rename"))
+        self.rn_go.configure(text="开始重命名", command=self._rn_start)
         self.rn_ca.configure(command=lambda: self._stop("rename"))
+
+    def _rn_calc_name(self, fp, name, ext, idx):
+        pattern = self.rn_pattern.get()
+        start = int(self.rn_start.get()) if self.rn_start.get().isdigit() else 1
+        search = self.rn_search.get() if hasattr(self, 'rn_search') else ""
+        replace = self.rn_replace.get() if hasattr(self, 'rn_replace') else ""
+        case_map = {"不转换": "none", "全大写": "upper", "全小写": "lower", "首字母大写": "title"}
+        case = case_map.get(self.rn_case.get() if hasattr(self, 'rn_case') else "不转换", "none")
+        regex_pat = self.rn_regex.get() if hasattr(self, 'rn_regex') else ""
+        regex_rep = self.rn_regex_replace.get() if hasattr(self, 'rn_regex_replace') else ""
+
+        date_str = ""
+        time_str = ""
+        try:
+            mtime = os.path.getmtime(fp)
+            date_str = datetime.datetime.fromtimestamp(mtime).strftime("%Y%m%d")
+            time_str = datetime.datetime.fromtimestamp(mtime).strftime("%H%M%S")
+        except Exception:
+            date_str = "00000000"
+            time_str = "000000"
+        folder_str = os.path.basename(os.path.dirname(fp))
+
+        n = start + idx
+        new_name = pattern.replace("{name}", name).replace("{ext}", ext)
+        new_name = new_name.replace("{date}", date_str).replace("{time}", time_str).replace("{folder}", folder_str)
+        def _fmt_n(m):
+            spec = m.group(1) if m.group(1) else ""
+            return format(n, spec) if spec else str(n)
+        new_name = re.sub(r'\{n(:.*?)?\}', _fmt_n, new_name)
+        new_name = new_name + ext if not new_name.endswith(ext) else new_name
+
+        if search:
+            new_name = new_name.replace(search, replace)
+
+        if regex_pat:
+            try:
+                new_name = re.sub(regex_pat, regex_rep, new_name)
+            except re.error:
+                pass
+
+        if case == "upper":
+            new_name = new_name.upper()
+        elif case == "lower":
+            new_name = new_name.lower()
+        elif case == "title":
+            new_name = new_name.title()
+
+        return new_name
+
+    def _rn_start(self):
+        files = self.panel_data.get("rename", {}).get("files", [])
+        if not files:
+            self._log_status("没有待重命名的文件", "warn")
+            return
+
+        fp0 = files[0]
+        name0 = os.path.splitext(os.path.basename(fp0))[0]
+        ext0 = os.path.splitext(fp0)[1]
+        new_name0 = self._rn_calc_name(fp0, name0, ext0, 0)
+        total = len(files)
+        msg = f"即将对 {total} 个文件进行重命名。示例：{os.path.basename(fp0)} -> {new_name0}。是否确认开始？"
+        if not messagebox.askyesno("确认重命名", msg):
+            return
+        self._rn_file_count = total
+        self._go("rename")
 
     # ══════════════════════════════════════════
     #  视频下载
@@ -3323,46 +4003,121 @@ class FormatMaster:
         p = tk.Frame(self.content, bg=D["page"])
         self.panels["download"] = p
         self._hdr(p, "视频下载", "支持 B站 / YouTube / 微博 / Instagram 等数百个平台", badge="需联网")
-        # URL 行
+        self.dl_queue = []
+        from core.video_downloader import VideoDownloader
+        self.dl_obj = VideoDownloader()
+
+        # URL 输入
         url_frame = tk.Frame(p, bg=D["page"])
         url_frame.pack(fill=tk.X, pady=(0, 8))
         tk.Label(url_frame, text="URL", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.dl_url = tk.Entry(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                               relief="solid", bd=1, highlightthickness=0)
-        self.dl_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+        self.dl_url = tk.Text(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                               relief="solid", bd=1, highlightthickness=0, height=3)
+        self.dl_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
+        self.dl_url.bind("<Control-v>", lambda e: self.root.after(100, self._dl_parse_url))
         self.dl_fmt_info = tk.StringVar(value="")
         tk.Label(url_frame, textvariable=self.dl_fmt_info, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(8, 0))
-        # 保存目录行
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(out_dir_frame, text="保存到", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.dl_dir = tk.StringVar(value=os.path.expanduser("~/Downloads"))
-        tk.Label(out_dir_frame, textvariable=self.dl_dir, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(0, 8))
-        self._btn(out_dir_frame, "浏览", lambda: self._select_dl_dir(), "secondary").pack(side=tk.LEFT)
-        # 格式列表（解析后显示）
-        self.dl_formats_frame = tk.Frame(p, bg=D["page"])
-        self.dl_formats_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
-        tk.Label(self.dl_formats_frame, text="选择格式", bg=D["page"], fg=D["ink"], font=SM).pack(anchor=tk.W)
-        list_frame = tk.Frame(self.dl_formats_frame, bg=D["page"])
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-        self.dl_formats_list = tk.Listbox(list_frame, height=8, font=BODY, bg=D["input_bg"],
-                                          relief="solid", bd=1, highlightthickness=0)
-        self.dl_formats_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.dl_formats_list.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.dl_formats_list.configure(yscrollcommand=scrollbar.set)
+        url_btn_frame = tk.Frame(p, bg=D["page"])
+        url_btn_frame.pack(fill=tk.X, pady=(0, 6))
+        self._btn(url_btn_frame, "解析格式", self._dl_parse_url, padx=12).pack(side=tk.LEFT)
+        self._btn(url_btn_frame, "添加链接", self._dl_add_url, "primary", padx=12).pack(side=tk.LEFT, padx=(8, 0))
+        self._btn(url_btn_frame, "📁 批量导入", self._dl_batch_import, padx=8).pack(side=tk.LEFT, padx=(8, 0))
+        self._btn(url_btn_frame, "⭐ 收藏", self._dl_add_favorite, padx=8).pack(side=tk.RIGHT, padx=(0, 0))
+        self._btn(url_btn_frame, "📋 历史", self._dl_show_history, padx=8).pack(side=tk.RIGHT, padx=(8, 0))
+        self._btn(url_btn_frame, "⭐ 收藏夹", self._dl_show_favorites, padx=8).pack(side=tk.RIGHT, padx=(8, 0))
+
+        # 格式 + 画质
+        fmt_frame = tk.Frame(p, bg=D["page"])
+        fmt_frame.pack(fill=tk.X, pady=(0, 6))
+        tk.Label(fmt_frame, text="选择格式", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.dl_formats_list = tk.Listbox(fmt_frame, height=5, font=BODY, bg=D["input_bg"],
+                                           relief="solid", bd=1, highlightthickness=0)
+        self.dl_formats_list.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
         self.dl_formats = []
-        # 提示条
-        notice_frame = tk.Frame(p, bg=D["page"])
-        notice_frame.pack(fill=tk.X, pady=(6, 0))
-        self.dl_notice_var = tk.StringVar(value="")
-        self.dl_notice = tk.Label(notice_frame, textvariable=self.dl_notice_var, bg="#FFF3CD", fg="#856404",
-                                  font=XS, anchor=tk.W, padx=8, pady=4)
-        self.dl_notice.pack(fill=tk.X)
-        self.dl_notice.pack_forget()
-        # 操作栏（进度+按钮）
+
+        # 设置区域
+        settings_frame = tk.Frame(p, bg=D["page"])
+        settings_frame.pack(fill=tk.X, pady=(0, 6))
+
+        # 第一行：Cookie | 代理
+        row1 = tk.Frame(settings_frame, bg=D["page"])
+        row1.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(row1, text="Cookie", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
+        self.dl_cookie = tk.Entry(row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                   relief="solid", bd=1, highlightthickness=0, width=25)
+        self.dl_cookie.pack(side=tk.LEFT, ipady=2)
+        tk.Label(row1, text="代理", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
+        self.dl_proxy = tk.Entry(row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                  relief="solid", bd=1, highlightthickness=0, width=18)
+        self.dl_proxy.pack(side=tk.LEFT, ipady=2)
+        tk.Label(row1, text="限速 MB/s", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
+        self.dl_speed = ttk.Combobox(row1, values=["不限","2","5","10","20","50"], state="readonly", width=6)
+        self.dl_speed.set("不限")
+        self.dl_speed.pack(side=tk.LEFT)
+
+        # 第二行：Header | 文件名模板
+        row2 = tk.Frame(settings_frame, bg=D["page"])
+        row2.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(row2, text="Header", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
+        self.dl_headers = tk.Entry(row2, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                    relief="solid", bd=1, highlightthickness=0)
+        self.dl_headers.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
+        tk.Label(row2, text="Key:Val,Key:Val", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
+
+        # 第三行：选项
+        row3 = tk.Frame(settings_frame, bg=D["page"])
+        row3.pack(fill=tk.X)
+        self.dl_audio_only = tk.BooleanVar(value=False)
+        tk.Checkbutton(row3, text="仅音频", variable=self.dl_audio_only, bg=D["page"], fg=D["ink"], font=SM,
+                       command=self._dl_toggle_audio).pack(side=tk.LEFT)
+        self.dl_audio_fmt = ttk.Combobox(row3, values=["mp3","m4a","flac","wav","opus"], state="readonly", width=6)
+        self.dl_audio_fmt.set("mp3")
+        self.dl_audio_fmt.pack(side=tk.LEFT, padx=(4, 12))
+        self.dl_subtitles = tk.BooleanVar(value=False)
+        tk.Checkbutton(row3, text="下载字幕", variable=self.dl_subtitles, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        tk.Label(row3, text="文件名模板", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 4))
+        self.dl_template = tk.Entry(row3, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                     relief="solid", bd=1, highlightthickness=0, width=24)
+        self.dl_template.pack(side=tk.LEFT, ipady=2)
+        tk.Label(row3, text="留空=默认", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
+
+        # 保存目录
+        out_frame = tk.Frame(p, bg=D["page"])
+        out_frame.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(out_frame, text="保存到", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.dl_dir = tk.StringVar(value=os.path.expanduser("~/Downloads"))
+        tk.Label(out_frame, textvariable=self.dl_dir, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(0, 8))
+        self._btn(out_frame, "浏览", lambda: self._select_dl_dir(), "secondary").pack(side=tk.LEFT)
+
+        # 下载队列
+        q_card = tk.Frame(p, bg=D["border"], padx=1, pady=1)
+        q_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        q_inner = tk.Frame(q_card, bg=D["card"])
+        q_inner.pack(fill=tk.BOTH, expand=True)
+        q_hdr = tk.Frame(q_inner, bg=D["card"])
+        q_hdr.pack(fill=tk.X, padx=10, pady=(6, 2))
+        tk.Label(q_hdr, text="下载队列", bg=D["card"], fg=D["ink"], font=(FT, 9, "bold")).pack(side=tk.LEFT)
+        self.dl_count_label = tk.Label(q_hdr, text="0 个任务", bg=D["card"], fg=D["ink_dis"], font=XS)
+        self.dl_count_label.pack(side=tk.RIGHT)
+        q_list = tk.Frame(q_inner, bg=D["card"])
+        q_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
+        self.dl_queue_listbox = tk.Listbox(q_list, font=(FT, 10), bg=D["card"], fg=D["ink"],
+                                            selectbackground=D["select_bg"], selectforeground=D["select_fg"],
+                                            bd=0, highlightthickness=0, activestyle="none", height=4)
+        q_scroll = ttk.Scrollbar(q_list, orient=tk.VERTICAL, command=self.dl_queue_listbox.yview)
+        self.dl_queue_listbox.configure(yscrollcommand=q_scroll.set)
+        self.dl_queue_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        q_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        q_btns = tk.Frame(q_inner, bg=D["card"])
+        q_btns.pack(fill=tk.X, padx=10, pady=(0, 6))
+        self._btn(q_btns, "▲ 上移", self._dl_move_up, "ghost", padx=6).pack(side=tk.LEFT)
+        self._btn(q_btns, "▼ 下移", self._dl_move_down, "ghost", padx=6).pack(side=tk.LEFT, padx=(4, 0))
+        self._btn(q_btns, "✕ 移除选中", self._dl_remove_selected, "ghost", padx=8).pack(side=tk.LEFT, padx=(12, 0))
+        self._btn(q_btns, "清空队列", self._dl_clear_queue, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
+
+        # 操作栏
         self.dl_pg, self.dl_st, self.dl_go, self.dl_ca, _ = self._bar(p)
-        self.dl_go.configure(text="获取格式", command=self._dl_get_formats)
+        self.dl_go.configure(text="开始下载", command=self._go_download)
         self.dl_ca.configure(command=self._dl_cancel)
 
     def _select_dl_dir(self):
@@ -3372,96 +4127,259 @@ class FormatMaster:
             self._save_last_dir("download", d)
             self.dl_dir.set(d)
 
-    def _clean_url(self, raw):
-        raw = raw.strip()
-        # extract first http/https URL from text (removes Chinese chars etc.)
-        m = re.search(r"https?://[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef<>\"']+", raw)
-        if m:
-            return m.group(0).rstrip(".,;:!?)")
-        # if no URL found, just strip non-ASCII
-        return re.sub(r"[^\x00-\x7f]", "", raw).strip()
-
-    def _show_dl_notice(self, show, msg=""):
-        if show:
-            self.dl_notice_var.set(msg)
-            self.dl_notice.pack(fill=tk.X)
+    def _dl_toggle_audio(self):
+        if self.dl_audio_only.get():
+            self.dl_audio_fmt.configure(state="readonly")
         else:
-            self.dl_notice.pack_forget()
+            self.dl_audio_fmt.configure(state="disabled")
 
-    def _dl_get_formats(self):
-        url = self._clean_url(self.dl_url.get())
-        self.dl_url.delete(0, tk.END)
-        self.dl_url.insert(0, url)
+    def _dl_parse_url(self):
+        raw = self.dl_url.get("1.0", tk.END).strip()
+        url = self._clean_url(raw)
         if not url:
-            messagebox.showinfo("提示", "未检测到有效URL，请粘贴视频链接"); return
-        # 检测到抖音 → 显示提示
+            messagebox.showinfo("提示", "未检测到有效URL"); return
+        self.dl_url.delete("1.0", tk.END); self.dl_url.insert("1.0", url)
         if "douyin" in url.lower() or "tiktok" in url.lower():
-            self._show_dl_notice(True, "⚠️ 抖音/TikTok 受平台限制无法直接下载\n建议使用 YouTube / B站等其它平台")
+            self._log_status("抖音/TikTok 受平台限制无法直接下载", "warn")
         self.dl_go.configure(state=tk.DISABLED, text="获取中...")
         self.dl_st.configure(text="正在获取格式信息...")
+        self.dl_formats_list.delete(0, tk.END)
+        from core.video_downloader import VideoDownloader
         def work():
             try:
-                self.dl_obj = VideoDownloader()
-                fmts, title, thumb = self.dl_obj.get_formats(url)
-                self.root.after(0, lambda: self._dl_show_formats(fmts, title))
+                dl = VideoDownloader()
+                cookie = self.dl_cookie.get().strip() or None
+                proxy = self.dl_proxy.get().strip() or None
+                dl._last_error = ""
+                fmts, title, _ = dl.get_formats(url)
+                # 检查是否为播放列表
+                playlist = None
+                try:
+                    pl = dl.get_playlist_info(url)
+                    if pl and pl.get("count", 0) > 1:
+                        playlist = pl
+                except Exception:
+                    pass
+                self.root.after(0, lambda: self._dl_show_formats(fmts, title, playlist))
             except Exception as e:
-                self.root.after(0, lambda e=e: self._dl_get_formats_fail(e))
+                self.root.after(0, lambda e=e: self._dl_parse_fail(str(e)))
         threading.Thread(target=work, daemon=True).start()
 
-    def _dl_get_formats_fail(self, e):
-        self.dl_st.configure(text=f"获取失败：{e}")
-        self.dl_go.configure(state=tk.NORMAL, text="获取格式")
-        err = str(e)
-        if "抖音" in err or "cookies" in err.lower():
-            self._show_dl_notice(True, "⚠️ 抖音/TikTok 受平台限制无法直接下载。\n建议使用 YouTube / B站等其它平台")
+    def _dl_parse_fail(self, err):
+        self.dl_st.configure(text=f"获取失败：{err}")
+        self.dl_go.configure(state=tk.NORMAL, text="开始下载")
 
-    def _dl_show_formats(self, fmts, title):
+    def _dl_show_formats(self, fmts, title, playlist=None):
         self.dl_formats = fmts
-        self._show_dl_notice(False)
         self.dl_formats_list.delete(0, tk.END)
         for f in fmts:
             sz = f"{f['filesize']/1024/1024:.0f}MB" if f['filesize'] else "?"
             label = f"[{f['format_id']}] {f['ext']}  {f['resolution']}  {sz}"
             self.dl_formats_list.insert(tk.END, label)
         self._dl_title = title
-        self.dl_st.configure(text=f"已识别：{title[:60]}")
-        self.dl_go.configure(state=tk.NORMAL, text="开始下载",
-                             command=self._dl_start_download)
+        info = f"已识别：{title[:60]}"
+        if playlist:
+            info += f"  |  播放列表: {playlist['title']} ({playlist['count']}个视频)"
+        self.dl_st.configure(text=info)
+        self.dl_go.configure(state=tk.NORMAL, text="开始下载")
 
-    def _dl_start_download(self):
-        url = self.dl_url.get().strip()
-        sel = self.dl_formats_list.curselection()
-        fmt_id = self.dl_formats[sel[0]]["format_id"] if sel else None
-        title = "video"
-        if hasattr(self, '_dl_title') and self._dl_title:
-            title = self._dl_title
-        out_dir = self.dl_dir.get()
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, title)
-        self.dl_go.configure(state=tk.DISABLED, text="下载中...")
-        self.dl_ca.configure(state=tk.NORMAL)
-        self.dl_obj = VideoDownloader()
-        def work():
-            ok = self.dl_obj.download(url, out_path, fmt_id, self._dl_prog)
-            err = self.dl_obj._last_error
-            self.root.after(0, lambda: self._dl_done(ok, err))
-        threading.Thread(target=work, daemon=True).start()
-
-    def _dl_done(self, ok, err=""):
-        self.dl_pg["value"] = 0
-        self._show_dl_notice(False)
-        self.dl_go.configure(state=tk.NORMAL, text="获取格式", command=self._dl_get_formats)
-        self.dl_ca.configure(state=tk.DISABLED)
-        if ok:
-            self.last_output_dir = self.dl_dir.get()
-            messagebox.showinfo("下载完成", f"视频已保存到 {os.path.basename(self.dl_dir.get())}")
+    def _dl_add_url(self):
+        raw = self.dl_url.get("1.0", tk.END).strip()
+        urls = [self._clean_url(u) for u in raw.split("\n") if self._clean_url(u)]
+        if not urls:
+            messagebox.showwarning("提示", "请输入有效URL"); return
+        for url in urls:
+            if any(q["url"] == url for q in self.dl_queue):
+                continue
+            name = "video"
+            if hasattr(self, '_dl_title'):
+                name = self._dl_title
+            self.dl_queue.append({"url": url, "name": name, "status": "等待", "fmt_id": None})
+            display = f"  {name[:30]}  —  {url[:50]}"
+            self.dl_queue_listbox.insert(tk.END, display)
+        self.dl_count_label.configure(text=f"{len(self.dl_queue)} 个任务")
+        self.dl_url.delete("1.0", tk.END)
+        if len(urls) == 1:
+            self._log_status(f"已添加 1 个链接到队列", "info")
         else:
-            msg = err or "请检查URL或网络连接后重试"
-            messagebox.showerror("下载失败", msg)
+            self._log_status(f"已添加 {len(urls)} 个链接到队列", "info")
 
-    def _dl_prog(self, pct, msg):
-        self.root.after(0, lambda: self.dl_st.configure(text=msg))
-        self.root.after(0, lambda: self.dl_pg.configure(value=max(0, pct)))
+    def _dl_batch_import(self):
+        path = filedialog.askopenfilename(title="选择链接文件",
+            filetypes=[("文本文件","*.txt"),("所有文件","*.*")])
+        if not path: return
+        try:
+            with open(path, "r", encoding="utf-8") as f: lines = f.readlines()
+        except:
+            with open(path, "r", encoding="gbk") as f: lines = f.readlines()
+        added = 0
+        for line in lines:
+            url = self._clean_url(line)
+            if not url: continue
+            if any(q["url"] == url for q in self.dl_queue): continue
+            self.dl_queue.append({"url": url, "name": "批量导入", "status": "等待", "fmt_id": None})
+            self.dl_queue_listbox.insert(tk.END, f"  {url[:60]}")
+            added += 1
+        self.dl_count_label.configure(text=f"{len(self.dl_queue)} 个任务")
+        if added: messagebox.showinfo("导入完成", f"成功导入 {added} 个链接")
+        else: messagebox.showwarning("提示", "未找到有效链接")
+
+    def _dl_remove_selected(self):
+        sel = self.dl_queue_listbox.curselection()
+        if not sel: return
+        for i in reversed(sel):
+            self.dl_queue_listbox.delete(i)
+            self.dl_queue.pop(i)
+        self.dl_count_label.configure(text=f"{len(self.dl_queue)} 个任务")
+
+    def _dl_move_up(self):
+        sel = self.dl_queue_listbox.curselection()
+        if not sel or sel[0] == 0: return
+        i = sel[0]
+        self.dl_queue[i], self.dl_queue[i-1] = self.dl_queue[i-1], self.dl_queue[i]
+        a = self.dl_queue_listbox.get(i); b = self.dl_queue_listbox.get(i-1)
+        self.dl_queue_listbox.delete(i-1, i)
+        self.dl_queue_listbox.insert(i-1, a); self.dl_queue_listbox.insert(i, b)
+        self.dl_queue_listbox.selection_set(i-1)
+
+    def _dl_move_down(self):
+        sel = self.dl_queue_listbox.curselection()
+        if not sel or sel[0] >= self.dl_queue_listbox.size()-1: return
+        i = sel[0]
+        self.dl_queue[i], self.dl_queue[i+1] = self.dl_queue[i+1], self.dl_queue[i]
+        a = self.dl_queue_listbox.get(i); b = self.dl_queue_listbox.get(i+1)
+        self.dl_queue_listbox.delete(i, i+1)
+        self.dl_queue_listbox.insert(i, b); self.dl_queue_listbox.insert(i+1, a)
+        self.dl_queue_listbox.selection_set(i+1)
+
+    def _dl_clear_queue(self):
+        self.dl_queue_listbox.delete(0, tk.END)
+        self.dl_queue.clear()
+        self.dl_count_label.configure(text="0 个任务")
+
+    def _dl_add_favorite(self):
+        url = self._clean_url(self.dl_url.get("1.0", tk.END).strip())
+        if not url: return
+        name = getattr(self, '_dl_title', "未命名")
+        win = tk.Toplevel(self.root)
+        win.title("收藏链接"); win.configure(bg=D["page"]); win.minsize(400, 180)
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(int(sw*0.4),500), min(int(sh*0.25),220)
+        win.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        win.transient(self.root); win.grab_set()
+        tk.Label(win, text="添加备注（可选）", bg=D["page"], fg=D["ink"], font=H2).pack(anchor=tk.W, padx=20, pady=(16,8))
+        nf = tk.Frame(win, bg=D["page"]); nf.pack(fill=tk.X, padx=20, pady=(0,8))
+        tk.Label(nf, text="名称", bg=D["page"], fg=D["ink"], font=SM, width=6, anchor="w").pack(side=tk.LEFT)
+        ne = tk.Entry(nf, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0)
+        ne.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3); ne.insert(0, name)
+        ntf = tk.Frame(win, bg=D["page"]); ntf.pack(fill=tk.X, padx=20, pady=(0,12))
+        tk.Label(ntf, text="备注", bg=D["page"], fg=D["ink"], font=SM, width=6, anchor="w").pack(side=tk.LEFT)
+        nte = tk.Entry(ntf, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0)
+        nte.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
+        def do_save():
+            from core.m3u8_downloader import M3U8Store
+            M3U8Store().add_favorite(url, name=ne.get().strip(), note=nte.get().strip())
+            win.destroy(); messagebox.showinfo("收藏成功", f"已收藏: {ne.get().strip()}")
+        bf = tk.Frame(win, bg=D["page"]); bf.pack(fill=tk.X, padx=20, pady=(0,12))
+        self._btn(bf, "保存", do_save, "primary", padx=16).pack(side=tk.LEFT)
+        self._btn(bf, "取消", win.destroy, padx=16).pack(side=tk.LEFT, padx=(8,0))
+
+    def _dl_show_favorites(self):
+        from core.m3u8_downloader import M3U8Store
+        favs = M3U8Store().get_favorites()
+        self._show_dl_fav_hist_win("收藏链接", favs, lambda: M3U8Store().get_favorites(),
+                                   lambda url, name: self.dl_queue.append({"url":url, "name":name, "status":"等待", "fmt_id":None}) or self.dl_queue_listbox.insert(tk.END, f"  {name[:30]}  —  {url[:50]}") or self.dl_count_label.configure(text=f"{len(self.dl_queue)} 个任务"))
+
+    def _dl_show_history(self):
+        from core.m3u8_downloader import M3U8Store
+        history = M3U8Store().get_history()
+        self._show_dl_fav_hist_win("下载历史", history, lambda: M3U8Store().get_history(),
+                                   lambda url, name: setattr(self, '_dl_title', name) or self.dl_url.delete("1.0", tk.END) or self.dl_url.insert("1.0", url))
+
+    def _show_dl_fav_hist_win(self, title, items, refresh_fn, use_fn):
+        win = tk.Toplevel(self.root)
+        win.title(title); win.configure(bg=D["page"]); win.minsize(600, 400)
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(int(sw*0.55),850), min(int(sh*0.6),550)
+        win.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        win.transient(self.root); win.grab_set()
+        tk.Label(win, text=title, bg=D["page"], fg=D["ink"], font=H2).pack(anchor=tk.W, padx=16, pady=(16,8))
+        lf = tk.Frame(win, bg=D["card"]); lf.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0,8))
+        lb = tk.Listbox(lf, font=(FT,10), bg=D["card"], fg=D["ink"],
+                        selectbackground=D["select_bg"], selectforeground=D["select_fg"],
+                        bd=0, highlightthickness=0, activestyle="none")
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scr = ttk.Scrollbar(lf, orient=tk.VERTICAL, command=lb.yview)
+        lb.configure(yscrollcommand=scr.set); scr.pack(side=tk.RIGHT, fill=tk.Y)
+        def refresh():
+            items = refresh_fn()
+            lb.delete(0, tk.END)
+            for item in items:
+                nm = item.get("name","?")
+                sz = f"{item.get('size',0)/1024/1024:.0f}MB" if item.get("size",0) else ""
+                tm = item.get("time","")
+                lb.insert(tk.END, f"  {nm}  {sz}  {tm}")
+        refresh()
+        def use_sel():
+            sel = lb.curselection()
+            if not sel: return
+            items = refresh_fn()
+            item = items[sel[0]]
+            use_fn(item.get("url",""), item.get("name",""))
+            win.destroy()
+        bf = tk.Frame(win, bg=D["page"]); bf.pack(fill=tk.X, padx=16, pady=(0,12))
+        self._btn(bf, "使用", use_sel, "primary", padx=12).pack(side=tk.LEFT)
+        self._btn(bf, "关闭", win.destroy, padx=12).pack(side=tk.RIGHT)
+
+    def _clean_url(self, raw):
+        raw = raw.strip()
+        m = re.search(r"https?://[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef<>\"']+", raw)
+        if m:
+            return m.group(0).rstrip(".,;:!?)")
+        return re.sub(r"[^\x00-\x7f]", "", raw).strip()
+
+    def _go_download(self):
+        if not self.dl_queue:
+            messagebox.showwarning("提示", "请先添加下载链接"); return
+        out_dir = self.dl_dir.get()
+        os.makedirs(out_dir, exist_ok=True); self.last_output_dir = out_dir
+        self.dl_go.configure(state=tk.DISABLED)
+        self.dl_ca.configure(state=tk.NORMAL)
+        self.dl_pg["value"] = 0
+        self.converting = True; self._disable_all_panels(); self._clear_task_list()
+        cookie = self.dl_cookie.get().strip() or None
+        proxy = self.dl_proxy.get().strip() or None
+        speed_str = self.dl_speed.get()
+        speed_limit = 0 if speed_str == "不限" else int(speed_str)
+        audio_only = self.dl_audio_only.get()
+        audio_fmt = self.dl_audio_fmt.get()
+        subtitles = self.dl_subtitles.get()
+        tmpl = self.dl_template.get().strip() or None
+        custom_headers = {}
+        hdr_str = self.dl_headers.get().strip()
+        if hdr_str:
+            for pair in hdr_str.split(","):
+                if ":" in pair:
+                    k, v = pair.split(":", 1)
+                    custom_headers[k.strip()] = v.strip()
+        for item in self.dl_queue:
+            url = item["url"]
+            name = item["name"]
+            ext = audio_fmt if audio_only else "mp4"
+            output_path = os.path.join(out_dir, f"{name}.{ext}")
+            if os.path.exists(output_path):
+                base, ext2 = os.path.splitext(output_path); c = 1
+                while os.path.exists(f"{base}_{c}{ext2}"): c += 1
+                output_path = f"{base}_{c}{ext2}"
+            self._add_task(f"下载 - {name}", "download", {
+                "file_path": "", "output_path": output_path, "files": [],
+                "task_type": "download", "panel_name": "download",
+                "params": {"url": url, "cookie": cookie, "headers": custom_headers,
+                           "proxy": proxy, "speed_limit": speed_limit,
+                           "audio_only": audio_only, "audio_format": audio_fmt,
+                           "subtitles": subtitles, "output_template": tmpl}
+            })
+        self._log_status(f"共添加 {len(self.dl_queue)} 个下载任务", "success")
 
     def _dl_cancel(self):
         if hasattr(self, 'dl_obj'):
@@ -3484,17 +4402,20 @@ class FormatMaster:
         self.crp_mode = ttk.Combobox(s, values=["cover（裁剪填充）","fit（等比适应）"], state="readonly", width=20)
         self.crp_mode.set("cover（裁剪填充）")
         self.crp_mode.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.crp_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+
+        # 输出目录（卡片内）
+        out_frame = tk.Frame(s, bg=D["card"])
+        out_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 10))
+        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.crp_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
         self.crp_out_dir_combo.set("与源文件同目录")
         self.crp_out_dir_combo.pack(side=tk.LEFT)
-        self.crp_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("crop"), style="secondary")
+        self.crp_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("crop"), style="secondary")
         self.crp_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.crp_out_dir_path = tk.StringVar(value="")
-        self.crp_out_dir_label = tk.Label(out_dir_frame, textvariable=self.crp_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.crp_out_dir_label = tk.Label(out_frame, textvariable=self.crp_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
         self.crp_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
+
         self.crp_pg, self.crp_st, self.crp_go, self.crp_ca, _ = self._bar(p)
         self.crp_go.configure(command=lambda: self._go("crop"))
         self.crp_ca.configure(command=lambda: self._stop("crop"), state=tk.DISABLED)
@@ -3513,19 +4434,21 @@ class FormatMaster:
         url_frame = tk.Frame(p, bg=D["page"])
         url_frame.pack(fill=tk.X, pady=(0, 8))
         tk.Label(url_frame, text="M3U8链接", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_url = tk.Entry(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0)
-        self.m3u8_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
-        self.m3u8_url.bind("<Return>", lambda e: self._m3u8_parse_url())
+        self.m3u8_url = tk.Text(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                relief="solid", bd=1, highlightthickness=0, height=3)
+        self.m3u8_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
+        self.m3u8_url.bind("<Control-v>", lambda e: self.root.after(100, lambda: self._m3u8_batch_add()))
         self._btn(url_frame, "解析画质", self._m3u8_parse_url, padx=12).pack(side=tk.RIGHT, padx=(8, 0))
         self._btn(url_frame, "⭐ 收藏", self._m3u8_add_to_favorites, "secondary", padx=8).pack(side=tk.RIGHT, padx=(4, 0))
-        self._btn(url_frame, "添加链接", self._m3u8_add_url, "primary", padx=12).pack(side=tk.RIGHT, padx=(8, 0))
+        self._btn(url_frame, "批量添加", self._m3u8_batch_add, "primary", padx=12).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Label(url_frame, text="每行一个链接，支持批量粘贴", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.BOTTOM, anchor=tk.W, pady=(2, 0))
 
         # 画质选择
         quality_frame = tk.Frame(p, bg=D["page"])
         quality_frame.pack(fill=tk.X, pady=(0, 8))
         tk.Label(quality_frame, text="画质", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_quality = ttk.Combobox(quality_frame, values=["解析中..."], state="readonly", width=30)
-        self.m3u8_quality.set("解析中...")
+        self.m3u8_quality = ttk.Combobox(quality_frame, values=[""], state="readonly", width=30)
+        self.m3u8_quality.set("")
         self.m3u8_quality.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.m3u8_quality.bind("<<ComboboxSelected>>", self._m3u8_quality_changed)
         self.m3u8_quality_hint = tk.Label(quality_frame, text="点击「解析画质」获取可选项", bg=D["page"], fg=D["ink_dis"], font=XS)
@@ -3586,10 +4509,10 @@ class FormatMaster:
         tk.Checkbutton(hdr_frame, text="断点续传", variable=self.m3u8_resume, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.RIGHT)
 
         # 速度提示
-        notice_frame = tk.Frame(p, bg="#FFF8E1")
+        notice_frame = tk.Frame(p, bg=D["accent_pale"])
         notice_frame.pack(fill=tk.X, pady=(4, 0))
         tk.Label(notice_frame, text="下载速度由服务器带宽决定，多线程只能在服务器允许范围内加速。速度慢可尝试切换画质或使用代理。",
-                 bg="#FFF8E1", fg="#795548", font=SM, anchor=tk.CENTER, justify=tk.CENTER).pack(fill=tk.X, padx=4, pady=4)
+                 bg=D["accent_pale"], fg=D["accent"], font=SM, anchor=tk.CENTER, justify=tk.CENTER).pack(fill=tk.X, padx=4, pady=4)
 
         # 下载队列
         queue_card = tk.Frame(p, bg=D["border"], padx=1, pady=1)
@@ -3614,7 +4537,9 @@ class FormatMaster:
 
         q_btn_frame = tk.Frame(queue_inner, bg=D["card"])
         q_btn_frame.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self._btn(q_btn_frame, "✕ 移除选中", self._m3u8_remove_selected, "ghost", padx=8).pack(side=tk.LEFT)
+        self._btn(q_btn_frame, "▲ 上移", self._m3u8_move_up, "ghost", padx=6).pack(side=tk.LEFT)
+        self._btn(q_btn_frame, "▼ 下移", self._m3u8_move_down, "ghost", padx=6).pack(side=tk.LEFT, padx=(4, 0))
+        self._btn(q_btn_frame, "✕ 移除选中", self._m3u8_remove_selected, "ghost", padx=8).pack(side=tk.LEFT, padx=(12, 0))
         self._btn(q_btn_frame, "清空队列", self._m3u8_clear_queue, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
         self._btn(q_btn_frame, "📁 批量导入", self._m3u8_batch_import, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
         self._btn(q_btn_frame, "⭐ 收藏链接", self._m3u8_show_favorites, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
@@ -3643,6 +4568,282 @@ class FormatMaster:
         self.m3u8_go.pack(side=tk.RIGHT)
         self.m3u8_go.configure(command=self._go_m3u8)
 
+    # ══════════════════════════════════════════
+    def _p_ocr(self):
+        p = tk.Frame(self.content, bg=D["page"])
+        self.panels["ocr"] = p
+        self._hdr(p, "OCR 文字识别", "从图片或PDF中识别文字，支持批量处理")
+        self._file_sec(p, "ocr",
+            [("图片/PDF", "*.jpg *.jpeg *.png *.bmp *.webp *.tiff *.pdf"), ("所有文件", "*.*")])
+        
+        s = self._card(p, "识别设置")
+        
+        ocr_langs = ["chi_sim+eng", "chi_sim", "eng", "jpn", "kor", "chi_tra+eng", "chi_tra", "eng+chi_sim"]
+        tk.Label(s, text="识别语言", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
+        self.ocr_lang = ttk.Combobox(s, values=ocr_langs, state="readonly", width=20)
+        self.ocr_lang.set("chi_sim+eng")
+        self.ocr_lang.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        tk.Label(s, text="chi_sim=简体中文  eng=英文  jpn=日文  kor=韩文",
+                 bg=D["card"], fg=D["ink_dis"], font=XS).grid(row=0, column=2, sticky="w", padx=(8, 0))
+        
+        # 结果文本区
+        result_frame = tk.Frame(p, bg=D["card"])
+        result_frame.pack(fill=tk.X, padx=16, pady=(12, 0))
+        
+        result_header = tk.Frame(result_frame, bg=D["card"])
+        result_header.pack(fill=tk.X)
+        tk.Label(result_header, text="识别结果", bg=D["card"], fg=D["ink_sec"],
+                 font=(FT, 9, "bold")).pack(side=tk.LEFT)
+        
+        self.ocr_export_txt = tk.Button(result_header, text="导出 TXT", font=SM,
+                                        bg=D["card"], fg=D["accent"], relief="flat",
+                                        cursor="hand2", bd=0,
+                                        command=self._ocr_export_txt)
+        self.ocr_export_txt.pack(side=tk.RIGHT, padx=(8, 0))
+        
+        self.ocr_copy_btn = tk.Button(result_header, text="复制到剪贴板", font=SM,
+                                      bg=D["card"], fg=D["accent"], relief="flat",
+                                      cursor="hand2", bd=0,
+                                      command=self._ocr_copy)
+        self.ocr_copy_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        
+        # 文本显示区
+        text_container = tk.Frame(result_frame, bg=D["border"], padx=1, pady=1)
+        text_container.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        
+        self.ocr_text = tk.Text(text_container, font=("Microsoft YaHei UI", 10),
+                                bg=D["input_bg"], fg=D["ink"],
+                                relief="flat", bd=0, padx=8, pady=8,
+                                height=6, wrap=tk.WORD)
+        text_scroll = ttk.Scrollbar(text_container, orient=tk.VERTICAL, command=self.ocr_text.yview)
+        self.ocr_text.configure(yscrollcommand=text_scroll.set)
+        self.ocr_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        out_dir_frame = tk.Frame(p, bg=D["page"])
+        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
+        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
+        self.ocr_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
+        self.ocr_out_dir_combo.set("与源文件同目录")
+        self.ocr_out_dir_combo.pack(side=tk.LEFT)
+        self.ocr_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("ocr"), style="secondary")
+        self.ocr_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
+        self.ocr_out_dir_path = tk.StringVar(value="")
+        self.ocr_out_dir_label = tk.Label(out_dir_frame, textvariable=self.ocr_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
+        self.ocr_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
+        
+        self.ocr_pg, self.ocr_st, self.ocr_go, self.ocr_ca, _ = self._bar(p)
+        self.ocr_go.configure(text="开始识别", command=lambda: self._go("ocr"))
+        self.ocr_ca.configure(command=lambda: self._stop("ocr"))
+
+    def _ocr_export_txt(self):
+        text = self.ocr_text.get(1.0, tk.END).strip()
+        if not text:
+            messagebox.showinfo("提示", "没有可导出的文字"); return
+        path = filedialog.asksaveasfilename(defaultextension=".txt",
+            filetypes=[("文本文件", "*.txt")])
+        if not path: return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            self._log_status(f"已导出至：{os.path.basename(path)}", "success")
+        except Exception as e:
+            messagebox.showerror("失败", f"导出失败：{e}")
+
+    def _ocr_copy(self):
+        text = self.ocr_text.get(1.0, tk.END).strip()
+        if not text:
+            messagebox.showinfo("提示", "没有可复制的文字"); return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self._log_status(f"已复制 {len(text)} 字符到剪贴板", "success")
+
+    # ══════════════════════════════════════════
+    #  二维码生成器
+    # ══════════════════════════════════════════
+    def _p_qrcode(self):
+        p = tk.Frame(self.content, bg=D["page"])
+        self.panels["qrcode"] = p
+        self._hdr(p, "二维码生成器", "将文本、链接、联系方式等生成二维码图片")
+
+        # 输入区
+        s = self._card(p, "内容设置")
+        tk.Label(s, text="内容类型", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
+        self.qr_type = ttk.Combobox(s, values=["文本", "网址", "WiFi", "名片"], state="readonly", width=12)
+        self.qr_type.set("文本")
+        self.qr_type.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self.qr_type.bind("<<ComboboxSelected>>", lambda e: self._qr_type_changed())
+
+        # 文本输入
+        tk.Label(s, text="内容", bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=0, sticky="nw", pady=(8, 0))
+        self.qr_text = tk.Text(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                               relief="flat", highlightthickness=1, highlightbackground=D["input_bd"],
+                               highlightcolor=D["accent"], height=3, width=40, wrap=tk.WORD)
+        self.qr_text.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=(8, 0))
+        self.qr_text.insert("1.0", "Hello World")
+
+        # WiFi 选项（默认隐藏）
+        self.qr_wifi_frame = tk.Frame(s, bg=D["card"])
+        wifi_row = tk.Frame(self.qr_wifi_frame, bg=D["card"])
+        wifi_row.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(wifi_row, text="WiFi名称", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        self.qr_wifi_ssid = tk.Entry(wifi_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
+                                      highlightbackground=D["input_bd"],
+                                      highlightcolor=D["accent"], width=20)
+        self.qr_wifi_ssid.pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(wifi_row, text="密码", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
+        self.qr_wifi_pass = tk.Entry(wifi_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
+                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
+                                      highlightbackground=D["input_bd"], highlightcolor=D["accent"],
+                                      width=20, show="*")
+        self.qr_wifi_pass.pack(side=tk.LEFT, padx=(8, 0))
+        self._qr_eye_visible = False
+        self.qr_eye_btn = tk.Button(wifi_row, text="👁", font=("Segoe UI Symbol", 10),
+                                     bg=D["card"], relief="flat", bd=0, cursor="hand2",
+                                     command=self._qr_toggle_eye)
+        self.qr_eye_btn.pack(side=tk.LEFT, padx=(2, 0))
+
+        # 外观设置
+        qr_style = tk.Frame(s, bg=D["card"])
+        qr_style.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        tk.Label(qr_style, text="尺寸", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
+        self.qr_size = ttk.Combobox(qr_style, values=["200", "300", "400", "500", "600"], state="readonly", width=8)
+        self.qr_size.set("400")
+        self.qr_size.pack(side=tk.LEFT, padx=(8, 0))
+
+        tk.Label(qr_style, text="边距", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
+        self.qr_border = ttk.Combobox(qr_style, values=["1", "2", "4", "6"], state="readonly", width=6)
+        self.qr_border.set("4")
+        self.qr_border.pack(side=tk.LEFT, padx=(8, 0))
+
+        tk.Label(qr_style, text="前景色", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
+        self.qr_fg = tk.StringVar(value="#000000")
+        self.qr_fg_entry = tk.Entry(qr_style, textvariable=self.qr_fg, font=BODY, width=10,
+                                     bg=D["input_bg"], relief="flat", highlightthickness=1,
+                                     highlightbackground=D["input_bd"])
+        self.qr_fg_entry.pack(side=tk.LEFT, padx=(4, 0))
+
+        tk.Label(qr_style, text="背景色", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
+        self.qr_bg = tk.StringVar(value="#FFFFFF")
+        self.qr_bg_entry = tk.Entry(qr_style, textvariable=self.qr_bg, font=BODY, width=10,
+                                     bg=D["input_bg"], relief="flat", highlightthickness=1,
+                                     highlightbackground=D["input_bd"])
+        self.qr_bg_entry.pack(side=tk.LEFT, padx=(4, 0))
+
+        # 预览区
+        preview_frame = tk.Frame(p, bg=D["card"], highlightbackground=D["border"], highlightthickness=1)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(12, 0))
+        tk.Label(preview_frame, text="预览", bg=D["card"], fg=D["ink_sec"],
+                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=12, pady=(8, 4))
+
+        self.qr_preview_label = tk.Label(preview_frame, text="点击「生成二维码」预览", bg=D["card"],
+                                          fg=D["ink_dis"], font=BODY)
+        self.qr_preview_label.pack(expand=True, pady=(0, 12))
+
+        # 底部按钮
+        bottom_bar = tk.Frame(p, bg=D["page"])
+        bottom_bar.pack(fill=tk.X, pady=(12, 0))
+        self._btn(bottom_bar, "保存为图片", self._qr_save, "primary", padx=24).pack(side=tk.RIGHT)
+        self._btn(bottom_bar, "生成二维码", self._qr_generate, "primary", padx=24).pack(side=tk.RIGHT, padx=(0, 8))
+        self.qr_status = tk.Label(bottom_bar, text="", bg=D["page"], fg=D["ink_dis"], font=SM)
+        self.qr_status.pack(side=tk.LEFT, padx=(8, 0))
+
+        self._qr_photo = None  # 保持引用防止GC
+
+    # ── 压缩包密码恢复 ──────────────────────────
+    def _qr_type_changed(self):
+        t = self.qr_type.get()
+        if t == "WiFi":
+            self.qr_wifi_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 0))
+            self.qr_text.delete("1.0", tk.END)
+            self.qr_text.insert("1.0", "↓ 在下方填写WiFi名称和密码")
+            self.qr_text.configure(state=tk.DISABLED, height=1)
+            self.root.after(100, lambda: self.qr_wifi_ssid.focus_set())
+        else:
+            self.qr_wifi_frame.grid_forget()
+            self.qr_text.configure(state=tk.NORMAL, height=3)
+            if t == "网址":
+                self.qr_text.delete("1.0", tk.END)
+                self.qr_text.insert("1.0", "https://")
+            elif t == "名片":
+                self.qr_text.delete("1.0", tk.END)
+                self.qr_text.insert("1.0", "BEGIN:VCARD\nFN:姓名\nTEL:13800138000\nEMAIL:email@example.com\nEND:VCARD")
+            else:
+                self.qr_text.delete("1.0", tk.END)
+                self.qr_text.insert("1.0", "Hello World")
+
+    def _qr_toggle_eye(self):
+        self._qr_eye_visible = not self._qr_eye_visible
+        if self._qr_eye_visible:
+            self.qr_wifi_pass.configure(show="")
+            self.qr_eye_btn.configure(text="🙈")
+        else:
+            self.qr_wifi_pass.configure(show="*")
+            self.qr_eye_btn.configure(text="👁")
+
+    def _qr_generate(self):
+        try:
+            import qrcode
+        except ImportError:
+            messagebox.showerror("缺少依赖", "请先安装 qrcode 库：\npip install qrcode[pil]")
+            return
+
+        t = self.qr_type.get()
+        if t == "WiFi":
+            ssid = self.qr_wifi_ssid.get().strip()
+            pwd = self.qr_wifi_pass.get().strip()
+            if not ssid:
+                messagebox.showwarning("提示", "请输入WiFi名称")
+                return
+            content = f"WIFI:T:WPA;S:{ssid};P:{pwd};;"
+        else:
+            content = self.qr_text.get("1.0", tk.END).strip()
+            if not content:
+                messagebox.showwarning("提示", "请输入内容")
+                return
+
+        try:
+            fg = self.qr_fg.get().strip()
+            bg = self.qr_bg.get().strip()
+            size = int(self.qr_size.get())
+            border = int(self.qr_border.get())
+
+            qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_H,
+                                box_size=10, border=border)
+            qr.add_data(content)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color=fg, back_color=bg).convert("RGB")
+            img = img.resize((size, size), resample=0)
+
+            from PIL import ImageTk
+            self._qr_photo = ImageTk.PhotoImage(img)
+            self.qr_preview_label.configure(image=self._qr_photo, text="")
+            self.qr_status.configure(text=f"已生成 {size}×{size} 二维码", fg=D["ok"])
+
+            # 保存到临时变量供复制/保存使用
+            self._qr_img = img
+
+        except Exception as e:
+            messagebox.showerror("生成失败", str(e))
+
+    def _qr_save(self):
+        if not hasattr(self, '_qr_img') or self._qr_img is None:
+            messagebox.showwarning("提示", "请先生成二维码")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".png",
+            initialfile="qrcode.png",
+            filetypes=[("PNG 图片", "*.png"), ("JPEG 图片", "*.jpg"), ("所有文件", "*.*")])
+        if not path:
+            return
+        try:
+            self._qr_img.save(path)
+            self.qr_status.configure(text=f"已保存: {os.path.basename(path)}", fg=D["ok"])
+            self._log_status(f"二维码已保存: {path}", "success")
+        except Exception as e:
+            messagebox.showerror("保存失败", str(e))
+
+
     def _select_m3u8_dir(self):
         last_dir = self._get_last_dir("m3u8")
         d = filedialog.askdirectory(title="选择保存目录", initialdir=last_dir)
@@ -3651,13 +4852,11 @@ class FormatMaster:
             self.m3u8_out_dir.set(d)
 
     def _m3u8_parse_url(self):
-        url = self.m3u8_url.get().strip()
-        if not url:
+        urls = _extract_urls(self.m3u8_url.get("1.0", tk.END))
+        if not urls:
             messagebox.showwarning("提示", "请先输入M3U8链接")
             return
-        if not url.lower().startswith(("http://", "https://")):
-            messagebox.showwarning("提示", "请输入有效的HTTP/HTTPS链接")
-            return
+        url = urls[0]
         self.m3u8_quality.set("正在解析...")
         self.m3u8_quality_hint.configure(text="正在解析画质...")
         cookie = self.m3u8_cookie.get().strip() or None
@@ -3714,51 +4913,57 @@ class FormatMaster:
             if q.get("bandwidth_str"): hint += f"  {q['bandwidth_str']}"
             self.m3u8_quality_hint.configure(text=hint)
 
-    def _m3u8_add_url(self):
-        url = self.m3u8_url.get().strip()
-        if not url: return
-        if not url.lower().startswith(("http://", "https://")):
-            messagebox.showwarning("提示", "请输入有效的HTTP/HTTPS链接")
+    def _m3u8_batch_add(self):
+        raw = self.m3u8_url.get("1.0", tk.END)
+        urls = _extract_urls(raw)
+        if not urls:
+            messagebox.showwarning("提示", "请先输入有效的M3U8链接")
             return
-        if self.m3u8_dl.store.is_downloaded(url):
-            if not messagebox.askyesno("提示", "该链接已下载过，是否重新添加？"):
-                return
-        name = self.m3u8_name.get().strip()
-        if not name:
-            import hashlib
-            from urllib.parse import urlparse, unquote
-            parsed = urlparse(url)
-            path_part = parsed.path.rstrip("/")
-            base = unquote(os.path.basename(path_part))
-            if "." in base:
-                base = os.path.splitext(base)[0]
-            # 文件名有效且不太长就用它，否则用URL哈希
-            if base and 2 <= len(base) <= 30 and base.isalnum():
-                name = base
-            else:
-                name = hashlib.md5(url.encode()).hexdigest()[:12]
-        quality_url = url
-        if self.m3u8_qualities:
-            sel = self.m3u8_quality.current()
-            if sel >= 0 and sel < len(self.m3u8_qualities):
-                quality_url = self.m3u8_qualities[sel]["url"]
-        self.m3u8_queue.append({"url": quality_url, "master_url": url, "name": name, "status": "等待"})
-        quality_label = ""
-        if self.m3u8_qualities:
-            sel = self.m3u8_quality.current()
-            if sel >= 0 and sel < len(self.m3u8_qualities):
-                quality_label = f"  [{self.m3u8_qualities[sel]['label']}]"
-        display = f"  {name}{quality_label}  —  {url[:50]}{'...' if len(url) > 50 else ''}"
-        self.m3u8_listbox.insert(tk.END, display)
+        added = 0
+        for url in urls:
+            if self.m3u8_dl.store.is_downloaded(url):
+                if not messagebox.askyesno("提示", f"链接已下载过，是否重新添加？\n{url[:60]}"):
+                    continue
+            name = self._m3u8_gen_name(url)
+            quality_url = url
+            if self.m3u8_qualities:
+                sel = self.m3u8_quality.current()
+                if sel >= 0 and sel < len(self.m3u8_qualities):
+                    quality_url = self.m3u8_qualities[sel]["url"]
+            self.m3u8_queue.append({"url": quality_url, "master_url": url, "name": name, "status": "等待"})
+            quality_label = ""
+            if self.m3u8_qualities:
+                sel = self.m3u8_quality.current()
+                if sel >= 0 and sel < len(self.m3u8_qualities):
+                    quality_label = f"  [{self.m3u8_qualities[sel]['label']}]"
+            display = f"  {name}{quality_label}  —  {url[:50]}{'...' if len(url) > 50 else ''}"
+            self.m3u8_listbox.insert(tk.END, display)
+            added += 1
         self.m3u8_count_label.configure(text=f"{len(self.m3u8_queue)} 个任务")
-        self.m3u8_url.delete(0, tk.END)
+        self.m3u8_url.delete("1.0", tk.END)
         self.m3u8_name.delete(0, tk.END)
+        self._log_status(f"已添加 {added} 个链接到队列", "info")
+
+    def _m3u8_gen_name(self, url):
+        name = self.m3u8_name.get().strip()
+        if name: return name
+        import hashlib
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(url)
+        path_part = parsed.path.rstrip("/")
+        base = unquote(os.path.basename(path_part))
+        if "." in base:
+            base = os.path.splitext(base)[0]
+        if base and 2 <= len(base) <= 30:
+            return base
+        return hashlib.md5(url.encode()).hexdigest()[:12]
 
     def _m3u8_add_to_favorites(self):
-        url = self.m3u8_url.get().strip()
-        if not url:
+        urls = _extract_urls(self.m3u8_url.get("1.0", tk.END))
+        if not urls:
             messagebox.showwarning("提示", "请先输入链接")
             return
+        url = urls[0]
         from urllib.parse import urlparse, unquote
         path_parts = urlparse(url).path
         name = unquote(path_parts.split("/")[-1].split("?")[0])
@@ -3800,6 +5005,26 @@ class FormatMaster:
             self.m3u8_listbox.delete(i)
             self.m3u8_queue.pop(i)
         self.m3u8_count_label.configure(text=f"{len(self.m3u8_queue)} 个任务")
+
+    def _m3u8_move_up(self):
+        sel = self.m3u8_listbox.curselection()
+        if not sel or sel[0] == 0: return
+        i = sel[0]
+        self.m3u8_queue[i], self.m3u8_queue[i-1] = self.m3u8_queue[i-1], self.m3u8_queue[i]
+        a = self.m3u8_listbox.get(i); b = self.m3u8_listbox.get(i-1)
+        self.m3u8_listbox.delete(i-1, i)
+        self.m3u8_listbox.insert(i-1, a); self.m3u8_listbox.insert(i, b)
+        self.m3u8_listbox.selection_set(i-1)
+
+    def _m3u8_move_down(self):
+        sel = self.m3u8_listbox.curselection()
+        if not sel or sel[0] >= self.m3u8_listbox.size()-1: return
+        i = sel[0]
+        self.m3u8_queue[i], self.m3u8_queue[i+1] = self.m3u8_queue[i+1], self.m3u8_queue[i]
+        a = self.m3u8_listbox.get(i); b = self.m3u8_listbox.get(i+1)
+        self.m3u8_listbox.delete(i, i+1)
+        self.m3u8_listbox.insert(i, b); self.m3u8_listbox.insert(i+1, a)
+        self.m3u8_listbox.selection_set(i+1)
 
     def _m3u8_clear_queue(self):
         self.m3u8_listbox.delete(0, tk.END)
@@ -3898,7 +5123,7 @@ class FormatMaster:
             sel = lb.curselection()
             if not sel: return
             fav = favs[sel[0]]
-            self.m3u8_url.delete(0, tk.END); self.m3u8_url.insert(0, fav["url"])
+            self.m3u8_url.delete("1.0", tk.END); self.m3u8_url.insert("1.0", fav["url"])
             from urllib.parse import urlparse, unquote
             pn = unquote(urlparse(fav["url"]).path.split("/")[-1].split("?")[0])
             if pn and not pn.endswith(".m3u8"):
@@ -3956,7 +5181,7 @@ class FormatMaster:
         def redl():
             sel = lb.curselection()
             if not sel: return
-            self.m3u8_url.delete(0, tk.END); self.m3u8_url.insert(0, history[sel[0]].get("url", "")); win.destroy()
+            self.m3u8_url.delete("1.0", tk.END); self.m3u8_url.insert("1.0", history[sel[0]].get("url", "")); win.destroy()
         def clear_all():
             if messagebox.askyesno("确认", "确定清空所有下载历史？"):
                 self.m3u8_dl.store.clear_history(); win.destroy()
@@ -4042,28 +5267,37 @@ class FormatMaster:
             return
         self._yt_checking = True
         def check():
+            # 优先检查便携版exe
+            from utils.tool_downloader import tool_downloader
+            exe_path = tool_downloader.ytdlp_path()
+            if exe_path:
+                try:
+                    r = subprocess.run([exe_path, "--version"], capture_output=True, text=True, timeout=5,
+                                       creationflags=0x08000000)
+                    cur = r.stdout.strip() if r.returncode == 0 else "?"
+                except Exception:
+                    cur = "?"
+                self.root.after(0, lambda: self.yt_lbl.configure(
+                    text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
+                self._yt_checking = False
+                return
+
+            # 再检查pip安装版
             try:
                 import importlib.metadata as ilm
                 cur = ilm.version("yt-dlp")
             except Exception:
-                cur = "?"
+                cur = None
+
+            if not cur:
+                # 未安装，自动下载便携版
+                self.root.after(0, lambda: self.yt_lbl.configure(
+                    text="yt-dlp · 自动安装中…", fg=D["warn"]))
+                tool_downloader.download_ytdlp_async(callback=self._on_ytdlp_installed)
+                return
+
             self.root.after(0, lambda: self.yt_lbl.configure(
                 text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
-            try:
-                import urllib.request, json
-                req = urllib.request.Request(
-                    "https://pypi.org/pypi/yt-dlp/json",
-                    headers={"User-Agent": "FormatMaster", "Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    latest = json.loads(resp.read())["info"]["version"]
-                if cur != "?" and self._version_gt(latest, cur):
-                    self.root.after(0, lambda l=latest: self._show_ytdlp_update(l))
-                else:
-                    self.root.after(0, lambda: self.yt_lbl.configure(
-                        text=f"yt-dlp · {cur} (最新)", fg=D["ok"]))
-            except Exception:
-                self.root.after(0, lambda: self.yt_lbl.configure(
-                    text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
             self._yt_checking = False
         threading.Thread(target=check, daemon=True).start()
 
@@ -4081,12 +5315,21 @@ class FormatMaster:
                     text="yt-dlp · 更新失败", fg=D["err"]))
         threading.Thread(target=upgrade, daemon=True).start()
 
+    def _on_ytdlp_installed(self, ok, msg):
+        def _update():
+            if ok:
+                self.yt_lbl.configure(text=f"yt-dlp · 已安装", fg=D["ok"])
+            else:
+                self.yt_lbl.configure(text="yt-dlp · 安装失败", fg=D["err"])
+            self._yt_checking = False
+        self.root.after(0, _update)
+
     def _show_ytdlp_update(self, latest):
         try:
-            frame = tk.Frame(self.root, bg="#E7F5FF", padx=16, pady=8)
+            frame = tk.Frame(self.root, bg=D["accent_pale"], padx=16, pady=8)
             frame.pack(fill=tk.X)
             tk.Label(frame, text=f"yt-dlp v{latest} 可用，点击更新",
-                     bg="#E7F5FF", fg="#1971C2", font=SM).pack(side=tk.LEFT)
+                     bg=D["accent_pale"], fg=D["accent"], font=SM).pack(side=tk.LEFT)
             self._btn(frame, "更新", lambda f=frame: self._update_ytdlp(f),
                       style="ghost", padx=8).pack(side=tk.RIGHT)
             self._btn(frame, "×", frame.destroy,
@@ -4112,8 +5355,9 @@ class FormatMaster:
             "download":    (self.dl_pg, self.dl_st, self.dl_go, self.dl_ca),
             "crop":        (self.crp_pg, self.crp_st, self.crp_go, self.crp_ca),
             "m3u8":        (self.m3u8_pg, self.m3u8_st, self.m3u8_go, self.m3u8_ca),
+            "ocr":         (self.ocr_pg, self.ocr_st, self.ocr_go, self.ocr_ca),
         }
-        pg, st, go, ca = m[t]
+        pg, st, go, ca = m.get(t, (None, None, None, None))
         return {"pg": pg, "st": st, "go": go, "ca": ca}
 
     def _parse_time(self, time_str):
@@ -4197,7 +5441,7 @@ class FormatMaster:
             "doc": "文档转换", "gif": "视频转GIF", "pdf": "PDF处理",
             "compress_img": "图片压缩", "rename": "批量重命名",
             "extract": "提取音频", "compress": "视频压缩",
-            "crop": "图像裁剪"
+            "crop": "图像裁剪", "ocr": "OCR文字识别",
         }
         
         w = self._w(t)
@@ -4218,9 +5462,9 @@ class FormatMaster:
                 "res": self.v_res.get(),
                 "fps": self.v_fps.get(),
                 "br": self.v_br.get(),
-                "copy_mode": getattr(self, 'v_copy_mode', None) and self.v_copy_mode.get(),
+                "copy_mode": self.v_copy_mode.get() if hasattr(self, 'v_copy_mode') else False,
                 "out_dir_combo": self.v_out_dir_combo.get(),
-                "out_dir_path": getattr(self, 'v_out_dir_path', None) and self.v_out_dir_path.get() or ""
+                "out_dir_path": self.v_out_dir_path.get() if hasattr(self, 'v_out_dir_path') else ""
             }
             
             for fp in files:
@@ -4281,13 +5525,13 @@ class FormatMaster:
                     output_path = f"{base}_{counter}{ext}"
                 module_params = {
                     "mode": mode,
-                    "range": getattr(self, 'pdf_range', None) and self.pdf_range.get() or "",
-                    "open_pwd": getattr(self, 'pdf_open_pwd', None) and self.pdf_open_pwd.get() or "",
-                    "owner_pwd": getattr(self, 'pdf_owner_pwd', None) and self.pdf_owner_pwd.get() or "",
-                    "encrypt_method": getattr(self, 'pdf_encrypt_method', None) and self.pdf_encrypt_method.get() or "",
-                    "decrypt_pwd": getattr(self, 'pdf_decrypt_pwd', None) and self.pdf_decrypt_pwd.get() or "",
-                    "compress_dpi": getattr(self, 'pdf_compress_dpi', None) and self.pdf_compress_dpi.get() or "",
-                    "compress_quality": getattr(self, 'pdf_compress_quality', None) and self.pdf_compress_quality.get() or ""
+                    "range": self.pdf_range.get() if hasattr(self, 'pdf_range') else "",
+                    "open_pwd": self.pdf_open_pwd.get() if hasattr(self, 'pdf_open_pwd') else "",
+                    "owner_pwd": self.pdf_owner_pwd.get() if hasattr(self, 'pdf_owner_pwd') else "",
+                    "encrypt_method": self.pdf_encrypt_method.get() if hasattr(self, 'pdf_encrypt_method') else "",
+                    "decrypt_pwd": self.pdf_decrypt_pwd.get() if hasattr(self, 'pdf_decrypt_pwd') else "",
+                    "compress_dpi": self.pdf_compress_dpi.get() if hasattr(self, 'pdf_compress_dpi') else "",
+                    "compress_quality": self.pdf_compress_quality.get() if hasattr(self, 'pdf_compress_quality') else ""
                 }
                 task_name = f"PDF合并 - {len(files)}个文件"
                 task_id = self._add_task(task_name, "pdf", {
@@ -4315,7 +5559,16 @@ class FormatMaster:
                         if custom_path:
                             od = custom_path
                 self.last_output_dir = od
-                module_params = {"pattern": self.rn_pattern.get(), "start": self.rn_start.get()}
+                case_map = {"不转换": "none", "全大写": "upper", "全小写": "lower", "首字母大写": "title"}
+                module_params = {
+                    "pattern": self.rn_pattern.get(),
+                    "start": self.rn_start.get(),
+                    "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
+                    "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
+                    "case": case_map.get(self.rn_case.get() if hasattr(self, 'rn_case') else "不转换", "none"),
+                    "regex_pattern": self.rn_regex.get() if hasattr(self, 'rn_regex') else "",
+                    "regex_replace": self.rn_regex_replace.get() if hasattr(self, 'rn_regex_replace') else "",
+                }
                 task_name = f"批量重命名 - {len(files)}个文件"
                 task_id = self._add_task(task_name, "rename", {
                     "file_path": "",
@@ -4449,6 +5702,10 @@ class FormatMaster:
                         output_path = os.path.join(od, nm + "_decrypted.pdf")
                     elif "压缩" in mode:
                         output_path = os.path.join(od, nm + "_compressed.pdf")
+                    elif "水印" in mode:
+                        output_path = os.path.join(od, nm + "_watermarked.pdf")
+                    elif "页码" in mode:
+                        output_path = os.path.join(od, nm + "_numbered.pdf")
                     else:
                         output_path = os.path.join(od, nm + ".pdf")
                     module_params = {
@@ -4459,7 +5716,14 @@ class FormatMaster:
                         "encrypt_method": self.pdf_encrypt_method.get() if hasattr(self, 'pdf_encrypt_method') else "",
                         "decrypt_pwd": self.pdf_decrypt_pwd.get() if hasattr(self, 'pdf_decrypt_pwd') else "",
                         "compress_dpi": self.pdf_compress_dpi.get() if hasattr(self, 'pdf_compress_dpi') else "",
-                        "compress_quality": self.pdf_compress_quality.get() if hasattr(self, 'pdf_compress_quality') else ""
+                        "compress_quality": self.pdf_compress_quality.get() if hasattr(self, 'pdf_compress_quality') else "",
+                        "wm_text": self.pdf_wm_text.get() if hasattr(self, 'pdf_wm_text') else "",
+                        "wm_pos": self.pdf_wm_pos.get() if hasattr(self, 'pdf_wm_pos') else "居中",
+                        "wm_opacity": float(self.pdf_wm_opacity.get().replace("°","")) if hasattr(self, 'pdf_wm_opacity') else 0.3,
+                        "wm_rotate": int(self.pdf_wm_rotate.get().replace("°","")) if hasattr(self, 'pdf_wm_rotate') else 0,
+                        "pn_start": int(self.pdf_pn_start.get()) if hasattr(self, 'pdf_pn_start') and self.pdf_pn_start.get().isdigit() else 1,
+                        "pn_pos": self.pdf_pn_pos.get() if hasattr(self, 'pdf_pn_pos') else "底部居中",
+                        "pn_fmt": self.pdf_pn_fmt.get() if hasattr(self, 'pdf_pn_fmt') else "{n}",
                     }
                 elif t == "compress_img":
                     ext = os.path.splitext(fn)[1]
@@ -4467,21 +5731,39 @@ class FormatMaster:
                     module_params = {"quality": self.ci_q.get(), "size": self.ci_sz.get()}
                 elif t == "rename":
                     output_path = od
-                    module_params = {"pattern": self.rn_pattern.get(), "start": self.rn_start.get()}
+                    case_map = {"不转换": "none", "全大写": "upper", "全小写": "lower", "首字母大写": "title"}
+                    module_params = {
+                        "pattern": self.rn_pattern.get(),
+                        "start": self.rn_start.get(),
+                        "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
+                        "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
+                        "case": case_map.get(self.rn_case.get() if hasattr(self, 'rn_case') else "不转换", "none"),
+                        "regex_pattern": self.rn_regex.get() if hasattr(self, 'rn_regex') else "",
+                        "regex_replace": self.rn_regex_replace.get() if hasattr(self, 'rn_regex_replace') else "",
+                    }
+                elif t == "ocr":
+                    od = os.path.dirname(fp)
+                    if hasattr(self, 'ocr_out_dir_combo') and self.ocr_out_dir_combo.get() == "自定义目录" and self.ocr_out_dir_path.get():
+                        od = self.ocr_out_dir_path.get()
+                    self.last_output_dir = od
+                    output_path = os.path.join(od, nm + ".txt")
+                    module_params = {"lang": self.ocr_lang.get()}
                 else:
                     module_params = {}
                 
                 if t != "rename":
-                    if output_path and output_path.lower() == fp.lower():
-                        base, ext = os.path.splitext(output_path)
-                        output_path = base + "_1" + ext
-                    
-                    if output_path and os.path.exists(output_path):
-                        base, ext = os.path.splitext(output_path)
-                        counter = 1
-                        while os.path.exists(f"{base}_{counter}{ext}"):
-                            counter += 1
-                        output_path = f"{base}_{counter}{ext}"
+                    is_pdf_split = (t == "pdf" and hasattr(self, 'pdf_mode') and "拆分" in self.pdf_mode.get())
+                    if not is_pdf_split:
+                        if output_path and output_path.lower() == fp.lower():
+                            base, ext = os.path.splitext(output_path)
+                            output_path = base + "_1" + ext
+
+                        if output_path and os.path.exists(output_path):
+                            base, ext = os.path.splitext(output_path)
+                            counter = 1
+                            while os.path.exists(f"{base}_{counter}{ext}"):
+                                counter += 1
+                            output_path = f"{base}_{counter}{ext}"
             
                 task_name = f"{task_names.get(t, t)} - {fn}"
                 task_id = self._add_task(task_name, t, {
@@ -4529,7 +5811,7 @@ class FormatMaster:
         """后台线程检查 GitHub 最新版本
         风险规避：所有网络请求 try...except 包裹，超时或失败时静默忽略，绝不阻塞 UI 启动。
         """
-        GITHUB_REPO = "2048895034qq/FormatMaster-EN"
+        GITHUB_REPO = "Gu-0312/FormatMaster-EN"
         def check():
             try:
                 import urllib.request
@@ -4588,13 +5870,13 @@ class FormatMaster:
                     # 去重：移除已有的通知条
                     if hasattr(self, '_update_bar') and self._update_bar and self._update_bar.winfo_exists():
                         self._update_bar.destroy()
-                    self._update_bar = tk.Frame(self.root, bg="#E7F5FF", padx=16, pady=8)
+                    self._update_bar = tk.Frame(self.root, bg=D["accent_pale"], padx=16, pady=8)
                     self._update_bar.pack(fill=tk.X)
                     tk.Label(self._update_bar, text=f"发现新版本 v{new_version}，点击前往下载",
-                             bg="#E7F5FF", fg="#1971C2", font=SM).pack(side=tk.LEFT)
+                             bg=D["accent_pale"], fg=D["accent"], font=SM).pack(side=tk.LEFT)
                     update_url = USER_PREFS.get("global", "update_url", "")
                     if not update_url:
-                        update_url = "https://github.com/2048895034qq/FormatMaster-EN/releases/latest"
+                        update_url = "https://github.com/Gu-0312/FormatMaster-EN/releases/latest"
                     self._btn(self._update_bar, "下载", lambda: webbrowser.open(update_url),
                               style="ghost", padx=8).pack(side=tk.RIGHT)
                     close_btn = self._btn(self._update_bar, "×", lambda: self._update_bar.destroy(),
