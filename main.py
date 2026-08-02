@@ -49,6 +49,7 @@ from core.image_cropper import PRESETS as CROP_PRESETS
 from core.m3u8_downloader import M3U8Downloader
 from gui.pdf_editor_panel import PdfEditorPanel
 from utils.combobox_style import style_combobox
+from app.context import AppContext
 
 
 # ═══════════════════════════════════════════════
@@ -87,6 +88,37 @@ def _hint_ex(ex):
         if k in en:
             return v
     return None
+
+def _debug_log(msg):
+    """写调试日志到文件和 stderr，不影响 UI。"""
+    import traceback as _tb
+    import sys as _sys
+    import datetime as _dt
+    ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}\n"
+    try:
+        log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "FormatMaster")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "debug.log")
+        with open(log_path, "a", encoding="utf-8") as _f:
+            _f.write(line)
+            _tb.print_exc(file=_f)
+        if os.path.getsize(log_path) > 2 * 1024 * 1024:
+            with open(log_path, "r", encoding="utf-8") as _f:
+                _f.seek(max(0, os.path.getsize(log_path) - 1024 * 1024))
+                _f.readline()
+                tail = _f.read()
+            with open(log_path, "w", encoding="utf-8") as _f:
+                _f.write(tail)
+    except Exception:
+        pass
+    if os.environ.get("FORMATMASTER_DEBUG", "") == "1":
+        try:
+            _sys.stderr.write(f"[FormatMaster Debug] {line}")
+            _tb.print_exc(file=_sys.stderr)
+            _sys.stderr.flush()
+        except Exception:
+            pass
 
 # ═══════════════════════════════════════════════
 #  Design Tokens - Modern Flat Style
@@ -172,6 +204,34 @@ def _extract_urls(text):
 
 
 class FormatMaster:
+    # ── 面板元数据（导航配置与构建方法映射）──
+    PANEL_META = [
+        ("_media", "媒体转换", [
+            ("video",       "视",  "_p_video",       "video_conv"),
+            ("audio",       "音",  "_p_audio",       "audio_conv"),
+            ("image",       "图",  "_p_image",       "image_conv"),
+            ("doc",         "文",  "_p_doc",         "doc_conv"),
+            ("gif",         "动",  "_p_gif",         None),
+        ]),
+        ("_edit", "编辑处理", [
+            ("pdf",         "PDF", "_p_pdf",         None),
+            ("compress_img","压",  "_p_compress_img",None),
+            ("rename",      "名",  "_p_rename",      None),
+            ("extract",     "音",  "_p_extract",     None),
+            ("compress",    "压",  "_p_compress",    None),
+            ("crop",        "裁",  "_p_crop",        None),
+        ]),
+        ("_tool", "工具箱", [
+            ("detect",      "检",  "_p_detect",     None),
+            ("ocr",         "识",  "_p_ocr",        None),
+            ("qrcode",      "码",  "_p_qrcode",      None),
+        ]),
+        ("_net", "网络工具", [
+            ("download",    "载",  "_p_download",   None),
+            ("m3u8",        "M8",  "_p_m3u8",        None),
+        ]),
+    ]
+
     def __init__(self):
         self.root = tk.Tk()
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
@@ -228,6 +288,33 @@ class FormatMaster:
         self.tasks = []
         self.processing_task = False
         self.task_id_counter = 0
+        # ── 面板属性集中声明（避免动态 self.xxx 散落各处）──
+        self._panel_attrs = {
+            "video": ["v_br","v_ca","v_codec","v_copy_hint","v_copy_mode","v_fmt","v_fps","v_go","v_hw_accel","v_out_dir","v_out_dir_btn","v_out_dir_combo","v_out_dir_label","v_out_dir_path","v_pg","v_preset","v_preset_combo","v_res","v_st"],
+            "audio": ["a_br","a_ch","a_fmt","a_out_dir_btn","a_out_dir_combo","a_out_dir_label","a_out_dir_path","a_sr","a_vol"],
+            "image": ["i_crop","i_fmt","i_grayscale","i_out_dir_btn","i_out_dir_combo","i_out_dir_label","i_out_dir_path","i_q","i_rotate","i_sz","i_watermark","i_watermark_pos"],
+            "doc": ["d_out_dir_btn","d_out_dir_combo","d_out_dir_label","d_out_dir_path","d_tgt"],
+            "extract": ["e_br","e_fmt","e_out_dir_btn","e_out_dir_combo","e_out_dir_label","e_out_dir_path"],
+            "compress": ["c_out_dir_btn","c_out_dir_combo","c_out_dir_label","c_out_dir_path","c_q","c_res"],
+            "detect": ["detect_auto_add","detect_canvas","detect_file_list","detect_file_vars","detect_path","detect_rf"],
+            "gif": ["gif_dur","gif_fps","gif_out_dir_btn","gif_out_dir_combo","gif_out_dir_label","gif_out_dir_path","gif_start","gif_w"],
+            "pdf": ["pdf_compress_dpi","pdf_compress_frame","pdf_compress_quality","pdf_decrypt_frame","pdf_decrypt_pwd","pdf_encrypt_frame","pdf_encrypt_method","pdf_mode","pdf_open_pwd","pdf_out_dir_btn","pdf_out_dir_combo","pdf_out_dir_label","pdf_out_dir_path","pdf_owner_pwd","pdf_pn_fmt","pdf_pn_frame","pdf_pn_pos","pdf_pn_start","pdf_range","pdf_range_frame","pdf_wm_frame","pdf_wm_opacity","pdf_wm_pos","pdf_wm_rotate","pdf_wm_text"],
+            "compress_img": ["ci_out_dir_btn","ci_out_dir_combo","ci_out_dir_label","ci_out_dir_path","ci_q","ci_sz"],
+            "rename": ["rn_case","rn_out_dir_btn","rn_out_dir_combo","rn_out_dir_label","rn_out_dir_path","rn_pattern","rn_regex","rn_regex_replace","rn_replace","rn_search","rn_start"],
+            "download": ["dl_audio_fmt","dl_audio_only","dl_cookie","dl_count_label","dl_dir","dl_fmt_info","dl_formats","dl_formats_list","dl_headers","dl_obj","dl_proxy","dl_queue","dl_queue_listbox","dl_speed","dl_subtitles","dl_template","dl_url"],
+            "m3u8": ["m3u8_ca","m3u8_cookie","m3u8_count_label","m3u8_download_sub","m3u8_format","m3u8_go","m3u8_headers","m3u8_listbox","m3u8_name","m3u8_notify","m3u8_out_dir","m3u8_pg","m3u8_proxy","m3u8_qualities","m3u8_quality","m3u8_quality_hint","m3u8_queue","m3u8_resume","m3u8_speed","m3u8_st","m3u8_threads","m3u8_url"],
+            "ocr": ["ocr_copy_btn","ocr_export_txt","ocr_lang","ocr_out_dir_btn","ocr_out_dir_combo","ocr_out_dir_label","ocr_out_dir_path","ocr_text"],
+            "qrcode": ["_qr_cancelled","_qr_eye_visible","_qr_photo","qr_bg","qr_bg_entry","qr_border","qr_eye_btn","qr_fg","qr_fg_entry","qr_preview_label","qr_size","qr_status","qr_text","qr_type","qr_wifi_frame","qr_wifi_pass","qr_wifi_ssid"],
+            "crop": ["crp_mode","crp_out_dir_btn","crp_out_dir_combo","crp_out_dir_label","crp_out_dir_path","crp_preset"],
+        }
+        # 注册所有面板属性为 None 占位（在 _ui() 中按需赋值）
+        for _attrs in self._panel_attrs.values():
+            for _a in _attrs:
+                setattr(self, _a, None)
+
+        # ── DI 容器：注入到各 Panel，让面板不再直接挂载到 self 命名空间 ──
+        # 必须在 converters/managers/task_queue 创建之后、_ui() 之前
+        self.app_ctx = AppContext(self)
 
         self._ui()
         self.root.update_idletasks()
@@ -374,10 +461,10 @@ class FormatMaster:
         toolbar.pack_propagate(False)
         
         # 关于按钮（最右侧）
-        about_lbl = tk.Label(toolbar, text="关于", bg=D["page"], fg=D["ink_sec"],
+        self._about_lbl = tk.Label(toolbar, text="关于", bg=D["page"], fg=D["ink_sec"],
                              font=("Segoe UI", 10), cursor="hand2",
                              padx=12, pady=6)
-        about_lbl.pack(side=tk.RIGHT, padx=(0, 16), pady=6)
+        self._about_lbl.pack(side=tk.RIGHT, padx=(0, 16), pady=6)
         
         # 主题切换按钮
         self._theme_btn = tk.Button(toolbar, text="☾", font=("Segoe UI", 16),
@@ -388,14 +475,14 @@ class FormatMaster:
         self._theme_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=4)
         
         def on_about_enter(e):
-            about_lbl.configure(bg=D["card_alt"], fg=D["ink"])
-        
+            self._about_lbl.configure(bg=D["card_alt"], fg=D["ink"])
+
         def on_about_leave(e):
-            about_lbl.configure(bg=D["page"], fg=D["ink_sec"])
-        
-        about_lbl.bind("<Enter>", on_about_enter)
-        about_lbl.bind("<Leave>", on_about_leave)
-        about_lbl.bind("<Button-1>", lambda e: self._show_about())
+            self._about_lbl.configure(bg=D["page"], fg=D["ink_sec"])
+
+        self._about_lbl.bind("<Enter>", on_about_enter)
+        self._about_lbl.bind("<Leave>", on_about_leave)
+        self._about_lbl.bind("<Button-1>", lambda e: self._show_about() if not getattr(self, 'panels_disabled', False) else None)
         
         # 侧边栏
         sb = tk.Frame(self.root, bg=D["sidebar"], width=230)
@@ -535,7 +622,7 @@ class FormatMaster:
                 if isinstance(child, ttk.Combobox):
                     try:
                         style_combobox(child)
-                    except Exception:
+                    except (tk.TclError, AttributeError):
                         pass
                 _walk(child)
         _walk(self.root)
@@ -750,12 +837,12 @@ class FormatMaster:
                         grp = "fg" if attr in fg_attrs else "bg"
                         widget.configure(**{attr: color_map[key][grp]})
             except Exception:
-                pass
+                _debug_log(f"主题着色失败: {attr}")
         try:
             for child in widget.winfo_children():
                 self._recolor_widget_recursive(child, color_map)
         except Exception:
-            pass
+            _debug_log("主题递归着色失败")
 
     def _nav_update(self):
         cur = self.current_tab.get()
@@ -993,6 +1080,11 @@ class FormatMaster:
         for item in self.task_tree.get_children():
             self.task_tree.delete(item)
         self.tasks.clear()
+        while not self.task_queue.empty():
+            try:
+                self.task_queue.get_nowait()
+            except Exception:
+                break
         self.task_count_label.configure(text="0 个任务")
         self.task_empty_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
     
@@ -1146,7 +1238,7 @@ class FormatMaster:
                 "output_path": params.get("output_path", ""),
             })
         except Exception:
-            pass
+            _debug_log("历史记录保存失败")
 
         self._update_task_status(task["id"], "success" if success else "failed", 100)
         self._refresh_history_view()
@@ -1166,6 +1258,17 @@ class FormatMaster:
         if all_done:
             self.converting = False
             self._disable_all_panels(disable=False)
+            # 内存泄漏修复：清理已完成任务的 Treeview 行
+            for t in list(self.tasks):
+                if t["status"] in ("success", "failed"):
+                    try:
+                        self.task_tree.delete(t["tree_id"])
+                    except (tk.TclError, AttributeError):
+                        pass
+            self.tasks[:] = [t for t in self.tasks if t["status"] in ("waiting", "processing")]
+            self.task_count_label.configure(text=f"{len(self.tasks)} 个任务")
+            if not self.tasks:
+                self.task_empty_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
             panel_name = params.get("panel_name", task_type)
             w = self._w(panel_name)
@@ -1173,6 +1276,10 @@ class FormatMaster:
                 w["pg"].configure(value=0)
             if w and "st" in w:
                 w["st"].configure(text="")
+            if w and "go" in w:
+                w["go"].configure(state=tk.NORMAL)
+            if w and "ca" in w:
+                w["ca"].configure(state=tk.DISABLED)
 
             total = success_count + failed_count
             if task_type == "rename" and success_count > 0:
@@ -1205,19 +1312,22 @@ class FormatMaster:
             elapsed_str = f"{elapsed}s" if elapsed < 60 else f"{elapsed//60}m{elapsed%60}s"
             
             def do_update():
-                if w and "pg" in w:
-                    w["pg"].configure(value=max(0, pct))
-                if w and "st" in w:
-                    w["st"].configure(text=f"{msg} · {elapsed_str}")
-                if "完成" in msg:
-                    self._log_status(msg.replace("完成", "已完成"), "success")
-                elif "失败" in msg:
-                    self._log_status(msg.replace("失败", "失败"), "error")
-                elif pct > 0:
-                    self._log_status(msg, "info")
-                self._update_task_status(task_id, "processing", pct)
-            
-            self.root.after(0, do_update)
+                try:
+                    if w and "pg" in w:
+                        w["pg"].configure(value=max(0, pct))
+                    if w and "st" in w:
+                        w["st"].configure(text=f"{msg} · {elapsed_str}")
+                    if "完成" in msg:
+                        self._log_status(msg.replace("完成", "已完成"), "success")
+                    elif "失败" in msg:
+                        self._log_status(msg.replace("失败", "失败"), "error")
+                    self._update_task_status(task_id, "processing", pct)
+                except RuntimeError:
+                    pass
+            try:
+                self.root.after(0, do_update)
+            except RuntimeError:
+                pass
         
         fn = os.path.basename(file_path)
         nm = os.path.splitext(fn)[0]
@@ -1231,6 +1341,7 @@ class FormatMaster:
             ext = SUPPORTED_VIDEO[video_params.get("fmt", "MP4")]
             copy_mode = video_params.get("copy_mode", False)
             selected_streams = getattr(self, 'v_selected_streams', None)
+            hw_accel_key = video_params.get("hw_accel")
             result = self.video_conv.convert(
                 file_path, output_path, ext,
                 VIDEO_CODECS.get(video_params.get("codec", "默认")),
@@ -1240,7 +1351,8 @@ class FormatMaster:
                 None if video_params.get("fps", "原始帧率")=="原始帧率" else int(video_params.get("fps", 30)),
                 prog,
                 copy_mode=copy_mode,
-                selected_streams=selected_streams)
+                selected_streams=selected_streams,
+                hw_accel=hw_accel_key)
             
             callback(result)
             if w and "pg" in w:
@@ -1248,15 +1360,19 @@ class FormatMaster:
             if w and "st" in w:
                 w["st"].configure(text="")
         except Exception as ex:
-            if w and "pg" in w:
-                w["pg"].configure(value=0)
-            if w and "st" in w:
-                w["st"].configure(text="")
+            try:
+                if w and "pg" in w:
+                    w["pg"].configure(value=0)
+                if w and "st" in w:
+                    w["st"].configure(text="")
+            except RuntimeError:
+                pass
             err_msg = str(ex)
             if err_msg == "已取消":
                 self._log_status(f"文件 {fn} 已取消", "info")
             else:
                 self._log_status(f"文件 {fn} 处理失败：{err_msg}", "error")
+                _debug_log(f"视频任务异常: {ex}")
             callback(False)
     
     def _run_task_general(self, task_type, params, callback):
@@ -1273,47 +1389,67 @@ class FormatMaster:
         
         def update_progress(pct, msg):
             def do_update():
-                if w and "pg" in w:
-                    w["pg"].configure(value=max(0, pct))
-                if w and "st" in w:
-                    w["st"].configure(text=msg)
-                if "完成" in msg:
-                    self._log_status(msg.replace("完成", "已完成"), "success")
-                elif "失败" in msg:
-                    self._log_status(msg.replace("失败", "失败"), "error")
-                elif pct > 0:
-                    self._log_status(msg, "info")
-                self._update_task_status(task_id, "processing", pct)
-            
-            self.root.after(0, do_update)
+                try:
+                    if w and "pg" in w and w["pg"] is not None:
+                        w["pg"].configure(value=max(0, pct))
+                    if w and "st" in w and w["st"] is not None:
+                        w["st"].configure(text=msg)
+                    if "完成" in msg:
+                        self._log_status(msg.replace("完成", "已完成"), "success")
+                    elif "失败" in msg:
+                        self._log_status(msg.replace("失败", "失败"), "error")
+                    elif pct > 0:
+                        self._log_status(msg, "info")
+                    self._update_task_status(task_id, "processing", pct)
+                except RuntimeError:
+                    pass
+            try:
+                self.root.after(0, do_update)
+            except RuntimeError:
+                pass
         
-        self._prog_heartbeat_id = None
-        self._prog_last_pct = 0
-        self._prog_last_time = 0
+        _heartbeat_id = [None]
+        _last_pct = [0]
+        _last_time = [0]
         
         def _heartbeat():
-            if self._prog_heartbeat_id is None:
+            if _heartbeat_id[0] is None:
                 return
-            elapsed = time.time() - self._prog_last_time
-            if elapsed > 2.0 and 0 < self._prog_last_pct < 95:
-                self._prog_last_pct += 1
-                self._prog_last_time = time.time()
-                update_progress(self._prog_last_pct, f"{fn}  处理中...")
-            self._prog_heartbeat_id = self.root.after(1000, _heartbeat)
+            try:
+                if self.root is None or not self.root.winfo_exists():
+                    _heartbeat_id[0] = None
+                    return
+            except RuntimeError:
+                _heartbeat_id[0] = None
+                return
+            elapsed = time.time() - _last_time[0]
+            if elapsed > 2.0 and 0 < _last_pct[0] < 95:
+                _last_pct[0] += 1
+                _last_time[0] = time.time()
+                update_progress(_last_pct[0], f"{fn}  处理中...")
+            try:
+                _heartbeat_id[0] = self.root.after(1000, _heartbeat)
+            except RuntimeError:
+                _heartbeat_id[0] = None
         
         def prog(pct, msg):
             if not self.converting:
                 raise Exception("已取消")
             if pct >= 0:
-                self._prog_last_pct = pct
-                self._prog_last_time = time.time()
+                _last_pct[0] = pct
+                _last_time[0] = time.time()
             update_progress(pct, f"{fn}  {msg}")
             if pct >= 100 or pct < 0:
-                if self._prog_heartbeat_id:
-                    self.root.after_cancel(self._prog_heartbeat_id)
-                    self._prog_heartbeat_id = None
+                if _heartbeat_id[0]:
+                    def _cancel_hb():
+                        if _heartbeat_id[0]:
+                            self.root.after_cancel(_heartbeat_id[0])
+                            _heartbeat_id[0] = None
+                    self.root.after(0, _cancel_hb)
         
-        self._prog_heartbeat_id = self.root.after(1000, _heartbeat)
+        def _start_heartbeat():
+            _heartbeat_id[0] = self.root.after(1000, _heartbeat)
+        self.root.after(0, _start_heartbeat)
         
         try:
             result = False
@@ -1351,7 +1487,7 @@ class FormatMaster:
                     try:
                         w, h = sz_str.split("x")
                         max_sz = (int(w), int(h))
-                    except:
+                    except ValueError:
                         pass
                 result = self.image_conv.convert(
                     file_path, output_path,
@@ -1408,14 +1544,14 @@ class FormatMaster:
                                     if dur != "全部":
                                         try:
                                             total_ms = float(dur) * 1000000
-                                        except:
+                                        except (ValueError, TypeError):
                                             pass
                                     if total_ms != float('inf'):
                                         pct = min(100, int(ms / total_ms * 100))
                                     else:
                                         pct = 0
                                     prog(pct, "正在转换...")
-                                except:
+                                except (ValueError, IndexError, TypeError):
                                     pass
                     result = proc.returncode == 0
             
@@ -1544,7 +1680,7 @@ class FormatMaster:
                     except Exception as e: prog(-1, f"字幕下载出错: {e}")
                 if result and notify:
                     try: import winsound; winsound.MessageBeep(winsound.MB_OK)
-                    except: pass
+                    except (ImportError, OSError): pass
 
             elif task_type == "download":
                 url = module_params.get("url", "")
@@ -1581,18 +1717,28 @@ class FormatMaster:
 
             callback(result)
         except Exception as ex:
-            if self._prog_heartbeat_id:
-                self.root.after_cancel(self._prog_heartbeat_id)
-                self._prog_heartbeat_id = None
-            if w and "pg" in w:
-                w["pg"].configure(value=0)
-            if w and "st" in w:
-                w["st"].configure(text="")
+            try:
+                if _heartbeat_id[0]:
+                    def _cancel_hb_ex():
+                        if _heartbeat_id[0]:
+                            self.root.after_cancel(_heartbeat_id[0])
+                            _heartbeat_id[0] = None
+                    self.root.after(0, _cancel_hb_ex)
+            except RuntimeError:
+                pass
+            try:
+                if w and "pg" in w:
+                    w["pg"].configure(value=0)
+                if w and "st" in w:
+                    w["st"].configure(text="")
+            except RuntimeError:
+                pass
             err_msg = str(ex)
             if err_msg == "已取消":
                 self._log_status(f"文件 {fn} 已取消", "info")
             else:
                 self._log_status(f"文件 {fn} 处理失败：{err_msg}", "error")
+                _debug_log(f"任务异常({task_type}): {ex}")
             callback(False)
     
     def _clear_status_stream(self):
@@ -1611,7 +1757,7 @@ class FormatMaster:
                 ctypes.windll.user32.EmptyClipboard()
                 ctypes.windll.user32.SetClipboardTextW(line_text)
                 ctypes.windll.user32.CloseClipboard()
-        except Exception:
+        except (OSError, ctypes.ArgumentError):
             pass
     
     def _log_status(self, message, level="info"):
@@ -1765,25 +1911,11 @@ class FormatMaster:
     def _save_panel_prefs(self, panel):
         prefs = {}
         if panel == "video":
-            prefs = {
-                "fmt": self.v_fmt.get(),
-                "codec": self.v_codec.get(),
-                "preset": self.v_preset.get(),
-                "res": self.v_res.get(),
-                "fps": self.v_fps.get(),
-                "br": self.v_br.get(),
-                "out_dir_combo": self.v_out_dir_combo.get(),
-                "out_dir_path": self.v_out_dir_path.get() if hasattr(self, 'v_out_dir_path') else "",
-            }
+            # DI 委托：参数收集已迁移到 VideoPanel
+            prefs = self._video_panel.collect_prefs()
         elif panel == "audio":
-            prefs = {
-                "fmt": self.a_fmt.get(),
-                "br": self.a_br.get(),
-                "sr": self.a_sr.get(),
-                "ch": self.a_ch.get(),
-                "out_dir_combo": self.a_out_dir_combo.get() if hasattr(self, 'a_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.a_out_dir_path.get() if hasattr(self, 'a_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 AudioPanel
+            prefs = self._audio_panel.collect_prefs()
         elif panel == "image":
             prefs = {
                 "fmt": self.i_fmt.get(),
@@ -1801,34 +1933,17 @@ class FormatMaster:
                 "out_dir_path": self.d_out_dir_path.get() if hasattr(self, 'd_out_dir_path') else "",
             }
         elif panel == "extract":
-            prefs = {
-                "fmt": self.e_fmt.get(),
-                "br": self.e_br.get(),
-                "out_dir_combo": self.e_out_dir_combo.get() if hasattr(self, 'e_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.e_out_dir_path.get() if hasattr(self, 'e_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 ExtractPanel
+            prefs = self._extract_panel.collect_prefs()
         elif panel == "compress":
-            prefs = {
-                "quality": self.c_q.get(),
-                "resolution": self.c_res.get(),
-                "out_dir_combo": self.c_out_dir_combo.get() if hasattr(self, 'c_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.c_out_dir_path.get() if hasattr(self, 'c_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 CompressPanel
+            prefs = self._compress_panel.collect_prefs()
         elif panel == "gif":
-            prefs = {
-                "width": self.gif_w.get(),
-                "fps": self.gif_fps.get(),
-                "start": self.gif_start.get(),
-                "duration": self.gif_dur.get(),
-                "out_dir_combo": self.gif_out_dir_combo.get() if hasattr(self, 'gif_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.gif_out_dir_path.get() if hasattr(self, 'gif_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 GifPanel
+            prefs = self._gif_panel.collect_prefs()
         elif panel == "pdf":
-            prefs = {
-                "mode": self.pdf_mode.get(),
-                "out_dir_combo": self.pdf_out_dir_combo.get() if hasattr(self, 'pdf_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.pdf_out_dir_path.get() if hasattr(self, 'pdf_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 PdfPanel
+            prefs = self._pdf_panel.collect_prefs()
         elif panel == "compress_img":
             prefs = {
                 "quality": self.ci_q.get(),
@@ -1837,15 +1952,8 @@ class FormatMaster:
                 "out_dir_path": self.ci_out_dir_path.get() if hasattr(self, 'ci_out_dir_path') else "",
             }
         elif panel == "rename":
-            prefs = {
-                "pattern": self.rn_pattern.get(),
-                "start": self.rn_start.get(),
-                "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
-                "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
-                "case": self.rn_case.get() if hasattr(self, 'rn_case') else "不转换",
-                "out_dir_combo": self.rn_out_dir_combo.get() if hasattr(self, 'rn_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.rn_out_dir_path.get() if hasattr(self, 'rn_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 RenamePanel
+            prefs = self._rename_panel.collect_prefs()
         elif panel == "crop":
             prefs = {
                 "preset": self.crp_preset.get(),
@@ -1876,6 +1984,19 @@ class FormatMaster:
                 "notify": self.m3u8_notify.get(),
                 "download_sub": self.m3u8_download_sub.get(),
             }
+        elif panel == "detect":
+            prefs = {
+                "path": self.detect_path.get() if hasattr(self, 'detect_path') else "",
+                "auto_add": self.detect_auto_add.get() if hasattr(self, 'detect_auto_add') else True,
+            }
+        elif panel == "qrcode":
+            prefs = {
+                "qr_type": self.qr_type.get() if hasattr(self, 'qr_type') else "文本",
+                "qr_size": self.qr_size.get() if hasattr(self, 'qr_size') else "400",
+                "qr_border": self.qr_border.get() if hasattr(self, 'qr_border') else "4",
+                "qr_fg": self.qr_fg.get() if hasattr(self, 'qr_fg') else "#000000",
+                "qr_bg": self.qr_bg.get() if hasattr(self, 'qr_bg') else "#FFFFFF",
+            }
         if prefs:
             USER_PREFS.save_panel(panel, prefs)
 
@@ -1899,6 +2020,8 @@ class FormatMaster:
         USER_PREFS.set("pwd_history", "pdf", hist)
 
     def _show_pwd_history(self):
+        if getattr(self, 'panels_disabled', False):
+            return
         hist = USER_PREFS.get("pwd_history", "pdf", {})
         win = tk.Toplevel(self.root)
         win.title("密码历史记录")
@@ -1984,35 +2107,11 @@ class FormatMaster:
             return
 
         if panel == "video":
-            if prefs.get("fmt") and hasattr(self, 'v_fmt'):
-                self.v_fmt.set(prefs["fmt"])
-            if prefs.get("codec") and hasattr(self, 'v_codec'):
-                self.v_codec.set(prefs["codec"])
-            if prefs.get("preset") and hasattr(self, 'v_preset'):
-                self.v_preset.set(prefs["preset"])
-            if prefs.get("res") and hasattr(self, 'v_res'):
-                self.v_res.set(prefs["res"])
-            if prefs.get("fps") and hasattr(self, 'v_fps'):
-                self.v_fps.set(prefs["fps"])
-            if prefs.get("br") and hasattr(self, 'v_br'):
-                self.v_br.set(prefs["br"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'v_out_dir_combo'):
-                self.v_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'v_out_dir_path'):
-                self.v_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 VideoPanel
+            self._video_panel.apply_prefs(prefs)
         elif panel == "audio":
-            if prefs.get("fmt") and hasattr(self, 'a_fmt'):
-                self.a_fmt.set(prefs["fmt"])
-            if prefs.get("br") and hasattr(self, 'a_br'):
-                self.a_br.set(prefs["br"])
-            if prefs.get("sr") and hasattr(self, 'a_sr'):
-                self.a_sr.set(prefs["sr"])
-            if prefs.get("ch") and hasattr(self, 'a_ch'):
-                self.a_ch.set(prefs["ch"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'a_out_dir_combo'):
-                self.a_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'a_out_dir_path'):
-                self.a_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 AudioPanel
+            self._audio_panel.apply_prefs(prefs)
         elif panel == "image":
             if prefs.get("fmt") and hasattr(self, 'i_fmt'):
                 self.i_fmt.set(prefs["fmt"])
@@ -2036,44 +2135,17 @@ class FormatMaster:
             if prefs.get("out_dir_path") and hasattr(self, 'd_out_dir_path'):
                 self.d_out_dir_path.set(prefs["out_dir_path"])
         elif panel == "extract":
-            if prefs.get("fmt") and hasattr(self, 'e_fmt'):
-                self.e_fmt.set(prefs["fmt"])
-            if prefs.get("br") and hasattr(self, 'e_br'):
-                self.e_br.set(prefs["br"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'e_out_dir_combo'):
-                self.e_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'e_out_dir_path'):
-                self.e_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 ExtractPanel
+            self._extract_panel.apply_prefs(prefs)
         elif panel == "compress":
-            if prefs.get("quality") and hasattr(self, 'c_q'):
-                self.c_q.set(prefs["quality"])
-            if prefs.get("resolution") and hasattr(self, 'c_res'):
-                self.c_res.set(prefs["resolution"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'c_out_dir_combo'):
-                self.c_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'c_out_dir_path'):
-                self.c_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 CompressPanel
+            self._compress_panel.apply_prefs(prefs)
         elif panel == "gif":
-            if prefs.get("width") and hasattr(self, 'gif_w'):
-                self.gif_w.set(prefs["width"])
-            if prefs.get("fps") and hasattr(self, 'gif_fps'):
-                self.gif_fps.set(prefs["fps"])
-            if prefs.get("start") and hasattr(self, 'gif_start'):
-                self.gif_start.set(prefs["start"])
-            if prefs.get("duration") and hasattr(self, 'gif_dur'):
-                self.gif_dur.set(prefs["duration"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'gif_out_dir_combo'):
-                self.gif_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'gif_out_dir_path'):
-                self.gif_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 GifPanel
+            self._gif_panel.apply_prefs(prefs)
         elif panel == "pdf":
-            if prefs.get("mode") and hasattr(self, 'pdf_mode'):
-                self.pdf_mode.set(prefs["mode"])
-                self._pdf_mode_changed()
-            if prefs.get("out_dir_combo") and hasattr(self, 'pdf_out_dir_combo'):
-                self.pdf_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'pdf_out_dir_path'):
-                self.pdf_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 PdfPanel
+            self._pdf_panel.apply_prefs(prefs)
         elif panel == "compress_img":
             if prefs.get("quality") and hasattr(self, 'ci_q'):
                 self.ci_q.set(prefs["quality"])
@@ -2084,22 +2156,8 @@ class FormatMaster:
             if prefs.get("out_dir_path") and hasattr(self, 'ci_out_dir_path'):
                 self.ci_out_dir_path.set(prefs["out_dir_path"])
         elif panel == "rename":
-            if prefs.get("pattern") and hasattr(self, 'rn_pattern'):
-                self.rn_pattern.set(prefs["pattern"])
-            if prefs.get("start") and hasattr(self, 'rn_start'):
-                self.rn_start.set(prefs["start"])
-            if prefs.get("search") and hasattr(self, 'rn_search'):
-                self.rn_search.delete(0, tk.END)
-                self.rn_search.insert(0, prefs["search"])
-            if prefs.get("replace") and hasattr(self, 'rn_replace'):
-                self.rn_replace.delete(0, tk.END)
-                self.rn_replace.insert(0, prefs["replace"])
-            if prefs.get("case") and hasattr(self, 'rn_case'):
-                self.rn_case.set(prefs["case"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'rn_out_dir_combo'):
-                self.rn_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'rn_out_dir_path'):
-                self.rn_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 RenamePanel
+            self._rename_panel.apply_prefs(prefs)
         elif panel == "crop":
             if prefs.get("preset") and hasattr(self, 'crp_preset'):
                 self.crp_preset.set(prefs["preset"])
@@ -2143,17 +2201,58 @@ class FormatMaster:
                 self.m3u8_notify.set(prefs["notify"])
             if "download_sub" in prefs and hasattr(self, 'm3u8_download_sub'):
                 self.m3u8_download_sub.set(prefs["download_sub"])
+        elif panel == "detect":
+            if prefs.get("path") and hasattr(self, 'detect_path'):
+                self.detect_path.delete(0, tk.END)
+                self.detect_path.insert(0, prefs["path"])
+            if "auto_add" in prefs and hasattr(self, 'detect_auto_add'):
+                self.detect_auto_add.set(prefs["auto_add"])
+        elif panel == "qrcode":
+            if prefs.get("qr_type") and hasattr(self, 'qr_type'):
+                self.qr_type.set(prefs["qr_type"])
+            if prefs.get("qr_size") and hasattr(self, 'qr_size'):
+                self.qr_size.set(prefs["qr_size"])
+            if prefs.get("qr_border") and hasattr(self, 'qr_border'):
+                self.qr_border.set(prefs["qr_border"])
+            if prefs.get("qr_fg") and hasattr(self, 'qr_fg'):
+                self.qr_fg.set(prefs["qr_fg"])
+            if prefs.get("qr_bg") and hasattr(self, 'qr_bg'):
+                self.qr_bg.set(prefs["qr_bg"])
     def _switch(self, tab):
         if getattr(self, 'panels_disabled', False):
             return
-        if hasattr(self, 'current_tab') and self.current_tab.get():
-            self._save_panel_prefs(self.current_tab.get())
+        # Clean up detect panel mousewheel binding to prevent interference
+        if hasattr(self, 'detect_canvas') and self.detect_canvas:
+            try:
+                self.detect_canvas.unbind_all("<MouseWheel>")
+            except Exception:
+                pass
+        try:
+            if hasattr(self, 'current_tab') and self.current_tab.get():
+                self._save_panel_prefs(self.current_tab.get())
+        except Exception as e:
+            self._log_status(f"保存偏好失败: {e}", "error")
         self.current_tab.set(tab)
-        self._nav_update()
+        try:
+            self._nav_update()
+        except Exception as e:
+            self._log_status(f"导航更新失败: {e}", "error")
         for p in self.panels.values():
-            p.pack_forget()
-        self.panels[tab].pack(fill=tk.BOTH, expand=True, padx=20, pady=12)
-        self._load_panel_prefs(tab)
+            try:
+                p.pack_forget()
+            except Exception:
+                pass
+        try:
+            if tab in self.panels:
+                self.panels[tab].pack(fill=tk.BOTH, expand=True, padx=20, pady=12)
+            else:
+                self._log_status(f"面板不存在: {tab}", "error")
+        except Exception as e:
+            self._log_status(f"显示面板失败: {e}", "error")
+        try:
+            self._load_panel_prefs(tab)
+        except Exception as e:
+            self._log_status(f"加载偏好失败: {e}", "error")
 
     # ── 面板标题 ──────────────────────────────
     def _hdr(self, parent, title, sub, badge=""):
@@ -2244,6 +2343,8 @@ class FormatMaster:
             USER_PREFS.set("last_dirs", panel_key, os.path.dirname(path))
 
     def _add(self, key):
+        if getattr(self, 'panels_disabled', False):
+            return
         d = self.panel_data[key]
         last_dir = self._get_last_dir(key)
         fs = filedialog.askopenfilenames(initialdir=last_dir, filetypes=d["filetypes"])
@@ -2260,6 +2361,8 @@ class FormatMaster:
                 self._detect()
 
     def _add_dir(self, key):
+        if getattr(self, 'panels_disabled', False):
+            return
         d = self.panel_data[key]
         last_dir = self._get_last_dir(key)
         folder = filedialog.askdirectory(initialdir=last_dir)
@@ -2278,6 +2381,8 @@ class FormatMaster:
             self._detect()
 
     def _clr(self, key):
+        if getattr(self, 'panels_disabled', False):
+            return
         d = self.panel_data[key]
         d["files"].clear()
         d["listbox"].delete(0, tk.END)
@@ -2288,6 +2393,8 @@ class FormatMaster:
         self._update_format_hint(key)
 
     def _on_file_select(self, key):
+        if getattr(self, 'panels_disabled', False):
+            return
         d = self.panel_data[key]
         selection = d["listbox"].curselection()
         if not selection:
@@ -2493,6 +2600,9 @@ class FormatMaster:
             if not hasattr(self, 'root') or not self.root.winfo_exists():
                 return
             
+            if getattr(self, 'panels_disabled', False):
+                return
+            
             key = self.current_tab.get() if hasattr(self, 'current_tab') else None
             if not key:
                 return
@@ -2639,91 +2749,38 @@ class FormatMaster:
     #  各面板
     # ══════════════════════════════════════════
     def _p_video(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["video"] = p
-        self._hdr(p, "视频格式转换", "MP4 · AVI · MKV · WMV · MOV · FLV · WEBM 等主流格式互转")
-        self._file_sec(p, "video",
-            [("视频文件","*.mp4 *.avi *.mkv *.wmv *.mov *.flv *.webm *.ts *.mpeg *.3gp"),("所有文件","*.*")])
+        # ── DI 化：构建逻辑已迁移到 gui.panels.video_panel.VideoPanel ──
+        # 这里仅作薄代理：实例化 VideoPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_go / _save_panel_prefs / _w / _toggle_copy_mode 等）
+        # 通过 self.v_fmt 等访问仍可工作，指向 VideoContext 中的同一对象。
+        from gui.panels.video_panel import VideoPanel
+        self._video_panel = VideoPanel(self.app_ctx, self.content)
+        self._video_panel.build()
 
-        settings_card = self._card(p, "输出设置")
-
-        copy_row = tk.Frame(settings_card, bg=D["card"])
-        copy_row.pack(fill=tk.X, padx=16, pady=(10, 8))
-        self.v_copy_mode = tk.BooleanVar(value=False)
-        check_bg = D["card"] if self._theme == "light" else "#6a6a7a"
-        copy_cb = tk.Checkbutton(copy_row, text="⚡ 仅转封装（无损拷贝）", variable=self.v_copy_mode,
-                                  bg=D["card"], selectcolor=check_bg,
-                                  fg=D["accent"], activeforeground=D["accent"],
-                                  font=(FT, 10, "bold"), bd=0, highlightthickness=0,
-                                  command=self._toggle_copy_mode)
-        copy_cb.pack(side=tk.LEFT)
-        self.v_copy_hint = tk.Label(copy_row, text="无损转封装，速度极快", bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.v_copy_hint.pack(side=tk.LEFT, padx=(8, 0))
-        self.v_copy_hint.pack_forget()
-        tk.Label(copy_row, text="预计耗时 < 5秒", bg=D["card"], fg=D["accent"], font=XS).pack(side=tk.RIGHT)
-
-        grid_frame = tk.Frame(settings_card, bg=D["card"])
-        grid_frame.pack(fill=tk.X, padx=16, pady=(0, 10))
-        grid_frame.columnconfigure(0, weight=1)
-        grid_frame.columnconfigure(1, weight=1)
-        grid_frame.columnconfigure(2, weight=1)
-
-        self.v_fmt = self._grid_row(grid_frame, "目标格式", list(SUPPORTED_VIDEO.keys()), "MP4", 0, 0)
-        self.v_fmt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("video"))
-        self.v_codec = self._grid_row(grid_frame, "视频编码", list(VIDEO_CODECS.keys()), "默认", 0, 1)
-        self.v_preset = self._grid_row(grid_frame, "画质预设", list(VIDEO_PRESETS.keys()), "原始质量", 0, 2)
-        self.v_res = self._grid_row(grid_frame, "分辨率", list(RESOLUTIONS.keys()), "原始分辨率", 1, 0)
-        self.v_fps = self._grid_row(grid_frame, "帧率", ["原始帧率","24","25","30","60"], "原始帧率", 1, 1)
-        self.v_br = self._grid_row(grid_frame, "码率", ["自动","1M","2M","5M","8M","10M","20M"], "自动", 1, 2)
-
-        # 快速预设 + 输出目录 合并为一行
-        preset_out_row = tk.Frame(settings_card, bg=D["card"])
-        preset_out_row.pack(fill=tk.X, padx=16, pady=(0, 10))
-
-        # 快速预设（左侧）
-        preset_frame = tk.Frame(preset_out_row, bg=D["card"])
-        preset_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(preset_frame, text="快速预设", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        video_presets = ["自定义"] + get_preset_names("video")
-        self.v_preset_combo = ttk.Combobox(preset_frame, values=video_presets, state="readonly", width=16)
-        self.v_preset_combo.set("自定义")
-        self.v_preset_combo.pack(side=tk.LEFT)
-        self.v_preset_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_video_preset())
-
-        # 输出目录（右侧）
-        out_frame = tk.Frame(preset_out_row, bg=D["card"])
-        out_frame.pack(side=tk.RIGHT)
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 6))
-        self.v_out_dir = tk.StringVar(value="与源文件同目录")
-        self.v_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=12)
-        self.v_out_dir_combo.set("与源文件同目录")
-        self.v_out_dir_combo.pack(side=tk.LEFT)
-        self.v_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("video"), style="secondary")
-        self.v_out_dir_btn.pack(side=tk.LEFT, padx=(6, 0))
-        self.v_out_dir_path = tk.StringVar(value="")
-        self.v_out_dir_label = tk.Label(out_frame, textvariable=self.v_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.v_out_dir_label.pack(side=tk.LEFT, padx=(6, 0))
-
-        bottom_bar = tk.Frame(p, bg=D["page"])
-        bottom_bar.pack(fill=tk.X, pady=(12, 0))
-
-        self.v_pg = ttk.Progressbar(bottom_bar, style="Horizontal.TProgressbar")
-        self.v_pg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 16))
-
-        self.v_st = tk.Label(bottom_bar, text="就绪", bg=D["page"], fg=D["ink_dis"], font=SM)
-        self.v_st.pack(side=tk.LEFT, padx=(0, 12))
-
-        self._btn(bottom_bar, "📁 打开输出文件夹", self._open_output_folder, "ghost", padx=8).pack(side=tk.RIGHT, padx=(0, 8))
-
-        self.v_ca = self._btn(bottom_bar, "取消", None, "danger", state=tk.DISABLED)
-        self.v_ca.pack(side=tk.RIGHT, padx=(0, 10))
-        self.v_ca.configure(command=lambda: self._stop("video"))
-
-        self.v_go = self._btn(bottom_bar, "开始转换", None, "primary", padx=24)
-        self.v_go.pack(side=tk.RIGHT)
-        self.v_go.configure(command=lambda: self._go("video"))
+        c = self._video_panel.context
+        # ── 兼容 shim：self.v_xxx → VideoContext 同一对象引用 ──
+        self.v_fmt          = c.fmt
+        self.v_codec         = c.codec
+        self.v_preset        = c.preset
+        self.v_res           = c.res
+        self.v_fps           = c.fps
+        self.v_br            = c.br
+        self.v_copy_mode     = c.copy_mode
+        self.v_hw_accel      = c.hw_accel
+        self.v_out_dir_combo = c.out_dir_combo
+        self.v_out_dir_path  = c.out_dir_path
+        self.v_out_dir_label = c.out_dir_label
+        self.v_out_dir_btn   = c.out_dir_btn
+        self.v_preset_combo  = c.preset_combo
+        self.v_copy_hint     = c.copy_hint
+        self.v_pg            = c.pg
+        self.v_st            = c.st
+        self.v_go            = c.go
+        self.v_ca            = c.ca
 
     def _toggle_copy_mode(self):
+        if getattr(self, 'panels_disabled', False):
+            return
         copy_mode = self.v_copy_mode.get()
         has_video_files = len(self.panel_data.get("video", {}).get("files", [])) > 0
         
@@ -2781,7 +2838,18 @@ class FormatMaster:
             self._toggle_copy_mode()
             messagebox.showwarning("不兼容", f"无法使用转封装模式：{reason}")
 
+    def _update_hw_accel_options(self):
+        from utils.hardware_accel import detect_hardware_acceleration
+        available = detect_hardware_acceleration()
+        options = ["自动"]
+        for accel in available:
+            options.append(accel["name"])
+        self.v_hw_accel.configure(values=options)
+        self.v_hw_accel.set("自动")
+
     def _apply_video_preset(self):
+        if getattr(self, 'panels_disabled', False):
+            return
         name = self.v_preset_combo.get()
         if name == "自定义":
             return
@@ -2835,42 +2903,29 @@ class FormatMaster:
                 getattr(self, combo_attr).set("自定义目录")
 
     def _p_audio(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["audio"] = p
-        self._hdr(p, "音频格式转换", "MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转")
-        self._file_sec(p, "audio",
-            [("音频文件","*.mp3 *.wav *.wma *.aac *.flac *.ogg *.m4a *.amr *.opus"),("所有文件","*.*")])
-        s = self._card(p, "输出设置")
-        self.a_fmt  = self._row(s, "目标格式", list(SUPPORTED_AUDIO.keys()), "MP3")
-        self.a_fmt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("audio"))
-        self.a_br   = self._row(s, "比特率", ["128k","192k","256k","320k"], "192k")
-        self.a_sr   = self._row(s, "采样率", ["原始","22050","44100","48000","96000"], "原始")
-        self.a_ch   = self._row(s, "声道",   ["原始","单声道","立体声"], "原始")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.audio_panel.AudioPanel ──
+        # 这里仅作薄代理：实例化 AudioPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_go / _save_panel_prefs / _w / _bar 等）通过 self.a_xxx
+        # 访问仍可工作，指向 AudioContext 中的同一对象。
+        from gui.panels.audio_panel import AudioPanel
+        self._audio_panel = AudioPanel(self.app_ctx, self.content)
+        self._audio_panel.build()
 
-        tk.Label(s, text="音量", bg=D["card"], fg=D["ink"], font=SM).grid(row=4, column=0, sticky="w")
-        self.a_vol = tk.Scale(s, from_=20, to=200, orient=tk.HORIZONTAL,
-                               bg=D["card"], fg=D["ink"], font=BODY,
-                               highlightthickness=0, sliderlength=20,
-                               troughcolor=D["input_bg"], relief="flat")
-        self.a_vol.set(100)
-        self.a_vol.grid(row=4, column=1, sticky="ew", padx=(4, 0))
-
-        # 输出目录（卡片内底部）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=5, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.a_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.a_out_dir_combo.set("与源文件同目录")
-        self.a_out_dir_combo.pack(side=tk.LEFT)
-        self.a_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("audio"), style="secondary")
-        self.a_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.a_out_dir_path = tk.StringVar(value="")
-        self.a_out_dir_label = tk.Label(out_frame, textvariable=self.a_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.a_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.a_pg, self.a_st, self.a_go, self.a_ca, _ = self._bar(p)
-        self.a_go.configure(command=lambda: self._go("audio"))
-        self.a_ca.configure(command=lambda: self._stop("audio"))
+        c = self._audio_panel.context
+        # ── 兼容 shim：self.a_xxx → AudioContext 同一对象引用 ──
+        self.a_fmt          = c.fmt
+        self.a_br           = c.br
+        self.a_sr           = c.sr
+        self.a_ch           = c.ch
+        self.a_vol          = c.vol
+        self.a_out_dir_combo = c.out_dir_combo
+        self.a_out_dir_path  = c.out_dir_path
+        self.a_out_dir_label = c.out_dir_label
+        self.a_out_dir_btn   = c.out_dir_btn
+        self.a_pg            = c.pg
+        self.a_st            = c.st
+        self.a_go            = c.go
+        self.a_ca            = c.ca
 
     def _p_image(self):
         p = tk.Frame(self.content, bg=D["page"])
@@ -2984,6 +3039,8 @@ class FormatMaster:
         self.d_ca.configure(command=lambda: self._stop("doc"))
 
     def _detect(self):
+        if getattr(self, 'panels_disabled', False):
+            return
         data = self.panel_data.get("doc", {})
         files = data.get("files", [])
         if not files:
@@ -3001,58 +3058,48 @@ class FormatMaster:
         self.d_st.configure(text=f"已识别 {src}  ·  {len(files)} 个文件")
 
     def _p_extract(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["extract"] = p
-        self._hdr(p, "从视频提取音频", "将视频中的音轨提取为独立音频文件")
-        self._file_sec(p, "extract",
-            [("视频文件","*.mp4 *.avi *.mkv *.wmv *.mov *.flv *.webm *.ts *.3gp"),("所有文件","*.*")])
-        s = self._card(p, "输出设置")
-        self.e_fmt = self._row(s, "音频格式", ["MP3","AAC","FLAC","WAV"], "MP3")
-        self.e_br  = self._row(s, "比特率", ["128k","192k","256k","320k"], "192k")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.extract_panel.ExtractPanel ──
+        # 这里仅作薄代理：实例化 ExtractPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_go / _save_panel_prefs / _w / _bar 等）通过 self.e_xxx
+        # 访问仍可工作，指向 ExtractContext 中的同一对象。
+        from gui.panels.extract_panel import ExtractPanel
+        self._extract_panel = ExtractPanel(self.app_ctx, self.content)
+        self._extract_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.e_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.e_out_dir_combo.set("与源文件同目录")
-        self.e_out_dir_combo.pack(side=tk.LEFT)
-        self.e_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("extract"), style="secondary")
-        self.e_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.e_out_dir_path = tk.StringVar(value="")
-        self.e_out_dir_label = tk.Label(out_frame, textvariable=self.e_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.e_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.e_pg, self.e_st, self.e_go, self.e_ca, _ = self._bar(p)
-        self.e_go.configure(command=lambda: self._go("extract"))
-        self.e_ca.configure(command=lambda: self._stop("extract"))
+        c = self._extract_panel.context
+        # ── 兼容 shim：self.e_xxx → ExtractContext 同一对象引用 ──
+        self.e_fmt          = c.fmt
+        self.e_br           = c.br
+        self.e_out_dir_combo = c.out_dir_combo
+        self.e_out_dir_path  = c.out_dir_path
+        self.e_out_dir_label = c.out_dir_label
+        self.e_out_dir_btn   = c.out_dir_btn
+        self.e_pg            = c.pg
+        self.e_st            = c.st
+        self.e_go            = c.go
+        self.e_ca            = c.ca
 
     def _p_compress(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["compress"] = p
-        self._hdr(p, "视频压缩", "减小视频文件体积，便于存储和分享")
-        self._file_sec(p, "compress",
-            [("视频文件","*.mp4 *.avi *.mkv *.wmv *.mov *.flv *.webm *.ts *.3gp"),("所有文件","*.*")])
-        s = self._card(p, "压缩设置")
-        self.c_q   = self._row(s, "压缩质量", ["高质量（文件较大）","中等质量（推荐）","低质量（文件最小）"], "中等质量（推荐）", 20)
-        self.c_res = self._row(s, "分辨率", list(RESOLUTIONS.keys()), "原始分辨率", 16)
+        # ── DI 化：构建逻辑已迁移到 gui.panels.compress_panel.CompressPanel ──
+        # 这里仅作薄代理：实例化 CompressPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_save_panel_prefs / _load_panel_prefs / _w / _go 等）
+        # 通过 self.c_xxx 访问仍可工作，指向 CompressContext 中的同一对象。
+        from gui.panels.compress_panel import CompressPanel
+        self._compress_panel = CompressPanel(self.app_ctx, self.content)
+        self._compress_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.c_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.c_out_dir_combo.set("与源文件同目录")
-        self.c_out_dir_combo.pack(side=tk.LEFT)
-        self.c_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("compress"), style="secondary")
-        self.c_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.c_out_dir_path = tk.StringVar(value="")
-        self.c_out_dir_label = tk.Label(out_frame, textvariable=self.c_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.c_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.c_pg, self.c_st, self.c_go, self.c_ca, _ = self._bar(p)
-        self.c_go.configure(command=lambda: self._go("compress"))
-        self.c_ca.configure(command=lambda: self._stop("compress"))
+        c = self._compress_panel.context
+        # ── 兼容 shim：self.c_xxx → CompressContext 同一对象引用 ──
+        self.c_q             = c.q
+        self.c_res           = c.res
+        self.c_out_dir_combo = c.out_dir_combo
+        self.c_out_dir_btn   = c.out_dir_btn
+        self.c_out_dir_path  = c.out_dir_path
+        self.c_out_dir_label = c.out_dir_label
+        self.c_pg            = c.pg
+        self.c_st            = c.st
+        self.c_go            = c.go
+        self.c_ca            = c.ca
 
     # ── 格式检测 ──────────────────────────────
     def _p_detect(self):
@@ -3097,6 +3144,8 @@ class FormatMaster:
             self.detect_canvas.unbind_all("<MouseWheel>")
         self.detect_canvas.bind("<Enter>", _bind_mw)
         self.detect_canvas.bind("<Leave>", _unbind_mw)
+        self.detect_rf.bind("<Enter>", _bind_mw)
+        self.detect_rf.bind("<Leave>", _unbind_mw)
         
         self.detect_pg, self.detect_st, self.detect_go, self.detect_ca, _ = self._bar(p)
         self.detect_go.configure(text="开始检测", command=self._detect_start)
@@ -3238,6 +3287,8 @@ class FormatMaster:
         self.root.after(0, self._show_detect_results, detected, file_info)
 
     def _batch_convert_from_detect(self, detected):
+        if getattr(self, 'panels_disabled', False):
+            return
         task_names = {
             "video": "视频转换", "audio": "音频转换", "image": "图片转换",
             "doc": "文档转换", "pdf": "PDF处理",
@@ -3293,16 +3344,11 @@ class FormatMaster:
                     }
                     task_type = "video"
                 elif key == "audio":
-                    fmt = self.a_fmt.get() if hasattr(self, 'a_fmt') else "MP3"
+                    # DI 委托：参数收集已迁移到 AudioPanel（与 _go 路径一致）
+                    module_params = self._audio_panel.collect_params()
+                    fmt = module_params.get("fmt", "MP3")
                     ext = SUPPORTED_AUDIO.get(fmt, ".mp3")
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {
-                        "fmt": fmt,
-                        "bitrate": self.a_br.get() if hasattr(self, 'a_br') else "192k",
-                        "sample_rate": self.a_sr.get() if hasattr(self, 'a_sr') else "原始",
-                        "channels": self.a_ch.get() if hasattr(self, 'a_ch') else "原始",
-                        "volume": self.a_vol.get() if hasattr(self, 'a_vol') else 100
-                    }
                     task_type = "audio"
                 elif key == "image":
                     fmt = self.i_fmt.get() if hasattr(self, 'i_fmt') else "PNG"
@@ -3542,250 +3588,77 @@ class FormatMaster:
         self._batch_convert_from_detect(detected)
         self.detect_go.configure(text="开始检测", command=self._detect_start)
     def _p_gif(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["gif"] = p
-        self._hdr(p, "视频转GIF", "将视频片段转换为GIF动图，支持自定义分辨率和帧率")
-        self._file_sec(p, "gif",
-            [("视频文件","*.mp4 *.avi *.mkv *.mov *.flv *.webm *.ts"),("所有文件","*.*")])
-        s = self._card(p, "GIF设置")
-        self.gif_w     = self._row(s, "宽度", ["原始","640","480","320","240"], "480")
-        self.gif_fps   = self._row(s, "帧率", ["10","15","20","24","30"], "15")
-        self.gif_start = self._row(s, "开始(秒)", ["0"], "0")
-        self.gif_dur   = self._row(s, "时长(秒)", ["5","10","15","30","60","全部"], "10")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.gif_panel.GifPanel ──
+        # 这里仅作薄代理：实例化 GifPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_save_panel_prefs / _load_panel_prefs / _w / _go 等）
+        # 通过 self.gif_xxx 访问仍可工作，指向 GifContext 中的同一对象。
+        from gui.panels.gif_panel import GifPanel
+        self._gif_panel = GifPanel(self.app_ctx, self.content)
+        self._gif_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.gif_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.gif_out_dir_combo.set("与源文件同目录")
-        self.gif_out_dir_combo.pack(side=tk.LEFT)
-        self.gif_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("gif"), style="secondary")
-        self.gif_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.gif_out_dir_path = tk.StringVar(value="")
-        self.gif_out_dir_label = tk.Label(out_frame, textvariable=self.gif_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.gif_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.gif_pg, self.gif_st, self.gif_go, self.gif_ca, _ = self._bar(p)
-        self.gif_go.configure(command=lambda: self._go("gif"))
-        self.gif_ca.configure(command=lambda: self._stop("gif"))
+        c = self._gif_panel.context
+        # ── 兼容 shim：self.gif_xxx → GifContext 同一对象引用 ──
+        self.gif_w             = c.w
+        self.gif_fps           = c.fps
+        self.gif_start         = c.start
+        self.gif_dur           = c.dur
+        self.gif_out_dir_combo = c.out_dir_combo
+        self.gif_out_dir_btn   = c.out_dir_btn
+        self.gif_out_dir_path  = c.out_dir_path
+        self.gif_out_dir_label = c.out_dir_label
+        self.gif_pg            = c.pg
+        self.gif_st            = c.st
+        self.gif_go            = c.go
+        self.gif_ca            = c.ca
 
     # ── PDF合并拆分 ───────────────────────────
     def _p_pdf(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["pdf"] = p
-        self._hdr(p, "PDF 工具", "合并、拆分、加密、解密、压缩")
-        self._file_sec(p, "pdf", [("PDF文件","*.pdf"),("所有文件","*.*")])
-        s = self._card(p, "操作设置")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.pdf_panel.PdfPanel ──
+        # 这里仅作薄代理：实例化 PdfPanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_save_panel_prefs / _load_panel_prefs / _w / _go /
+        # _show_pwd_history 等通过 self.pdf_xxx 访问的旧代码）无感继续工作，
+        # 指向 PdfContext 中的同一对象。
+        from gui.panels.pdf_panel import PdfPanel
+        self._pdf_panel = PdfPanel(self.app_ctx, self.content)
+        self._pdf_panel.build()
 
-        # 模式切换行
-        mode_row = tk.Frame(s, bg=D["card"])
-        mode_row.pack(fill=tk.X, pady=(0, 12))
-
-        tk.Label(mode_row, text="操作模式", bg=D["card"], fg=D["ink"],
-                  font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_mode = ttk.Combobox(mode_row, values=["合并（多个→一个）", "拆分（一个→多个）",
-                                                        "加密（设置密码）", "解密（移除密码）", "压缩",
-                                                        "添加水印", "添加页码"],
-                                      state="readonly", width=22)
-        self.pdf_mode.set("合并（多个→一个）")
-        self.pdf_mode.pack(side=tk.LEFT)
-        self.pdf_mode.bind("<<ComboboxSelected>>", lambda e: self._pdf_mode_changed())
-
-        # 编辑按钮 - 靠右
-        edit_btn = tk.Button(mode_row, text="✏️ 编辑器", font=(BODY[0], BODY[1], "bold"),
-                             bg=D["accent"], fg=D["ink_inv"], relief="flat",
-                             padx=12, pady=3, cursor="hand2",
-                             activebackground=D["accent_deep"],
-                             command=self._open_pdf_editor)
-        edit_btn.pack(side=tk.RIGHT)
-
-        # ── 拆分设置 ──
-        self.pdf_range_frame = tk.Frame(s, bg=D["card"])
-        tk.Label(self.pdf_range_frame, text="页码范围", bg=D["card"], fg=D["ink"],
-                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_range = tk.Entry(self.pdf_range_frame, font=BODY,
-                                   bg=D["input_bg"], fg=D["ink"],
-                                   insertbackground=D["ink"],
-                                   relief="flat", highlightthickness=1,
-                                   highlightbackground=D["input_bd"],
-                                   highlightcolor=D["accent"])
-        self.pdf_range.insert(0, "1-3,5,7-10")
-        self.pdf_range.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(self.pdf_range_frame, text="示例: 1-3,5,7-10", bg=D["card"],
-                 fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(8, 0))
-        self.pdf_range_frame.pack_forget()
-
-        # ── 加密设置 ──
-        self.pdf_encrypt_frame = tk.Frame(s, bg=D["card"])
-
-        # 密码行
-        pwd_row = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
-        pwd_row.pack(fill=tk.X, pady=(0, 8))
-
-        def make_pwd_field(parent, label, attr_name):
-            f = tk.Frame(parent, bg=D["card"])
-            f.pack(side=tk.LEFT, padx=(0, 16))
-            tk.Label(f, text=label, bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 4))
-            entry = tk.Entry(f, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                             insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                             highlightbackground=D["input_bd"], highlightcolor=D["accent"],
-                             show="•", width=16)
-            entry.pack(side=tk.LEFT)
-            def toggle_show(e=entry):
-                e.configure(show="" if e.cget("show") else "•")
-            tk.Button(f, text="👁", font=("Segoe UI Symbol", 10),
-                      bg=D["card"], relief="flat", cursor="hand2",
-                      activebackground=D["card_alt"], bd=0,
-                      command=toggle_show).pack(side=tk.LEFT, padx=(2, 0))
-            setattr(self, attr_name, entry)
-            return entry
-
-        self.pdf_open_pwd = make_pwd_field(pwd_row, "打开密码", "pdf_open_pwd")
-        self.pdf_owner_pwd = make_pwd_field(pwd_row, "权限密码", "pdf_owner_pwd")
-
-        # 加密方式行
-        method_row = tk.Frame(self.pdf_encrypt_frame, bg=D["card"])
-        method_row.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(method_row, text="加密方式", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_encrypt_method = ttk.Combobox(method_row, values=["AES-256", "AES-128"],
-                                                 state="readonly", width=10)
-        self.pdf_encrypt_method.set("AES-256")
-        self.pdf_encrypt_method.pack(side=tk.LEFT, padx=(8, 16))
-
-        tk.Button(method_row, text="📋 密码历史", font=BODY,
-                  bg=D["card"], fg=D["accent"], relief="flat", cursor="hand2",
-                  activebackground=D["card_alt"],
-                  command=self._show_pwd_history).pack(side=tk.LEFT)
-
-        self.pdf_encrypt_frame.pack_forget()
-
-        # ── 解密设置 ──
-        self.pdf_decrypt_frame = tk.Frame(s, bg=D["card"])
-        tk.Label(self.pdf_decrypt_frame, text="输入密码", bg=D["card"], fg=D["ink"],
-                 font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_decrypt_pwd = tk.Entry(self.pdf_decrypt_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                          insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                          highlightbackground=D["input_bd"], highlightcolor=D["accent"],
-                                          show="•", width=30)
-        self.pdf_decrypt_pwd.pack(side=tk.LEFT)
-        def toggle_decrypt_show():
-            e = self.pdf_decrypt_pwd
-            e.configure(show="" if e.cget("show") else "•")
-        tk.Button(self.pdf_decrypt_frame, text="👁", font=("Segoe UI Symbol", 10),
-                  bg=D["card"], relief="flat", cursor="hand2",
-                  activebackground=D["card_alt"], bd=0,
-                  command=toggle_decrypt_show).pack(side=tk.LEFT, padx=(4, 0))
-        self.pdf_decrypt_frame.pack_forget()
-
-        # ── 压缩设置 ──
-        self.pdf_compress_frame = tk.Frame(s, bg=D["card"])
-        compress_row = tk.Frame(self.pdf_compress_frame, bg=D["card"])
-        compress_row.pack(fill=tk.X)
-        tk.Label(compress_row, text="目标分辨率", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_compress_dpi = ttk.Combobox(compress_row, values=["72dpi", "100dpi", "150dpi", "200dpi"],
-                                               state="readonly", width=10)
-        self.pdf_compress_dpi.set("150dpi")
-        self.pdf_compress_dpi.pack(side=tk.LEFT, padx=(8, 16))
-        tk.Label(compress_row, text="图片质量", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_compress_quality = ttk.Combobox(compress_row, values=["60", "70", "80", "90"],
-                                                  state="readonly", width=8)
-        self.pdf_compress_quality.set("80")
-        self.pdf_compress_quality.pack(side=tk.LEFT, padx=(8, 0))
-        self.pdf_compress_frame.pack_forget()
-
-        # ── 水印设置 ──
-        self.pdf_wm_frame = tk.Frame(s, bg=D["card"])
-        wm_row1 = tk.Frame(self.pdf_wm_frame, bg=D["card"])
-        wm_row1.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(wm_row1, text="水印文字", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
-        self.pdf_wm_text = tk.Entry(wm_row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                     insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                     highlightbackground=D["input_bd"], width=20)
-        self.pdf_wm_text.insert(0, "机密")
-        self.pdf_wm_text.pack(side=tk.LEFT)
-
-        wm_row2 = tk.Frame(self.pdf_wm_frame, bg=D["card"])
-        wm_row2.pack(fill=tk.X, pady=(2, 0))
-        tk.Label(wm_row2, text="位置", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
-        self.pdf_wm_pos = ttk.Combobox(wm_row2, values=["左上角","右上角","左下角","右下角","居中"],
-                                        state="readonly", width=8)
-        self.pdf_wm_pos.set("居中")
-        self.pdf_wm_pos.pack(side=tk.LEFT, padx=(0, 16))
-        tk.Label(wm_row2, text="透明度", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_wm_opacity = ttk.Combobox(wm_row2, values=["0.1","0.2","0.3","0.5","0.7","0.9"],
-                                            state="readonly", width=6)
-        self.pdf_wm_opacity.set("0.3")
-        self.pdf_wm_opacity.pack(side=tk.LEFT, padx=(8, 16))
-        tk.Label(wm_row2, text="旋转", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_wm_rotate = ttk.Combobox(wm_row2, values=["0°","45°","90°"],
-                                           state="readonly", width=6)
-        self.pdf_wm_rotate.set("0°")
-        self.pdf_wm_rotate.pack(side=tk.LEFT, padx=(8, 0))
-        self.pdf_wm_frame.pack_forget()
-
-        # ── 页码设置 ──
-        self.pdf_pn_frame = tk.Frame(s, bg=D["card"])
-        pn_row = tk.Frame(self.pdf_pn_frame, bg=D["card"])
-        pn_row.pack(fill=tk.X)
-        tk.Label(pn_row, text="起始页码", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 6))
-        self.pdf_pn_start = tk.Entry(pn_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                      highlightbackground=D["input_bd"], width=6)
-        self.pdf_pn_start.insert(0, "1")
-        self.pdf_pn_start.pack(side=tk.LEFT, padx=(0, 16))
-        tk.Label(pn_row, text="位置", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_pn_pos = ttk.Combobox(pn_row, values=["底部居中","底部左对齐","底部右对齐","顶部居中"],
-                                        state="readonly", width=12)
-        self.pdf_pn_pos.set("底部居中")
-        self.pdf_pn_pos.pack(side=tk.LEFT, padx=(8, 16))
-        tk.Label(pn_row, text="格式", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT)
-        self.pdf_pn_fmt = tk.Entry(pn_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                    insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                    highlightbackground=D["input_bd"], width=12)
-        self.pdf_pn_fmt.insert(0, "第{n}页")
-        self.pdf_pn_fmt.pack(side=tk.LEFT, padx=(8, 0))
-        tk.Label(pn_row, text="{n}=页码", bg=D["card"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(6, 0))
-        self.pdf_pn_frame.pack_forget()
-
-        # ── 输出目录（卡片内） ──
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.pack(fill=tk.X, padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=BODY).pack(side=tk.LEFT, padx=(0, 8))
-        self.pdf_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.pdf_out_dir_combo.set("与源文件同目录")
-        self.pdf_out_dir_combo.pack(side=tk.LEFT)
-        self.pdf_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("pdf"), style="secondary")
-        self.pdf_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.pdf_out_dir_path = tk.StringVar(value="")
-        self.pdf_out_dir_label = tk.Label(out_frame, textvariable=self.pdf_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.pdf_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.pdf_pg, self.pdf_st, self.pdf_go, self.pdf_ca, _ = self._bar(p)
-        self.pdf_go.configure(command=lambda: self._go("pdf"))
-        self.pdf_ca.configure(command=lambda: self._stop("pdf"))
+        c = self._pdf_panel.context
+        # ── 兼容 shim：self.pdf_xxx → PdfContext 同一对象引用 ──
+        self.pdf_mode             = c.mode
+        self.pdf_range_frame      = c.range_frame
+        self.pdf_range            = c.range
+        self.pdf_encrypt_frame    = c.encrypt_frame
+        self.pdf_open_pwd         = c.open_pwd
+        self.pdf_owner_pwd        = c.owner_pwd
+        self.pdf_encrypt_method   = c.encrypt_method
+        self.pdf_decrypt_frame    = c.decrypt_frame
+        self.pdf_decrypt_pwd      = c.decrypt_pwd
+        self.pdf_compress_frame   = c.compress_frame
+        self.pdf_compress_dpi     = c.compress_dpi
+        self.pdf_compress_quality = c.compress_quality
+        self.pdf_wm_frame         = c.wm_frame
+        self.pdf_wm_text          = c.wm_text
+        self.pdf_wm_pos           = c.wm_pos
+        self.pdf_wm_opacity       = c.wm_opacity
+        self.pdf_wm_rotate        = c.wm_rotate
+        self.pdf_pn_frame         = c.pn_frame
+        self.pdf_pn_start         = c.pn_start
+        self.pdf_pn_pos           = c.pn_pos
+        self.pdf_pn_fmt           = c.pn_fmt
+        self.pdf_out_dir_combo    = c.out_dir_combo
+        self.pdf_out_dir_btn      = c.out_dir_btn
+        self.pdf_out_dir_path     = c.out_dir_path
+        self.pdf_out_dir_label    = c.out_dir_label
+        self.pdf_pg               = c.pg
+        self.pdf_st               = c.st
+        self.pdf_go               = c.go
+        self.pdf_ca               = c.ca
 
     def _pdf_mode_changed(self):
-        self.pdf_range_frame.pack_forget()
-        self.pdf_encrypt_frame.pack_forget()
-        self.pdf_decrypt_frame.pack_forget()
-        self.pdf_compress_frame.pack_forget()
-        self.pdf_wm_frame.pack_forget()
-        self.pdf_pn_frame.pack_forget()
-
-        mode = self.pdf_mode.get()
-        if "拆分" in mode:
-            self.pdf_range_frame.pack(fill=tk.X, pady=(8, 0))
-        elif "加密" in mode:
-            self.pdf_encrypt_frame.pack(fill=tk.X, pady=(8, 0))
-        elif "解密" in mode:
-            self.pdf_decrypt_frame.pack(fill=tk.X, pady=(8, 0))
-        elif "压缩" in mode:
-            self.pdf_compress_frame.pack(fill=tk.X, pady=(8, 0))
-        elif "水印" in mode:
-            self.pdf_wm_frame.pack(fill=tk.X, pady=(8, 0))
-        elif "页码" in mode:
-            self.pdf_pn_frame.pack(fill=tk.X, pady=(8, 0))
+        # ── DI 委托：模式切换逻辑已迁移到 PdfPanel._mode_changed ──
+        # 保留此方法作为兼容入口（_load_panel_prefs 旧路径可能直接调用），
+        # 委托到 PdfPanel._mode_changed。
+        self._pdf_panel._mode_changed()
 
     def _open_pdf_editor(self):
         w = tk.Toplevel(self.root)
@@ -3845,91 +3718,31 @@ class FormatMaster:
 
     # ── 批量重命名 ────────────────────────────
     def _p_rename(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["rename"] = p
-        self._hdr(p, "批量重命名", "统一添加前缀/后缀、序号命名、正则替换等")
-        self._file_sec(p, "rename", [("所有文件","*.*")])
+        # ── DI 化：构建逻辑已迁移到 gui.panels.rename_panel.RenamePanel ──
+        # 这里仅作薄代理：实例化 RenamePanel、构建 UI、回填兼容 shim 别名。
+        # shim 让旧代码（_rn_calc_name / _rn_start / _save_panel_prefs / _w / _bar
+        # 等）通过 self.rn_xxx 访问仍可工作，指向 RenameContext 中的同一对象。
+        from gui.panels.rename_panel import RenamePanel
+        self._rename_panel = RenamePanel(self.app_ctx, self.content)
+        self._rename_panel.build()
 
-        s = self._card(p, "命名规则")
-        tk.Label(s, text="占位符：{n}=序号  {name}=原名  {ext}=扩展名  {date}=日期  {time}=时间  {folder}=文件夹",
-                 bg=D["card"], fg=D["ink_dis"], font=XS).grid(row=0, column=0, columnspan=3,
-                                                              sticky="w", pady=(0, 8))
-        self.rn_pattern = self._row(s, "命名模板", [], "文件_{n:03d}", 22)
-        self.rn_pattern.configure(values=[
-            "文件_{n:03d}",
-            "{name}_压缩",
-            "{name}_{date}",
-            "{name}_{time}",
-            "{folder}_{name}",
-            "{name}_new",
-            "IMG_{n:04d}",
-            "{date}_{name}",
-        ])
-        self.rn_start = self._row(s, "起始序号", ["1","0","100"], "1")
-
-        # Search & Replace
-        opt_card = tk.Frame(s, bg=D["card"])
-        opt_card.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
-        s.columnconfigure(0, weight=1)
-
-        tk.Label(opt_card, text="查找替换", bg=D["card"], fg=D["ink_sec"],
-                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=5, pady=(4, 4))
-
-        sr_row = tk.Frame(opt_card, bg=D["card"])
-        sr_row.pack(fill=tk.X, padx=5)
-        tk.Label(sr_row, text="查找", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.rn_search = tk.Entry(sr_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                  relief="flat", highlightthickness=1,
-                                  highlightbackground=D["input_bd"], width=14)
-        self.rn_search.pack(side=tk.LEFT, padx=(0, 8))
-
-        tk.Label(sr_row, text="替换为", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.rn_replace = tk.Entry(sr_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                   relief="flat", highlightthickness=1,
-                                   highlightbackground=D["input_bd"], width=14)
-        self.rn_replace.pack(side=tk.LEFT, padx=(0, 8))
-
-        tk.Label(sr_row, text="大小写", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(8, 4))
-        self.rn_case = ttk.Combobox(sr_row, values=["不转换", "全大写", "全小写", "首字母大写"],
-                                    state="readonly", width=10)
-        self.rn_case.set("不转换")
-        self.rn_case.pack(side=tk.LEFT)
-
-        # 高级替换（正则）
-        tk.Frame(opt_card, bg=D["border"], height=1).pack(fill=tk.X, padx=5, pady=(8, 6))
-        tk.Label(opt_card, text="高级替换（正则）", bg=D["card"], fg=D["ink_sec"],
-                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=5, pady=(0, 4))
-
-        adv_row = tk.Frame(opt_card, bg=D["card"])
-        adv_row.pack(fill=tk.X, padx=5)
-        tk.Label(adv_row, text="查找内容", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.rn_regex = tk.Entry(adv_row, font=("Consolas", 10), bg=D["input_bg"], fg=D["ink"],
-                                 relief="flat", highlightthickness=1,
-                                 highlightbackground=D["input_bd"], width=14)
-        self.rn_regex.pack(side=tk.LEFT, padx=(4, 8))
-
-        tk.Label(adv_row, text="替换为", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.rn_regex_replace = tk.Entry(adv_row, font=("Consolas", 10), bg=D["input_bg"], fg=D["ink"],
-                                         relief="flat", highlightthickness=1,
-                                         highlightbackground=D["input_bd"], width=14)
-        self.rn_regex_replace.pack(side=tk.LEFT, padx=(4, 8))
-
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.rn_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.rn_out_dir_combo.set("与源文件同目录")
-        self.rn_out_dir_combo.pack(side=tk.LEFT)
-        self.rn_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("rename"), style="secondary")
-        self.rn_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.rn_out_dir_path = tk.StringVar(value="")
-        self.rn_out_dir_label = tk.Label(out_frame, textvariable=self.rn_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.rn_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.rn_pg, self.rn_st, self.rn_go, self.rn_ca, _ = self._bar(p)
-        self.rn_go.configure(text="开始重命名", command=self._rn_start)
-        self.rn_ca.configure(command=lambda: self._stop("rename"))
+        c = self._rename_panel.context
+        # ── 兼容 shim：self.rn_xxx → RenameContext 同一对象引用 ──
+        self.rn_pattern       = c.pattern
+        self.rn_start         = c.start
+        self.rn_search        = c.search
+        self.rn_replace       = c.replace
+        self.rn_case          = c.case
+        self.rn_regex         = c.regex
+        self.rn_regex_replace = c.regex_replace
+        self.rn_out_dir_combo = c.out_dir_combo
+        self.rn_out_dir_path  = c.out_dir_path
+        self.rn_out_dir_label = c.out_dir_label
+        self.rn_out_dir_btn   = c.out_dir_btn
+        self.rn_pg            = c.pg
+        self.rn_st            = c.st
+        self.rn_go            = c.go
+        self.rn_ca            = c.ca
 
     def _rn_calc_name(self, fp, name, ext, idx):
         pattern = self.rn_pattern.get()
@@ -4129,6 +3942,8 @@ class FormatMaster:
             self.dl_dir.set(d)
 
     def _dl_toggle_audio(self):
+        if getattr(self, 'panels_disabled', False):
+            return
         if self.dl_audio_only.get():
             self.dl_audio_fmt.configure(state="readonly")
         else:
@@ -4152,15 +3967,7 @@ class FormatMaster:
                 cookie = self.dl_cookie.get().strip() or None
                 proxy = self.dl_proxy.get().strip() or None
                 dl._last_error = ""
-                fmts, title, _ = dl.get_formats(url)
-                # 检查是否为播放列表
-                playlist = None
-                try:
-                    pl = dl.get_playlist_info(url)
-                    if pl and pl.get("count", 0) > 1:
-                        playlist = pl
-                except Exception:
-                    pass
+                fmts, title, _, playlist = dl.get_formats(url)
                 self.root.after(0, lambda: self._dl_show_formats(fmts, title, playlist))
             except Exception as e:
                 self.root.after(0, lambda e=e: self._dl_parse_fail(str(e)))
@@ -4211,7 +4018,7 @@ class FormatMaster:
         if not path: return
         try:
             with open(path, "r", encoding="utf-8") as f: lines = f.readlines()
-        except:
+        except UnicodeDecodeError:
             with open(path, "r", encoding="gbk") as f: lines = f.readlines()
         added = 0
         for line in lines:
@@ -4345,9 +4152,10 @@ class FormatMaster:
         out_dir = self.dl_dir.get()
         os.makedirs(out_dir, exist_ok=True); self.last_output_dir = out_dir
         self.dl_go.configure(state=tk.DISABLED)
-        self.dl_ca.configure(state=tk.NORMAL)
         self.dl_pg["value"] = 0
-        self.converting = True; self._disable_all_panels(); self._clear_task_list()
+        self.converting = True; self._disable_all_panels()
+        self.dl_ca.configure(state=tk.NORMAL)
+        self._clear_task_list()
         cookie = self.dl_cookie.get().strip() or None
         proxy = self.dl_proxy.get().strip() or None
         speed_str = self.dl_speed.get()
@@ -4742,15 +4550,26 @@ class FormatMaster:
                                           fg=D["ink_dis"], font=BODY)
         self.qr_preview_label.pack(expand=True, pady=(0, 12))
 
-        # 底部按钮
+        # 进度条 + 状态 (统一布局)
+        self.qr_pg, self.qr_st, self.qr_go, self.qr_ca, _ = self._bar(p)
+        self.qr_go.configure(text="生成二维码", command=self._qr_generate)
+        self.qr_ca.configure(command=self._qr_cancel, state=tk.DISABLED)
+        self.qr_status = self.qr_st  # 复用统一状态标签
+
+        # 底部按钮 (保存)
         bottom_bar = tk.Frame(p, bg=D["page"])
-        bottom_bar.pack(fill=tk.X, pady=(12, 0))
+        bottom_bar.pack(fill=tk.X, pady=(8, 0))
         self._btn(bottom_bar, "保存为图片", self._qr_save, "primary", padx=24).pack(side=tk.RIGHT)
-        self._btn(bottom_bar, "生成二维码", self._qr_generate, "primary", padx=24).pack(side=tk.RIGHT, padx=(0, 8))
-        self.qr_status = tk.Label(bottom_bar, text="", bg=D["page"], fg=D["ink_dis"], font=SM)
-        self.qr_status.pack(side=tk.LEFT, padx=(8, 0))
 
         self._qr_photo = None  # 保持引用防止GC
+        self._qr_cancelled = False
+
+    def _qr_cancel(self):
+        """取消二维码生成"""
+        self._qr_cancelled = True
+        self.qr_status.configure(text="已取消")
+        self.qr_go.configure(state=tk.NORMAL)
+        self.qr_ca.configure(state=tk.DISABLED)
 
     # ── 压缩包密码恢复 ──────────────────────────
     def _qr_type_changed(self):
@@ -4804,29 +4623,72 @@ class FormatMaster:
                 messagebox.showwarning("提示", "请输入内容")
                 return
 
-        try:
-            fg = self.qr_fg.get().strip()
-            bg = self.qr_bg.get().strip()
-            size = int(self.qr_size.get())
-            border = int(self.qr_border.get())
+        # 设置进度 & 状态
+        self._qr_cancelled = False
+        self.qr_go.configure(state=tk.DISABLED)
+        self.qr_ca.configure(state=tk.NORMAL)
+        self.qr_pg["value"] = 0
+        self.qr_status.configure(text="正在生成...", fg=D["ink_dis"])
+        self._log_status("开始生成二维码...", "info")
 
-            qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_H,
-                                box_size=10, border=border)
-            qr.add_data(content)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color=fg, back_color=bg).convert("RGB")
-            img = img.resize((size, size), resample=0)
+        def _gen():
+            try:
+                self.qr_pg.configure(value=30)
+                if self._qr_cancelled:
+                    self.root.after(0, self._qr_on_cancelled)
+                    return
 
-            from PIL import ImageTk
-            self._qr_photo = ImageTk.PhotoImage(img)
-            self.qr_preview_label.configure(image=self._qr_photo, text="")
-            self.qr_status.configure(text=f"已生成 {size}×{size} 二维码", fg=D["ok"])
+                fg = self.qr_fg.get().strip()
+                bg = self.qr_bg.get().strip()
+                size = int(self.qr_size.get())
+                border = int(self.qr_border.get())
 
-            # 保存到临时变量供复制/保存使用
-            self._qr_img = img
+                qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_H,
+                                    box_size=10, border=border)
+                qr.add_data(content)
+                qr.make(fit=True)
 
-        except Exception as e:
-            messagebox.showerror("生成失败", str(e))
+                self.root.after(0, lambda: self.qr_pg.configure(value=70))
+                if self._qr_cancelled:
+                    self.root.after(0, self._qr_on_cancelled)
+                    return
+
+                img = qr.make_image(fill_color=fg, back_color=bg).convert("RGB")
+                img = img.resize((size, size), resample=0)
+
+                def _finish():
+                    try:
+                        from PIL import ImageTk
+                        self._qr_photo = ImageTk.PhotoImage(img)
+                        self.qr_preview_label.configure(image=self._qr_photo, text="")
+                        self.qr_pg.configure(value=100)
+                        self.qr_status.configure(text=f"已生成 {size}×{size} 二维码", fg=D["ok"])
+                        self._log_status(f"二维码已生成 {size}×{size}", "success")
+                        self.qr_go.configure(state=tk.NORMAL)
+                        self.qr_ca.configure(state=tk.DISABLED)
+                        self._qr_img = img
+                    except Exception as e:
+                        self.root.after(0, lambda: self._qr_on_error(e))
+
+                self.root.after(0, _finish)
+
+            except Exception as e:
+                self.root.after(0, lambda: self._qr_on_error(e))
+
+        threading.Thread(target=_gen, daemon=True).start()
+
+    def _qr_on_cancelled(self):
+        self.qr_go.configure(state=tk.NORMAL)
+        self.qr_ca.configure(state=tk.DISABLED)
+        self.qr_status.configure(text="已取消", fg=D["ink_dis"])
+        self.qr_pg.configure(value=0)
+
+    def _qr_on_error(self, e):
+        self.qr_go.configure(state=tk.NORMAL)
+        self.qr_ca.configure(state=tk.DISABLED)
+        self.qr_status.configure(text="生成失败", fg=D["err"])
+        self.qr_pg.configure(value=0)
+        messagebox.showerror("生成失败", str(e))
 
     def _qr_save(self):
         if not hasattr(self, '_qr_img') or self._qr_img is None:
@@ -5040,7 +4902,7 @@ class FormatMaster:
         self._save_last_dir("m3u8", path)
         try:
             with open(path, "r", encoding="utf-8") as f: lines = f.readlines()
-        except:
+        except UnicodeDecodeError:
             with open(path, "r", encoding="gbk") as f: lines = f.readlines()
         added = 0
         for line in lines:
@@ -5209,9 +5071,10 @@ class FormatMaster:
         out_dir = self.m3u8_out_dir.get()
         os.makedirs(out_dir, exist_ok=True); self.last_output_dir = out_dir
         self.m3u8_go.configure(state=tk.DISABLED)
-        self.m3u8_ca.configure(state=tk.NORMAL)
         self.m3u8_pg["value"] = 0
-        self.converting = True; self._disable_all_panels(); self._clear_task_list()
+        self.converting = True; self._disable_all_panels()
+        self.m3u8_ca.configure(state=tk.NORMAL)
+        self._clear_task_list()
         threads = int(self.m3u8_threads.get())
         output_format = self.m3u8_format.get()
         speed_str = self.m3u8_speed.get()
@@ -5250,15 +5113,159 @@ class FormatMaster:
     #  FFmpeg
     # ══════════════════════════════════════════
     def _check_ffmpeg(self):
-        def cb(ok, _):
-            self.root.after(0, lambda: self._ff(ok))
-        self.ffmpeg_mgr.download_async(cb)
+        def cb(ok, msg=""):
+            try:
+                self.root.after(0, lambda: self._ff(ok, msg))
+            except RuntimeError:
+                # root already destroyed (测试/退出时)
+                pass
+        try:
+            self.ffmpeg_mgr.download_async(cb)
+        except Exception as e:
+            _debug_log(f"FFmpeg 检测启动失败: {e}")
+            self._log_status("FFmpeg 检测启动失败，视频相关功能可能不可用", "warning")
 
-    def _ff(self, ok):
+    def _ff(self, ok, msg=""):
         if ok or self.ffmpeg_mgr.is_available():
-            self.ff_lbl.configure(text="FFmpeg · 已就绪 ✓", fg=D["ok"])
+            self.ff_lbl.configure(text="FFmpeg · 已就绪 ✓", fg=D["ok"], cursor="")
+            self.ff_lbl.unbind("<Button-1>")
         else:
-            self.ff_lbl.configure(text="FFmpeg · 未安装 ✗", fg=D["err"])
+            # 失败时 label 变红、可点击 → 弹详情对话框（含重试 + 错误详情）
+            self.ff_lbl.configure(text="FFmpeg · 未安装 ✗ 点击查看详情", fg=D["err"], cursor="hand2")
+            self.ff_lbl.bind("<Button-1>", lambda e: self._show_ffmpeg_error_dialog())
+
+    def _show_ffmpeg_error_dialog(self):
+        """FFmpeg 下载失败详情对话框：显示完整错误 + 重试/手动选择/打开网页。"""
+        # 避免重复弹出
+        if getattr(self, '_ffmpeg_err_win', None) is not None:
+            try:
+                if self._ffmpeg_err_win.winfo_exists():
+                    self._ffmpeg_err_win.lift()
+                    self._ffmpeg_err_win.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        win = tk.Toplevel(self.root)
+        win.title("FFmpeg 下载失败")
+        win.configure(bg=D["page"])
+        win.transient(self.root)
+        win.grab_set()
+
+        # 标题区
+        header = tk.Frame(win, bg=D["page"])
+        header.pack(fill=tk.X, padx=20, pady=(16, 8))
+        tk.Label(header, text="⚠ FFmpeg 自动下载失败", bg=D["page"],
+                 fg=D["err"], font=(FT, 13, "bold")).pack(anchor=tk.W)
+        tk.Label(header, text="视频/音频转换需要 FFmpeg。请选择以下任一方式：",
+                 bg=D["page"], fg=D["ink_dis"], font=SM, wraplength=420, justify=tk.LEFT).pack(anchor=tk.W, pady=(4, 0))
+
+        # 错误详情（只读 Text，不截断）
+        detail_frame = tk.Frame(win, bg=D["page"])
+        detail_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(8, 8))
+        tk.Label(detail_frame, text="错误详情：", bg=D["page"], fg=D["ink"],
+                 font=SM).pack(anchor=tk.W)
+        detail_text = tk.Text(detail_frame, height=10, width=56, wrap=tk.WORD,
+                              bg=D["input_bg"], fg=D["ink"], font=XS,
+                              relief="flat", bd=0, highlightthickness=1,
+                              highlightbackground=D["border"],
+                              highlightcolor=D["accent"], padx=8, pady=6)
+        detail_text.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+
+        errors = getattr(self.ffmpeg_mgr, 'last_errors', [])
+        if not errors:
+            detail_text.insert(tk.END, "（无详细错误信息，可能是检测启动失败）")
+        else:
+            phase_names = {"download": "下载", "extract": "解压", "verify": "验证"}
+            for i, err in enumerate(errors, 1):
+                phase = phase_names.get(err.get("phase", ""), err.get("phase", ""))
+                detail_text.insert(tk.END, f"[{i}] 阶段：{phase}\n", "phase")
+                if err.get("url"):
+                    detail_text.insert(tk.END, f"    源：{err['url']}\n", "url")
+                if err.get("type"):
+                    detail_text.insert(tk.END, f"    异常：{err['type']}\n", "type")
+                detail_text.insert(tk.END, f"    详情：{err.get('msg', '')}\n\n", "msg")
+        detail_text.configure(state=tk.DISABLED)
+        detail_text.tag_configure("phase", foreground=D["accent"], font=(FT, 9, "bold"))
+        detail_text.tag_configure("url", foreground=D["ink_dis"])
+        detail_text.tag_configure("type", foreground=D["warn"] if "warn" in D else D["err"])
+        detail_text.tag_configure("msg", foreground=D["ink"])
+
+        # 按钮区
+        btn_frame = tk.Frame(win, bg=D["page"])
+        btn_frame.pack(fill=tk.X, padx=20, pady=(4, 16))
+
+        def _close():
+            self._ffmpeg_err_win = None
+            win.destroy()
+
+        def _retry():
+            _close()
+            self._check_ffmpeg()
+
+        self._btn(btn_frame, "打开下载页", self._open_ffmpeg_download_page,
+                  "ghost", padx=10).pack(side=tk.LEFT)
+        self._btn(btn_frame, "手动选择 ffmpeg.exe", self._manual_select_ffmpeg,
+                  "secondary", padx=10).pack(side=tk.LEFT, padx=(8, 0))
+        self._btn(btn_frame, "关闭", _close, "ghost", padx=10).pack(side=tk.RIGHT)
+        self._btn(btn_frame, "重试下载", _retry, "primary", padx=10).pack(side=tk.RIGHT, padx=(0, 8))
+
+        win.protocol("WM_DELETE_WINDOW", _close)
+        self._ffmpeg_err_win = win
+
+        # 居中到主窗口（先 update 拿到尺寸，再计算位置）
+        win.update_idletasks()
+        ww = win.winfo_width()
+        wh = win.winfo_height()
+        if ww < 480: ww = 480
+        if wh < 420: wh = 420
+        win.geometry(f"{ww}x{wh}")
+        try:
+            px = self.root.winfo_x()
+            py = self.root.winfo_y()
+            pw = self.root.winfo_width()
+            ph = self.root.winfo_height()
+            x = px + (pw - ww) // 2
+            y = py + (ph - wh) // 2
+            win.geometry(f"+{x}+{y}")
+        except Exception:
+            pass  # 主窗口未绘制时退化为默认位置
+
+    def _manual_select_ffmpeg(self):
+        """让用户手动选择已下载的 ffmpeg.exe，复制到 bin 目录后重新检测。"""
+        src = filedialog.askopenfilename(
+            title="选择 ffmpeg.exe",
+            filetypes=[("FFmpeg 可执行文件", "*.exe"), ("所有文件", "*.*")],
+        )
+        if not src:
+            return
+        try:
+            from utils.config import get_bin_dir
+            import shutil
+            bin_dir = get_bin_dir()
+            os.makedirs(bin_dir, exist_ok=True)
+            dst = os.path.join(bin_dir, "ffmpeg.exe")
+            shutil.copy2(src, dst)
+            self._log_status(f"已复制 ffmpeg.exe 到 {bin_dir}", "info")
+            # 关闭错误对话框（若存在）并重新检测
+            if getattr(self, '_ffmpeg_err_win', None) is not None:
+                try:
+                    self._ffmpeg_err_win.destroy()
+                except tk.TclError:
+                    pass
+                self._ffmpeg_err_win = None
+            self._check_ffmpeg()
+        except Exception as e:
+            messagebox.showerror("复制失败", f"无法复制 ffmpeg.exe：\n{e}")
+
+    def _open_ffmpeg_download_page(self):
+        """打开浏览器到 FFmpeg 下载页。"""
+        from utils.ffmpeg_manager import SOURCES
+        try:
+            webbrowser.open(SOURCES[0])
+        except Exception as e:
+            _debug_log(f"打开浏览器失败: {e}")
+            messagebox.showinfo("下载地址", f"无法自动打开浏览器，请手动访问：\n{SOURCES[0]}")
 
     # ══════════════════════════════════════════
     #  yt-dlp
@@ -5276,10 +5283,14 @@ class FormatMaster:
                     r = subprocess.run([exe_path, "--version"], capture_output=True, text=True, timeout=5,
                                        creationflags=0x08000000)
                     cur = r.stdout.strip() if r.returncode == 0 else "?"
-                except Exception:
+                except Exception as e:
+                    _debug_log(f"yt-dlp 版本检测失败: {e}")
                     cur = "?"
-                self.root.after(0, lambda: self.yt_lbl.configure(
-                    text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
+                try:
+                    self.root.after(0, lambda: self.yt_lbl.configure(
+                        text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
+                except RuntimeError:
+                    pass
                 self._yt_checking = False
                 return
 
@@ -5292,13 +5303,28 @@ class FormatMaster:
 
             if not cur:
                 # 未安装，自动下载便携版
-                self.root.after(0, lambda: self.yt_lbl.configure(
-                    text="yt-dlp · 自动安装中…", fg=D["warn"]))
-                tool_downloader.download_ytdlp_async(callback=self._on_ytdlp_installed)
-                return
+                try:
+                    self.root.after(0, lambda: self.yt_lbl.configure(
+                        text="yt-dlp · 自动安装中…", fg=D["warn"]))
+                except RuntimeError:
+                    pass
+                try:
+                    tool_downloader.download_ytdlp_async(callback=self._on_ytdlp_installed)
+                except Exception as e:
+                    _debug_log(f"yt-dlp 自动安装启动失败: {e}")
+                    try:
+                        self.root.after(0, lambda: self.yt_lbl.configure(
+                            text="yt-dlp · 安装失败", fg=D["err"]))
+                    except RuntimeError:
+                        pass
+                    self._yt_checking = False
+                return  # 异步下载已启动或失败，由回调更新状态
 
-            self.root.after(0, lambda: self.yt_lbl.configure(
-                text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
+            try:
+                self.root.after(0, lambda: self.yt_lbl.configure(
+                    text=f"yt-dlp · {cur}", fg=D["ink_dis"]))
+            except RuntimeError:
+                pass
             self._yt_checking = False
         threading.Thread(target=check, daemon=True).start()
 
@@ -5310,20 +5336,34 @@ class FormatMaster:
                 import subprocess, sys
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                self.root.after(0, self._check_ytdlp)
+                try:
+                    self.root.after(0, self._check_ytdlp)
+                except RuntimeError:
+                    pass
             except Exception:
-                self.root.after(0, lambda: self.yt_lbl.configure(
-                    text="yt-dlp · 更新失败", fg=D["err"]))
+                try:
+                    self.root.after(0, lambda: self.yt_lbl.configure(
+                        text="yt-dlp · 更新失败", fg=D["err"]))
+                except RuntimeError:
+                    pass
         threading.Thread(target=upgrade, daemon=True).start()
 
     def _on_ytdlp_installed(self, ok, msg):
         def _update():
-            if ok:
-                self.yt_lbl.configure(text=f"yt-dlp · 已安装", fg=D["ok"])
-            else:
-                self.yt_lbl.configure(text="yt-dlp · 安装失败", fg=D["err"])
-            self._yt_checking = False
-        self.root.after(0, _update)
+            try:
+                if ok:
+                    self.yt_lbl.configure(text=f"yt-dlp · 已安装", fg=D["ok"])
+                    self._log_status("yt-dlp 安装成功", "success")
+                else:
+                    self.yt_lbl.configure(text="yt-dlp · 安装失败", fg=D["err"])
+                    self._log_status(f"yt-dlp 安装失败: {msg}", "warning")
+                self._yt_checking = False
+            except RuntimeError:
+                pass
+        try:
+            self.root.after(0, _update)
+        except RuntimeError:
+            pass
 
     def _show_ytdlp_update(self, latest):
         try:
@@ -5357,6 +5397,8 @@ class FormatMaster:
             "crop":        (self.crp_pg, self.crp_st, self.crp_go, self.crp_ca),
             "m3u8":        (self.m3u8_pg, self.m3u8_st, self.m3u8_go, self.m3u8_ca),
             "ocr":         (self.ocr_pg, self.ocr_st, self.ocr_go, self.ocr_ca),
+            "detect":      (self.detect_pg, self.detect_st, self.detect_go, self.detect_ca),
+            "qrcode":      (self.qr_pg, self.qr_st, self.qr_go, self.qr_ca),
         }
         pg, st, go, ca = m.get(t, (None, None, None, None))
         return {"pg": pg, "st": st, "go": go, "ca": ca}
@@ -5385,43 +5427,81 @@ class FormatMaster:
         if path and os.path.exists(path):
             os.startfile(path)
     
+    def _show_conversion_overlay(self):
+        """Overlay disabled - only panel inputs are locked during conversion."""
+        pass
+
+    def _hide_conversion_overlay(self):
+        """Overlay disabled - only panel inputs are unlocked after conversion."""
+        pass
+
     def _disable_all_panels(self, disable=True):
         self.panels_disabled = disable
-        
+
         for panel_name in self.panels:
             self._disable_panel_inputs(panel_name, disable)
-        
+
         for k, (row, ind, badge, lbl) in self.nav.items():
             row.configure(cursor="arrow" if disable else "hand2")
             lbl.configure(fg=D["ink_dis"] if disable else D["ink_sec"])
-    
+
+        # Disable/enable theme toggle and about button
+        if hasattr(self, '_theme_btn'):
+            self._theme_btn.configure(state=tk.DISABLED if disable else tk.NORMAL)
+        if hasattr(self, '_about_lbl'):
+            self._about_lbl.configure(state=tk.DISABLED if disable else tk.NORMAL)
+
+        # Disable/enable bottom panel buttons
+        if hasattr(self, 'task_clear_btn'):
+            self.task_clear_btn.configure(state=tk.DISABLED if disable else tk.NORMAL)
+            self.task_clear_btn.configure(cursor="arrow" if disable else "hand2")
+        if hasattr(self, 'status_clear_btn'):
+            self.status_clear_btn.configure(state=tk.DISABLED if disable else tk.NORMAL)
+            self.status_clear_btn.configure(cursor="arrow" if disable else "hand2")
+        if hasattr(self, 'history_clear_btn'):
+            self.history_clear_btn.configure(state=tk.DISABLED if disable else tk.NORMAL)
+            self.history_clear_btn.configure(cursor="arrow" if disable else "hand2")
+
+        # Disable/enable drag and drop
+        if hasattr(self, '_drop_handler') and self._drop_handler:
+            self._drop_handler.set_enabled(not disable)
+
     def _disable_panel_inputs(self, panel_name, disable=True):
         state = tk.DISABLED if disable else tk.NORMAL
-        
+
         panel = self.panels.get(panel_name)
         if panel:
             self._disable_widget_recursive(panel, disable)
-    
+
     def _disable_widget_recursive(self, parent, disable=True):
-        state = tk.DISABLED if disable else tk.NORMAL
-        
+        state_disabled = "disabled" if disable else "readonly"
+        state_tk_disabled = tk.DISABLED if disable else tk.NORMAL
+
         for child in parent.winfo_children():
             try:
                 widget_type = child.winfo_class()
-                
-                if widget_type in ["TCombobox", "Entry", "Spinbox"]:
-                    child.configure(state=state)
+
+                if widget_type == "TCombobox":
+                    child.configure(state=state_disabled)
+                elif widget_type in ["Entry", "Spinbox"]:
+                    child.configure(state=state_tk_disabled)
                 elif widget_type == "Checkbutton":
-                    child.configure(state=state)
+                    child.configure(state=state_tk_disabled)
                 elif widget_type in ["Button", "TButton"]:
-                    child.configure(state=state)
-                
+                    child.configure(state=state_tk_disabled)
+                elif widget_type == "Scale":
+                    child.configure(state=state_tk_disabled)
+                elif widget_type == "Listbox":
+                    child.configure(state=state_tk_disabled)
+                elif widget_type == "Radiobutton":
+                    child.configure(state=state_tk_disabled)
+                elif widget_type == "Text":
+                    child.configure(state=tk.DISABLED if disable else tk.NORMAL)
+
                 if hasattr(child, 'winfo_children'):
                     self._disable_widget_recursive(child, disable)
             except Exception:
-                pass
-
-    
+                _debug_log(f"禁用控件时出错: {widget_type}")
 
     def _go(self, t):
         files = self.panel_data.get(t, {}).get("files", [])
@@ -5456,17 +5536,8 @@ class FormatMaster:
         self._clear_task_list()
         
         if t == "video":
-            video_params = {
-                "fmt": self.v_fmt.get(),
-                "codec": self.v_codec.get(),
-                "preset": self.v_preset.get(),
-                "res": self.v_res.get(),
-                "fps": self.v_fps.get(),
-                "br": self.v_br.get(),
-                "copy_mode": self.v_copy_mode.get() if hasattr(self, 'v_copy_mode') else False,
-                "out_dir_combo": self.v_out_dir_combo.get(),
-                "out_dir_path": self.v_out_dir_path.get() if hasattr(self, 'v_out_dir_path') else ""
-            }
+            # DI 委托：参数收集已迁移到 VideoPanel
+            video_params = self._video_panel.collect_params()
             
             for fp in files:
                 fn = os.path.basename(fp)
@@ -5524,16 +5595,7 @@ class FormatMaster:
                     while os.path.exists(f"{base}_{counter}{ext}"):
                         counter += 1
                     output_path = f"{base}_{counter}{ext}"
-                module_params = {
-                    "mode": mode,
-                    "range": self.pdf_range.get() if hasattr(self, 'pdf_range') else "",
-                    "open_pwd": self.pdf_open_pwd.get() if hasattr(self, 'pdf_open_pwd') else "",
-                    "owner_pwd": self.pdf_owner_pwd.get() if hasattr(self, 'pdf_owner_pwd') else "",
-                    "encrypt_method": self.pdf_encrypt_method.get() if hasattr(self, 'pdf_encrypt_method') else "",
-                    "decrypt_pwd": self.pdf_decrypt_pwd.get() if hasattr(self, 'pdf_decrypt_pwd') else "",
-                    "compress_dpi": self.pdf_compress_dpi.get() if hasattr(self, 'pdf_compress_dpi') else "",
-                    "compress_quality": self.pdf_compress_quality.get() if hasattr(self, 'pdf_compress_quality') else ""
-                }
+                module_params = self._pdf_panel.collect_params()
                 task_name = f"PDF合并 - {len(files)}个文件"
                 task_id = self._add_task(task_name, "pdf", {
                     "file_path": "",
@@ -5560,16 +5622,8 @@ class FormatMaster:
                         if custom_path:
                             od = custom_path
                 self.last_output_dir = od
-                case_map = {"不转换": "none", "全大写": "upper", "全小写": "lower", "首字母大写": "title"}
-                module_params = {
-                    "pattern": self.rn_pattern.get(),
-                    "start": self.rn_start.get(),
-                    "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
-                    "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
-                    "case": case_map.get(self.rn_case.get() if hasattr(self, 'rn_case') else "不转换", "none"),
-                    "regex_pattern": self.rn_regex.get() if hasattr(self, 'rn_regex') else "",
-                    "regex_replace": self.rn_regex_replace.get() if hasattr(self, 'rn_regex_replace') else "",
-                }
+                # DI 委托：参数收集已迁移到 RenamePanel
+                module_params = self._rename_panel.collect_params()
                 task_name = f"批量重命名 - {len(files)}个文件"
                 task_id = self._add_task(task_name, "rename", {
                     "file_path": "",
@@ -5643,18 +5697,11 @@ class FormatMaster:
                 output_path = ""
                 
                 if t == "audio":
-                    fmt = self.a_fmt.get()
-                    ext = SUPPORTED_AUDIO[fmt]
+                    # DI 委托：参数收集已迁移到 AudioPanel
+                    module_params = self._audio_panel.collect_params()
+                    fmt = module_params.get("fmt", "MP3")
+                    ext = SUPPORTED_AUDIO.get(fmt, ".mp3")
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {
-                        "fmt": fmt,
-                        "codec": {"MP3":"libmp3lame","AAC":"aac","FLAC":"flac","WAV":"pcm_s16le",
-                                  "WMA":"wmav2","OGG":"libvorbis","M4A":"aac","AMR":"libopencore_amrnb","OPUS":"libopus"}.get(fmt),
-                        "bitrate": self.a_br.get(),
-                        "sample_rate": self.a_sr.get(),
-                        "channels": self.a_ch.get(),
-                        "volume": self.a_vol.get()
-                    }
                 elif t == "image":
                     ext = SUPPORTED_IMAGE[self.i_fmt.get()]
                     output_path = os.path.join(od, nm + ext)
@@ -5674,21 +5721,17 @@ class FormatMaster:
                     output_path = os.path.join(od, nm + ext)
                     module_params = {"target": tgt}
                 elif t == "extract":
-                    fmt = self.e_fmt.get()
-                    ext = {"MP3":".mp3","AAC":".aac","FLAC":".flac","WAV":".wav"}[fmt]
+                    # DI 委托：参数收集已迁移到 ExtractPanel
+                    module_params = self._extract_panel.collect_params()
+                    fmt = module_params.get("fmt", "MP3")
+                    ext = {"MP3": ".mp3", "AAC": ".aac", "FLAC": ".flac", "WAV": ".wav"}.get(fmt, ".mp3")
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {"fmt": fmt, "bitrate": self.e_br.get()}
                 elif t == "compress":
                     output_path = os.path.join(od, nm + "_compressed.mp4")
-                    module_params = {"quality": self.c_q.get(), "resolution": self.c_res.get()}
+                    module_params = self._compress_panel.collect_params()
                 elif t == "gif":
                     output_path = os.path.join(od, nm + ".gif")
-                    module_params = {
-                        "width": self.gif_w.get(),
-                        "fps": self.gif_fps.get(),
-                        "start": self.gif_start.get(),
-                        "duration": self.gif_dur.get()
-                    }
+                    module_params = self._gif_panel.collect_params()
                 elif t == "pdf":
                     mode = self.pdf_mode.get()
                     if "合并" in mode:
@@ -5709,39 +5752,15 @@ class FormatMaster:
                         output_path = os.path.join(od, nm + "_numbered.pdf")
                     else:
                         output_path = os.path.join(od, nm + ".pdf")
-                    module_params = {
-                        "mode": mode,
-                        "range": self.pdf_range.get() if hasattr(self, 'pdf_range') else "",
-                        "open_pwd": self.pdf_open_pwd.get() if hasattr(self, 'pdf_open_pwd') else "",
-                        "owner_pwd": self.pdf_owner_pwd.get() if hasattr(self, 'pdf_owner_pwd') else "",
-                        "encrypt_method": self.pdf_encrypt_method.get() if hasattr(self, 'pdf_encrypt_method') else "",
-                        "decrypt_pwd": self.pdf_decrypt_pwd.get() if hasattr(self, 'pdf_decrypt_pwd') else "",
-                        "compress_dpi": self.pdf_compress_dpi.get() if hasattr(self, 'pdf_compress_dpi') else "",
-                        "compress_quality": self.pdf_compress_quality.get() if hasattr(self, 'pdf_compress_quality') else "",
-                        "wm_text": self.pdf_wm_text.get() if hasattr(self, 'pdf_wm_text') else "",
-                        "wm_pos": self.pdf_wm_pos.get() if hasattr(self, 'pdf_wm_pos') else "居中",
-                        "wm_opacity": float(self.pdf_wm_opacity.get().replace("°","")) if hasattr(self, 'pdf_wm_opacity') else 0.3,
-                        "wm_rotate": int(self.pdf_wm_rotate.get().replace("°","")) if hasattr(self, 'pdf_wm_rotate') else 0,
-                        "pn_start": int(self.pdf_pn_start.get()) if hasattr(self, 'pdf_pn_start') and self.pdf_pn_start.get().isdigit() else 1,
-                        "pn_pos": self.pdf_pn_pos.get() if hasattr(self, 'pdf_pn_pos') else "底部居中",
-                        "pn_fmt": self.pdf_pn_fmt.get() if hasattr(self, 'pdf_pn_fmt') else "{n}",
-                    }
+                    module_params = self._pdf_panel.collect_params()
                 elif t == "compress_img":
                     ext = os.path.splitext(fn)[1]
                     output_path = os.path.join(od, nm + "_compressed" + ext)
                     module_params = {"quality": self.ci_q.get(), "size": self.ci_sz.get()}
                 elif t == "rename":
                     output_path = od
-                    case_map = {"不转换": "none", "全大写": "upper", "全小写": "lower", "首字母大写": "title"}
-                    module_params = {
-                        "pattern": self.rn_pattern.get(),
-                        "start": self.rn_start.get(),
-                        "search": self.rn_search.get() if hasattr(self, 'rn_search') else "",
-                        "replace": self.rn_replace.get() if hasattr(self, 'rn_replace') else "",
-                        "case": case_map.get(self.rn_case.get() if hasattr(self, 'rn_case') else "不转换", "none"),
-                        "regex_pattern": self.rn_regex.get() if hasattr(self, 'rn_regex') else "",
-                        "regex_replace": self.rn_regex_replace.get() if hasattr(self, 'rn_regex_replace') else "",
-                    }
+                    # DI 委托：参数收集已迁移到 RenamePanel（与 _go 路径一致）
+                    module_params = self._rename_panel.collect_params()
                 elif t == "ocr":
                     od = os.path.dirname(fp)
                     if hasattr(self, 'ocr_out_dir_combo') and self.ocr_out_dir_combo.get() == "自定义目录" and self.ocr_out_dir_path.get():
@@ -5785,7 +5804,7 @@ class FormatMaster:
         self.converting = False
         while not self.task_queue.empty():
             try: self.task_queue.get_nowait()
-            except: break
+            except queue.Empty: break
         self.active_task_count = 0
         if t in ("video","compress","extract","gif"): self.video_conv.cancel()
         elif t == "audio":  self.audio_conv.cancel()
@@ -5793,15 +5812,35 @@ class FormatMaster:
         elif t == "doc":    self.doc_conv.cancel()
         elif t == "download" and hasattr(self, 'dl_obj'): self.dl_obj.cancel()
         elif t == "m3u8": self.m3u8_dl.cancel()
+        elif t == "detect":
+            self.detecting = False
+            if hasattr(self, 'detect_go') and self.detect_go:
+                self.detect_go.configure(state=tk.NORMAL, text="开始检测",
+                                        command=self._detect_start)
+            if hasattr(self, 'detect_ca') and self.detect_ca:
+                self.detect_ca.configure(state=tk.DISABLED)
+            return
+        elif t == "qrcode":
+            self._qr_cancelled = True
+            if hasattr(self, 'qr_go') and self.qr_go:
+                self.qr_go.configure(state=tk.NORMAL)
+            if hasattr(self, 'qr_ca') and self.qr_ca:
+                self.qr_ca.configure(state=tk.DISABLED)
+            if hasattr(self, 'qr_status') and self.qr_status:
+                self.qr_status.configure(text="已取消")
+            if hasattr(self, 'qr_pg') and self.qr_pg:
+                self.qr_pg.configure(value=0)
+            return
+
         for task in self.tasks:
             if task["status"] in ("waiting", "processing"):
                 self._update_task_status(task["id"], "failed", 0)
         self._disable_all_panels(disable=False)
         w = self._w(t)
-        if w and "pg" in w: w["pg"].configure(value=0)
-        if w and "st" in w: w["st"].configure(text="已取消")
-        if w and "go" in w: w["go"].configure(state=tk.NORMAL)
-        if w and "ca" in w: w["ca"].configure(state=tk.DISABLED)
+        if w and w.get("pg"): w["pg"].configure(value=0)
+        if w and w.get("st"): w["st"].configure(text="已取消")
+        if w and w.get("go") and w["go"] is not None: w["go"].configure(state=tk.NORMAL)
+        if w and w.get("ca") and w["ca"] is not None: w["ca"].configure(state=tk.DISABLED)
 
     def _on_close(self):
         if hasattr(self, 'current_tab') and self.current_tab.get():
