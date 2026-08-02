@@ -138,7 +138,7 @@ def batch_rename(file_list, pattern, start_num=1, progress_cb=None):
         fmt = pattern.replace("{name}", name).replace("{ext}", ext).replace("{date}", date_str)
         # 处理 {n:03d} 这种格式
         def _fmt_n(m):
-            spec = m.group(1) if m.group(1) else ""
+            spec = m.group(1).lstrip(":") if m.group(1) else ""
             if spec:
                 return format(n, spec)
             return str(n)

@@ -3956,7 +3956,8 @@ class FormatMaster:
         new_name = pattern.replace("{name}", name).replace("{ext}", ext)
         new_name = new_name.replace("{date}", date_str).replace("{time}", time_str).replace("{folder}", folder_str)
         def _fmt_n(m):
-            spec = m.group(1) if m.group(1) else ""
+            # 捕获组形如 ":04d"，format() 需要不含前导冒号的 format_spec（"04d"）
+            spec = m.group(1)[1:] if m.group(1) else ""
             return format(n, spec) if spec else str(n)
         new_name = re.sub(r'\{n(:.*?)?\}', _fmt_n, new_name)
         new_name = new_name + ext if not new_name.endswith(ext) else new_name
