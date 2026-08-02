@@ -1920,10 +1920,8 @@ class FormatMaster:
             # DI 委托：偏好收集已迁移到 ImagePanel
             prefs = self._image_panel.collect_prefs()
         elif panel == "doc":
-            prefs = {
-                "out_dir_combo": self.d_out_dir_combo.get() if hasattr(self, 'd_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.d_out_dir_path.get() if hasattr(self, 'd_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 DocPanel
+            prefs = self._doc_panel.collect_prefs()
         elif panel == "extract":
             # DI 委托：偏好收集已迁移到 ExtractPanel
             prefs = self._extract_panel.collect_prefs()
@@ -1943,46 +1941,23 @@ class FormatMaster:
             # DI 委托：偏好收集已迁移到 RenamePanel
             prefs = self._rename_panel.collect_prefs()
         elif panel == "crop":
-            prefs = {
-                "preset": self.crp_preset.get(),
-                "mode": self.crp_mode.get(),
-                "out_dir_combo": self.crp_out_dir_combo.get() if hasattr(self, 'crp_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.crp_out_dir_path.get() if hasattr(self, 'crp_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 CropPanel
+            prefs = self._crop_panel.collect_prefs()
         elif panel == "ocr":
-            prefs = {
-                "lang": self.ocr_lang.get(),
-                "out_dir_combo": self.ocr_out_dir_combo.get() if hasattr(self, 'ocr_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.ocr_out_dir_path.get() if hasattr(self, 'ocr_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 OcrPanel
+            prefs = self._ocr_panel.collect_prefs()
         elif panel == "download":
-            prefs = {
-                "dl_dir": self.dl_dir.get(),
-            }
+            # DI 委托：偏好收集已迁移到 DownloadPanel
+            prefs = self._download_panel.collect_prefs()
         elif panel == "m3u8":
-            prefs = {
-                "out_dir": self.m3u8_out_dir.get(),
-                "threads": self.m3u8_threads.get(),
-                "format": self.m3u8_format.get(),
-                "speed": self.m3u8_speed.get(),
-                "cookie": self.m3u8_cookie.get(),
-                "proxy": self.m3u8_proxy.get(),
-                "headers": self.m3u8_headers.get(),
-                "resume": self.m3u8_resume.get(),
-                "notify": self.m3u8_notify.get(),
-                "download_sub": self.m3u8_download_sub.get(),
-            }
+            # DI 委托：偏好收集已迁移到 M3u8Panel
+            prefs = self._m3u8_panel.collect_prefs()
         elif panel == "detect":
             # DI 委托：偏好收集已迁移到 DetectPanel
             prefs = self._detect_panel.collect_prefs()
         elif panel == "qrcode":
-            prefs = {
-                "qr_type": self.qr_type.get() if hasattr(self, 'qr_type') else "文本",
-                "qr_size": self.qr_size.get() if hasattr(self, 'qr_size') else "400",
-                "qr_border": self.qr_border.get() if hasattr(self, 'qr_border') else "4",
-                "qr_fg": self.qr_fg.get() if hasattr(self, 'qr_fg') else "#000000",
-                "qr_bg": self.qr_bg.get() if hasattr(self, 'qr_bg') else "#FFFFFF",
-            }
+            # DI 委托：偏好收集已迁移到 QrcodePanel
+            prefs = self._qrcode_panel.collect_prefs()
         if prefs:
             USER_PREFS.save_panel(panel, prefs)
 
@@ -2102,10 +2077,8 @@ class FormatMaster:
             # DI 委托：偏好恢复已迁移到 ImagePanel
             self._image_panel.apply_prefs(prefs)
         elif panel == "doc":
-            if prefs.get("out_dir_combo") and hasattr(self, 'd_out_dir_combo'):
-                self.d_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'd_out_dir_path'):
-                self.d_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 DocPanel
+            self._doc_panel.apply_prefs(prefs)
         elif panel == "extract":
             # DI 委托：偏好恢复已迁移到 ExtractPanel
             self._extract_panel.apply_prefs(prefs)
@@ -2125,62 +2098,23 @@ class FormatMaster:
             # DI 委托：偏好恢复已迁移到 RenamePanel
             self._rename_panel.apply_prefs(prefs)
         elif panel == "crop":
-            if prefs.get("preset") and hasattr(self, 'crp_preset'):
-                self.crp_preset.set(prefs["preset"])
-            if prefs.get("mode") and hasattr(self, 'crp_mode'):
-                self.crp_mode.set(prefs["mode"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'crp_out_dir_combo'):
-                self.crp_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'crp_out_dir_path'):
-                self.crp_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 CropPanel
+            self._crop_panel.apply_prefs(prefs)
         elif panel == "ocr":
-            if prefs.get("lang") and hasattr(self, 'ocr_lang'):
-                self.ocr_lang.set(prefs["lang"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'ocr_out_dir_combo'):
-                self.ocr_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'ocr_out_dir_path'):
-                self.ocr_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 OcrPanel
+            self._ocr_panel.apply_prefs(prefs)
         elif panel == "download":
-            if prefs.get("dl_dir") and hasattr(self, 'dl_dir'):
-                self.dl_dir.set(prefs["dl_dir"])
+            # DI 委托：偏好恢复已迁移到 DownloadPanel
+            self._download_panel.apply_prefs(prefs)
         elif panel == "m3u8":
-            if prefs.get("out_dir") and hasattr(self, 'm3u8_out_dir'):
-                self.m3u8_out_dir.set(prefs["out_dir"])
-            if prefs.get("threads") and hasattr(self, 'm3u8_threads'):
-                self.m3u8_threads.set(prefs["threads"])
-            if prefs.get("format") and hasattr(self, 'm3u8_format'):
-                self.m3u8_format.set(prefs["format"])
-            if prefs.get("speed") and hasattr(self, 'm3u8_speed'):
-                self.m3u8_speed.set(prefs["speed"])
-            if prefs.get("cookie") and hasattr(self, 'm3u8_cookie'):
-                self.m3u8_cookie.delete(0, tk.END)
-                self.m3u8_cookie.insert(0, prefs["cookie"])
-            if prefs.get("proxy") and hasattr(self, 'm3u8_proxy'):
-                self.m3u8_proxy.delete(0, tk.END)
-                self.m3u8_proxy.insert(0, prefs["proxy"])
-            if prefs.get("headers") and hasattr(self, 'm3u8_headers'):
-                self.m3u8_headers.delete(0, tk.END)
-                self.m3u8_headers.insert(0, prefs["headers"])
-            if "resume" in prefs and hasattr(self, 'm3u8_resume'):
-                self.m3u8_resume.set(prefs["resume"])
-            if "notify" in prefs and hasattr(self, 'm3u8_notify'):
-                self.m3u8_notify.set(prefs["notify"])
-            if "download_sub" in prefs and hasattr(self, 'm3u8_download_sub'):
-                self.m3u8_download_sub.set(prefs["download_sub"])
+            # DI 委托：偏好恢复已迁移到 M3u8Panel
+            self._m3u8_panel.apply_prefs(prefs)
         elif panel == "detect":
             # DI 委托：偏好恢复已迁移到 DetectPanel
             self._detect_panel.apply_prefs(prefs)
         elif panel == "qrcode":
-            if prefs.get("qr_type") and hasattr(self, 'qr_type'):
-                self.qr_type.set(prefs["qr_type"])
-            if prefs.get("qr_size") and hasattr(self, 'qr_size'):
-                self.qr_size.set(prefs["qr_size"])
-            if prefs.get("qr_border") and hasattr(self, 'qr_border'):
-                self.qr_border.set(prefs["qr_border"])
-            if prefs.get("qr_fg") and hasattr(self, 'qr_fg'):
-                self.qr_fg.set(prefs["qr_fg"])
-            if prefs.get("qr_bg") and hasattr(self, 'qr_bg'):
-                self.qr_bg.set(prefs["qr_bg"])
+            # DI 委托：偏好恢复已迁移到 QrcodePanel
+            self._qrcode_panel.apply_prefs(prefs)
     def _switch(self, tab):
         if getattr(self, 'panels_disabled', False):
             return
@@ -2916,39 +2850,23 @@ class FormatMaster:
         self.i_ca            = c.ca
 
     def _p_doc(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["doc"] = p
-        self._hdr(p, "文档格式转换", "PDF · Word · Excel · PPT · WPS · TXT · 图片 · Markdown · EPUB · RTF · ODT")
-        exts = "*.pdf *.docx *.doc *.wps *.xlsx *.xls *.et *.csv *.pptx *.ppt *.dps *.txt *.html *.htm *.md *.epub *.rtf *.odt *.jpg *.jpeg *.png *.bmp *.tiff *.webp"
-        self._file_sec(p, "doc", [("文档文件",exts),("所有文件","*.*")], True)
-        s = self._card(p, "转换设置")
-        tk.Label(s, text="添加文件后点击「检测格式」，系统将自动列出可转换的目标格式",
-                 bg=D["card"], fg=D["ink_dis"], font=XS).grid(row=0, column=0, columnspan=3,
-                                                              sticky="w", pady=(0, 8))
-        tk.Label(s, text="目标格式", bg=D["card"], fg=D["ink"],
-                 font=SM).grid(row=1, column=0, sticky="w")
-        self.d_tgt = ttk.Combobox(s, values=["请先添加文件"], state="readonly", width=22)
-        self.d_tgt.set("请先添加文件")
-        self.d_tgt.grid(row=1, column=1, sticky="ew", padx=(4, 10))
-        self.d_tgt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("doc"))
-        self._btn(s, "检测格式", self._detect).grid(row=1, column=2, sticky="w")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.doc_panel.DocPanel ──
+        # _detect 业务逻辑方法（操作 d_tgt/d_st）留 main.py，通过 shim 访问。
+        from gui.panels.doc_panel import DocPanel
+        self._doc_panel = DocPanel(self.app_ctx, self.content)
+        self._doc_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.d_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.d_out_dir_combo.set("与源文件同目录")
-        self.d_out_dir_combo.pack(side=tk.LEFT)
-        self.d_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("doc"), style="secondary")
-        self.d_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.d_out_dir_path = tk.StringVar(value="")
-        self.d_out_dir_label = tk.Label(out_frame, textvariable=self.d_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.d_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.d_pg, self.d_st, self.d_go, self.d_ca, _ = self._bar(p)
-        self.d_go.configure(command=lambda: self._go("doc"))
-        self.d_ca.configure(command=lambda: self._stop("doc"))
+        c = self._doc_panel.context
+        # ── 兼容 shim：self.d_xxx → DocContext 同一对象引用 ──
+        self.d_tgt          = c.tgt
+        self.d_out_dir_combo = c.out_dir_combo
+        self.d_out_dir_btn   = c.out_dir_btn
+        self.d_out_dir_path  = c.out_dir_path
+        self.d_out_dir_label = c.out_dir_label
+        self.d_pg            = c.pg
+        self.d_st            = c.st
+        self.d_go            = c.go
+        self.d_ca            = c.ca
 
     def _detect(self):
         if getattr(self, 'panels_disabled', False):
@@ -3242,12 +3160,12 @@ class FormatMaster:
                     module_params = self._image_panel.collect_params()
                     task_type = "image"
                 elif key == "doc":
-                    tgt = self.d_tgt.get() if hasattr(self, 'd_tgt') else ""
+                    module_params = self._doc_panel.collect_params()
+                    tgt = module_params.get("target", "")
                     if tgt == "请先添加文件":
                         tgt = "PDF"
                     ext = "." + tgt.split("（")[0].lower()
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {"target": tgt}
                     task_type = "doc"
                 elif key == "pdf":
                     mode = self.pdf_mode.get() if hasattr(self, 'pdf_mode') else "合并（多个→一个）"
@@ -3682,125 +3600,47 @@ class FormatMaster:
     #  视频下载
     # ══════════════════════════════════════════
     def _p_download(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["download"] = p
-        self._hdr(p, "视频下载", "支持 B站 / YouTube / 微博 / Instagram 等数百个平台", badge="需联网")
-        self.dl_queue = []
+        # ── DI 化：UI 构建已迁移到 gui.panels.download_panel.DownloadPanel ──
+        # download 是最复杂的面板：URL 输入 + 格式列表 + 设置区 + 下载队列 +
+        # 底部进度栏。12+ 个业务逻辑方法（_dl_parse_url/_dl_fetch_formats/
+        # _dl_add_url/_dl_batch_import/_dl_remove_selected/_dl_move_up/
+        # _dl_move_down/_dl_clear_queue/_dl_on_fmt_select/_dl_on_dbl_click/
+        # _go_download/_dl_cancel/_dl_toggle_audio）留在 main.py，通过 shim
+        # 访问 dl_ 控件。dl_queue/dl_formats 是 list，shim 指向同一对象，
+        # append/clear/pop 直接作用于 DownloadContext。
+        # dl_obj 是 VideoDownloader 实例，在 _p_download 中创建后回填 shim。
+        from gui.panels.download_panel import DownloadPanel
+        self._download_panel = DownloadPanel(self.app_ctx, self.content)
+        self._download_panel.build()
+
+        c = self._download_panel.context
+        # 初始化非 UI 状态（原 _p_download 中创建）
         from core.video_downloader import VideoDownloader
-        self.dl_obj = VideoDownloader()
+        c.obj = VideoDownloader()  # dl_obj 实例
+        # c.queue / c.formats 已在 DownloadContext 用 default_factory=list 初始化
 
-        # URL 输入
-        url_frame = tk.Frame(p, bg=D["page"])
-        url_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(url_frame, text="URL", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.dl_url = tk.Text(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                               relief="solid", bd=1, highlightthickness=0, height=3)
-        self.dl_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-        self.dl_url.bind("<Control-v>", lambda e: self.root.after(100, self._dl_parse_url))
-        self.dl_fmt_info = tk.StringVar(value="")
-        tk.Label(url_frame, textvariable=self.dl_fmt_info, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(8, 0))
-        url_btn_frame = tk.Frame(p, bg=D["page"])
-        url_btn_frame.pack(fill=tk.X, pady=(0, 6))
-        self._btn(url_btn_frame, "解析格式", self._dl_parse_url, padx=12).pack(side=tk.LEFT)
-        self._btn(url_btn_frame, "添加链接", self._dl_add_url, "primary", padx=12).pack(side=tk.LEFT, padx=(8, 0))
-        self._btn(url_btn_frame, "📁 批量导入", self._dl_batch_import, padx=8).pack(side=tk.LEFT, padx=(8, 0))
-        self._btn(url_btn_frame, "⭐ 收藏", self._dl_add_favorite, padx=8).pack(side=tk.RIGHT, padx=(0, 0))
-        self._btn(url_btn_frame, "📋 历史", self._dl_show_history, padx=8).pack(side=tk.RIGHT, padx=(8, 0))
-        self._btn(url_btn_frame, "⭐ 收藏夹", self._dl_show_favorites, padx=8).pack(side=tk.RIGHT, padx=(8, 0))
-
-        # 格式 + 画质
-        fmt_frame = tk.Frame(p, bg=D["page"])
-        fmt_frame.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(fmt_frame, text="选择格式", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.dl_formats_list = tk.Listbox(fmt_frame, height=5, font=BODY, bg=D["input_bg"],
-                                           relief="solid", bd=1, highlightthickness=0)
-        self.dl_formats_list.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-        self.dl_formats = []
-
-        # 设置区域
-        settings_frame = tk.Frame(p, bg=D["page"])
-        settings_frame.pack(fill=tk.X, pady=(0, 6))
-
-        # 第一行：Cookie | 代理
-        row1 = tk.Frame(settings_frame, bg=D["page"])
-        row1.pack(fill=tk.X, pady=(0, 4))
-        tk.Label(row1, text="Cookie", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.dl_cookie = tk.Entry(row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                   relief="solid", bd=1, highlightthickness=0, width=25)
-        self.dl_cookie.pack(side=tk.LEFT, ipady=2)
-        tk.Label(row1, text="代理", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
-        self.dl_proxy = tk.Entry(row1, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                  relief="solid", bd=1, highlightthickness=0, width=18)
-        self.dl_proxy.pack(side=tk.LEFT, ipady=2)
-        tk.Label(row1, text="限速 MB/s", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
-        self.dl_speed = ttk.Combobox(row1, values=["不限","2","5","10","20","50"], state="readonly", width=6)
-        self.dl_speed.set("不限")
-        self.dl_speed.pack(side=tk.LEFT)
-
-        # 第二行：Header | 文件名模板
-        row2 = tk.Frame(settings_frame, bg=D["page"])
-        row2.pack(fill=tk.X, pady=(0, 4))
-        tk.Label(row2, text="Header", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.dl_headers = tk.Entry(row2, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                    relief="solid", bd=1, highlightthickness=0)
-        self.dl_headers.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-        tk.Label(row2, text="Key:Val,Key:Val", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
-
-        # 第三行：选项
-        row3 = tk.Frame(settings_frame, bg=D["page"])
-        row3.pack(fill=tk.X)
-        self.dl_audio_only = tk.BooleanVar(value=False)
-        tk.Checkbutton(row3, text="仅音频", variable=self.dl_audio_only, bg=D["page"], fg=D["ink"], font=SM,
-                       command=self._dl_toggle_audio).pack(side=tk.LEFT)
-        self.dl_audio_fmt = ttk.Combobox(row3, values=["mp3","m4a","flac","wav","opus"], state="readonly", width=6)
-        self.dl_audio_fmt.set("mp3")
-        self.dl_audio_fmt.pack(side=tk.LEFT, padx=(4, 12))
-        self.dl_subtitles = tk.BooleanVar(value=False)
-        tk.Checkbutton(row3, text="下载字幕", variable=self.dl_subtitles, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        tk.Label(row3, text="文件名模板", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 4))
-        self.dl_template = tk.Entry(row3, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                     relief="solid", bd=1, highlightthickness=0, width=24)
-        self.dl_template.pack(side=tk.LEFT, ipady=2)
-        tk.Label(row3, text="留空=默认", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
-
-        # 保存目录
-        out_frame = tk.Frame(p, bg=D["page"])
-        out_frame.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(out_frame, text="保存到", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.dl_dir = tk.StringVar(value=os.path.expanduser("~/Downloads"))
-        tk.Label(out_frame, textvariable=self.dl_dir, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(0, 8))
-        self._btn(out_frame, "浏览", lambda: self._select_dl_dir(), "secondary").pack(side=tk.LEFT)
-
-        # 下载队列
-        q_card = tk.Frame(p, bg=D["border"], padx=1, pady=1)
-        q_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        q_inner = tk.Frame(q_card, bg=D["card"])
-        q_inner.pack(fill=tk.BOTH, expand=True)
-        q_hdr = tk.Frame(q_inner, bg=D["card"])
-        q_hdr.pack(fill=tk.X, padx=10, pady=(6, 2))
-        tk.Label(q_hdr, text="下载队列", bg=D["card"], fg=D["ink"], font=(FT, 9, "bold")).pack(side=tk.LEFT)
-        self.dl_count_label = tk.Label(q_hdr, text="0 个任务", bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.dl_count_label.pack(side=tk.RIGHT)
-        q_list = tk.Frame(q_inner, bg=D["card"])
-        q_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
-        self.dl_queue_listbox = tk.Listbox(q_list, font=(FT, 10), bg=D["card"], fg=D["ink"],
-                                            selectbackground=D["select_bg"], selectforeground=D["select_fg"],
-                                            bd=0, highlightthickness=0, activestyle="none", height=4)
-        q_scroll = ttk.Scrollbar(q_list, orient=tk.VERTICAL, command=self.dl_queue_listbox.yview)
-        self.dl_queue_listbox.configure(yscrollcommand=q_scroll.set)
-        self.dl_queue_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        q_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        q_btns = tk.Frame(q_inner, bg=D["card"])
-        q_btns.pack(fill=tk.X, padx=10, pady=(0, 6))
-        self._btn(q_btns, "▲ 上移", self._dl_move_up, "ghost", padx=6).pack(side=tk.LEFT)
-        self._btn(q_btns, "▼ 下移", self._dl_move_down, "ghost", padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        self._btn(q_btns, "✕ 移除选中", self._dl_remove_selected, "ghost", padx=8).pack(side=tk.LEFT, padx=(12, 0))
-        self._btn(q_btns, "清空队列", self._dl_clear_queue, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
-
-        # 操作栏
-        self.dl_pg, self.dl_st, self.dl_go, self.dl_ca, _ = self._bar(p)
-        self.dl_go.configure(text="开始下载", command=self._go_download)
-        self.dl_ca.configure(command=self._dl_cancel)
+        # ── 兼容 shim：self.dl_xxx → DownloadContext 同一对象引用 ──
+        self.dl_url           = c.url
+        self.dl_fmt_info      = c.fmt_info
+        self.dl_formats_list  = c.formats_list
+        self.dl_formats       = c.formats
+        self.dl_cookie        = c.cookie
+        self.dl_proxy         = c.proxy
+        self.dl_speed         = c.speed
+        self.dl_headers       = c.headers
+        self.dl_audio_only    = c.audio_only
+        self.dl_audio_fmt     = c.audio_fmt
+        self.dl_subtitles     = c.subtitles
+        self.dl_template      = c.template
+        self.dl_dir           = c.dir
+        self.dl_count_label   = c.count_label
+        self.dl_queue_listbox = c.queue_listbox
+        self.dl_queue         = c.queue
+        self.dl_obj           = c.obj
+        self.dl_pg            = c.pg
+        self.dl_st            = c.st
+        self.dl_go            = c.go
+        self.dl_ca            = c.ca
 
     def _select_dl_dir(self):
         last_dir = self._get_last_dir("download")
@@ -4066,252 +3906,94 @@ class FormatMaster:
     #  预设裁剪
     # ══════════════════════════════════════════
     def _p_crop(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["crop"] = p
-        self._hdr(p, "图像预设裁剪", "按社交媒体尺寸批量裁剪图片")
-        self._file_sec(p, "crop", [("图片文件","*.jpg *.jpeg *.png *.bmp *.webp"),("所有文件","*.*")])
-        s = self._card(p, "裁剪设置")
-        tk.Label(s, text="预设尺寸", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
-        self.crp_preset = ttk.Combobox(s, values=list(CROP_PRESETS.keys()), state="readonly", width=28)
-        self.crp_preset.set("1:1 正方形 (1080×1080)")
-        self.crp_preset.grid(row=0, column=1, sticky="w", padx=(8, 0))
-        tk.Label(s, text="裁剪模式", bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=0, sticky="w", pady=(8, 0))
-        self.crp_mode = ttk.Combobox(s, values=["cover（裁剪填充）","fit（等比适应）"], state="readonly", width=20)
-        self.crp_mode.set("cover（裁剪填充）")
-        self.crp_mode.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+        # ── DI 化：UI 构建已迁移到 gui.panels.crop_panel.CropPanel ──
+        from gui.panels.crop_panel import CropPanel
+        self._crop_panel = CropPanel(self.app_ctx, self.content)
+        self._crop_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.crp_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.crp_out_dir_combo.set("与源文件同目录")
-        self.crp_out_dir_combo.pack(side=tk.LEFT)
-        self.crp_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("crop"), style="secondary")
-        self.crp_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.crp_out_dir_path = tk.StringVar(value="")
-        self.crp_out_dir_label = tk.Label(out_frame, textvariable=self.crp_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.crp_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.crp_pg, self.crp_st, self.crp_go, self.crp_ca, _ = self._bar(p)
-        self.crp_go.configure(command=lambda: self._go("crop"))
-        self.crp_ca.configure(command=lambda: self._stop("crop"), state=tk.DISABLED)
+        c = self._crop_panel.context
+        # ── 兼容 shim：self.crp_xxx → CropContext 同一对象引用 ──
+        self.crp_preset        = c.preset
+        self.crp_mode          = c.mode
+        self.crp_out_dir_combo = c.out_dir_combo
+        self.crp_out_dir_btn   = c.out_dir_btn
+        self.crp_out_dir_path  = c.out_dir_path
+        self.crp_out_dir_label = c.out_dir_label
+        self.crp_pg            = c.pg
+        self.crp_st            = c.st
+        self.crp_go            = c.go
+        self.crp_ca            = c.ca
 
     # ══════════════════════════════════════════
     #  M3U8 下载
     # ══════════════════════════════════════════
     def _p_m3u8(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["m3u8"] = p
-        self._hdr(p, "M3U8 视频下载", "添加多个链接，支持画质选择，批量队列下载", badge="需联网")
-        self.m3u8_queue = []
-        self.m3u8_qualities = []
+        # ── DI 化：UI 构建已迁移到 gui.panels.m3u8_panel.M3u8Panel ──
+        # m3u8 是最复杂的面板之一（与 download 同构）：
+        # - go 按钮绑 _go_m3u8（不是 _go("m3u8")），走自己的下载流程
+        # - 10+ 个业务逻辑方法（_m3u8_parse_url/_m3u8_quality_changed/_m3u8_batch_add/
+        #   _m3u8_batch_import/_m3u8_move_up/_m3u8_move_down/_m3u8_remove_selected/
+        #   _m3u8_clear_queue/_m3u8_show_favorites/_m3u8_show_history/_go_m3u8）留 main.py，
+        #   通过 shim 访问 m3u8_ 控件
+        # - m3u8_queue/m3u8_qualities 是 list，shim 指向同一对象
+        # - m3u8_dl 是 M3U8Downloader 实例，在 __init__ (L283) 创建后回填 shim
+        from gui.panels.m3u8_panel import M3u8Panel
+        self._m3u8_panel = M3u8Panel(self.app_ctx, self.content)
+        self._m3u8_panel.build()
 
-        # URL 输入
-        url_frame = tk.Frame(p, bg=D["page"])
-        url_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(url_frame, text="M3U8链接", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_url = tk.Text(url_frame, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                relief="solid", bd=1, highlightthickness=0, height=3)
-        self.m3u8_url.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-        self.m3u8_url.bind("<Control-v>", lambda e: self.root.after(100, lambda: self._m3u8_batch_add()))
-        self._btn(url_frame, "解析画质", self._m3u8_parse_url, padx=12).pack(side=tk.RIGHT, padx=(8, 0))
-        self._btn(url_frame, "⭐ 收藏", self._m3u8_add_to_favorites, "secondary", padx=8).pack(side=tk.RIGHT, padx=(4, 0))
-        self._btn(url_frame, "批量添加", self._m3u8_batch_add, "primary", padx=12).pack(side=tk.RIGHT, padx=(8, 0))
-        tk.Label(url_frame, text="每行一个链接，支持批量粘贴", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.BOTTOM, anchor=tk.W, pady=(2, 0))
+        c = self._m3u8_panel.context
+        # c.queue / c.qualities 已在 M3u8Context 用 default_factory=list 初始化
+        # c.dl (M3U8Downloader 实例) 在 __init__ (L283) 已创建，回填 shim
+        c.dl = self.m3u8_dl
 
-        # 画质选择
-        quality_frame = tk.Frame(p, bg=D["page"])
-        quality_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(quality_frame, text="画质", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_quality = ttk.Combobox(quality_frame, values=[""], state="readonly", width=30)
-        self.m3u8_quality.set("")
-        self.m3u8_quality.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.m3u8_quality.bind("<<ComboboxSelected>>", self._m3u8_quality_changed)
-        self.m3u8_quality_hint = tk.Label(quality_frame, text="点击「解析画质」获取可选项", bg=D["page"], fg=D["ink_dis"], font=XS)
-        self.m3u8_quality_hint.pack(side=tk.LEFT, padx=(8, 0))
-
-        # 文件名
-        name_frame = tk.Frame(p, bg=D["page"])
-        name_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(name_frame, text="文件名", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_name = tk.Entry(name_frame, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0)
-        self.m3u8_name.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
-        tk.Label(name_frame, text="留空=自动命名", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(8, 0))
-
-        # 保存目录
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(out_dir_frame, text="保存到", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.m3u8_out_dir = tk.StringVar(value=os.path.expanduser("~/Downloads"))
-        tk.Label(out_dir_frame, textvariable=self.m3u8_out_dir, bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(0, 8))
-        self._btn(out_dir_frame, "浏览", self._select_m3u8_dir, "secondary").pack(side=tk.LEFT)
-
-        # 线程数 + 输出格式 + 限速
-        settings_frame = tk.Frame(p, bg=D["page"])
-        settings_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(settings_frame, text="并发线程", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.m3u8_threads = ttk.Combobox(settings_frame, values=["4","8","16","24","32","48","64"], state="readonly", width=6)
-        self.m3u8_threads.set("16")
-        self.m3u8_threads.pack(side=tk.LEFT)
-        tk.Label(settings_frame, text="输出格式", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
-        self.m3u8_format = ttk.Combobox(settings_frame, values=["mp4","mkv","avi","mov","ts"], state="readonly", width=6)
-        self.m3u8_format.set("mp4")
-        self.m3u8_format.pack(side=tk.LEFT)
-        tk.Label(settings_frame, text="限速(MB/s)", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
-        self.m3u8_speed = ttk.Combobox(settings_frame, values=["不限","2","5","10","20","50"], state="readonly", width=6)
-        self.m3u8_speed.set("不限")
-        self.m3u8_speed.pack(side=tk.LEFT)
-
-        # Cookie/Header/Proxy
-        adv_frame = tk.Frame(p, bg=D["page"])
-        adv_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(adv_frame, text="Cookie", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.m3u8_cookie = tk.Entry(adv_frame, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0, width=25)
-        self.m3u8_cookie.pack(side=tk.LEFT, ipady=2)
-        tk.Label(adv_frame, text="代理", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(12, 4))
-        self.m3u8_proxy = tk.Entry(adv_frame, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0, width=18)
-        self.m3u8_proxy.pack(side=tk.LEFT, ipady=2)
-        self.m3u8_proxy.insert(0, "")
-        tk.Label(adv_frame, text="如 http://127.0.0.1:7890", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
-
-        # Header + 断点续传
-        hdr_frame = tk.Frame(p, bg=D["page"])
-        hdr_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(hdr_frame, text="自定义Header", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 4))
-        self.m3u8_headers = tk.Entry(hdr_frame, font=BODY, bg=D["input_bg"], fg=D["ink"], relief="solid", bd=1, highlightthickness=0)
-        self.m3u8_headers.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2)
-        tk.Label(hdr_frame, text="Key:Value,Key:Value", bg=D["page"], fg=D["ink_dis"], font=XS).pack(side=tk.LEFT, padx=(4, 0))
-        self.m3u8_resume = tk.BooleanVar(value=True)
-        tk.Checkbutton(hdr_frame, text="断点续传", variable=self.m3u8_resume, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.RIGHT)
-
-        # 速度提示
-        notice_frame = tk.Frame(p, bg=D["accent_pale"])
-        notice_frame.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(notice_frame, text="下载速度由服务器带宽决定，多线程只能在服务器允许范围内加速。速度慢可尝试切换画质或使用代理。",
-                 bg=D["accent_pale"], fg=D["accent"], font=SM, anchor=tk.CENTER, justify=tk.CENTER).pack(fill=tk.X, padx=4, pady=4)
-
-        # 下载队列
-        queue_card = tk.Frame(p, bg=D["border"], padx=1, pady=1)
-        queue_card.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        queue_inner = tk.Frame(queue_card, bg=D["card"])
-        queue_inner.pack(fill=tk.BOTH, expand=True)
-        q_header = tk.Frame(queue_inner, bg=D["card"])
-        q_header.pack(fill=tk.X, padx=10, pady=(8, 4))
-        tk.Label(q_header, text="下载队列", bg=D["card"], fg=D["ink"], font=(FT, 9, "bold")).pack(side=tk.LEFT)
-        self.m3u8_count_label = tk.Label(q_header, text="0 个任务", bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.m3u8_count_label.pack(side=tk.RIGHT)
-
-        q_list_frame = tk.Frame(queue_inner, bg=D["card"])
-        q_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
-        self.m3u8_listbox = tk.Listbox(q_list_frame, font=(FT, 10), bg=D["card"], fg=D["ink"],
-                                        selectbackground=D["select_bg"], selectforeground=D["select_fg"],
-                                        bd=0, highlightthickness=0, activestyle="none", selectborderwidth=0, height=6)
-        q_scroll = ttk.Scrollbar(q_list_frame, orient=tk.VERTICAL, command=self.m3u8_listbox.yview)
-        self.m3u8_listbox.configure(yscrollcommand=q_scroll.set)
-        self.m3u8_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        q_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        q_btn_frame = tk.Frame(queue_inner, bg=D["card"])
-        q_btn_frame.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self._btn(q_btn_frame, "▲ 上移", self._m3u8_move_up, "ghost", padx=6).pack(side=tk.LEFT)
-        self._btn(q_btn_frame, "▼ 下移", self._m3u8_move_down, "ghost", padx=6).pack(side=tk.LEFT, padx=(4, 0))
-        self._btn(q_btn_frame, "✕ 移除选中", self._m3u8_remove_selected, "ghost", padx=8).pack(side=tk.LEFT, padx=(12, 0))
-        self._btn(q_btn_frame, "清空队列", self._m3u8_clear_queue, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
-        self._btn(q_btn_frame, "📁 批量导入", self._m3u8_batch_import, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
-        self._btn(q_btn_frame, "⭐ 收藏链接", self._m3u8_show_favorites, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
-        self._btn(q_btn_frame, "📋 历史记录", self._m3u8_show_history, "ghost", padx=8).pack(side=tk.LEFT, padx=(8, 0))
-
-        # 字幕 + 通知
-        opt_frame = tk.Frame(p, bg=D["page"])
-        opt_frame.pack(fill=tk.X, pady=(4, 0))
-        self.m3u8_download_sub = tk.BooleanVar(value=False)
-        tk.Checkbutton(opt_frame, text="同时下载字幕", variable=self.m3u8_download_sub, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.m3u8_notify = tk.BooleanVar(value=True)
-        tk.Checkbutton(opt_frame, text="完成通知", variable=self.m3u8_notify, bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
-
-        # 底部操作栏
-        bottom_bar = tk.Frame(p, bg=D["page"])
-        bottom_bar.pack(fill=tk.X, pady=(8, 0))
-        self.m3u8_pg = ttk.Progressbar(bottom_bar, style="Horizontal.TProgressbar")
-        self.m3u8_pg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-        self.m3u8_st = tk.Label(bottom_bar, text="就绪", bg=D["page"], fg=D["ink_dis"], font=XS)
-        self.m3u8_st.pack(side=tk.LEFT, padx=(0, 8))
-        self._btn(bottom_bar, "📁 打开输出文件夹", self._open_output_folder, "ghost", padx=8).pack(side=tk.RIGHT, padx=(0, 8))
-        self.m3u8_ca = self._btn(bottom_bar, "取消", None, "danger", padx=8, state=tk.DISABLED)
-        self.m3u8_ca.pack(side=tk.RIGHT, padx=(0, 4))
-        self.m3u8_ca.configure(command=lambda: self._stop("m3u8"))
-        self.m3u8_go = self._btn(bottom_bar, "开始下载", None, "primary", padx=16)
-        self.m3u8_go.pack(side=tk.RIGHT)
-        self.m3u8_go.configure(command=self._go_m3u8)
+        # ── 兼容 shim：self.m3u8_xxx → M3u8Context 同一对象引用 ──
+        self.m3u8_url           = c.url
+        self.m3u8_quality       = c.quality
+        self.m3u8_quality_hint  = c.quality_hint
+        self.m3u8_name          = c.name
+        self.m3u8_out_dir       = c.out_dir
+        self.m3u8_threads       = c.threads
+        self.m3u8_format        = c.format
+        self.m3u8_speed         = c.speed
+        self.m3u8_cookie        = c.cookie
+        self.m3u8_proxy         = c.proxy
+        self.m3u8_headers       = c.headers
+        self.m3u8_resume        = c.resume
+        self.m3u8_count_label   = c.count_label
+        self.m3u8_listbox       = c.listbox
+        self.m3u8_queue         = c.queue
+        self.m3u8_qualities     = c.qualities
+        self.m3u8_download_sub  = c.download_sub
+        self.m3u8_notify        = c.notify
+        self.m3u8_pg            = c.pg
+        self.m3u8_st            = c.st
+        self.m3u8_go            = c.go
+        self.m3u8_ca            = c.ca
+        # m3u8_dl 已在 __init__ 创建，保持引用一致
+        self.m3u8_dl            = c.dl
 
     # ══════════════════════════════════════════
     def _p_ocr(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["ocr"] = p
-        self._hdr(p, "OCR 文字识别", "从图片或PDF中识别文字，支持批量处理")
-        self._file_sec(p, "ocr",
-            [("图片/PDF", "*.jpg *.jpeg *.png *.bmp *.webp *.tiff *.pdf"), ("所有文件", "*.*")])
-        
-        s = self._card(p, "识别设置")
-        
-        ocr_langs = ["chi_sim+eng", "chi_sim", "eng", "jpn", "kor", "chi_tra+eng", "chi_tra", "eng+chi_sim"]
-        tk.Label(s, text="识别语言", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
-        self.ocr_lang = ttk.Combobox(s, values=ocr_langs, state="readonly", width=20)
-        self.ocr_lang.set("chi_sim+eng")
-        self.ocr_lang.grid(row=0, column=1, sticky="w", padx=(8, 0))
-        tk.Label(s, text="chi_sim=简体中文  eng=英文  jpn=日文  kor=韩文",
-                 bg=D["card"], fg=D["ink_dis"], font=XS).grid(row=0, column=2, sticky="w", padx=(8, 0))
-        
-        # 结果文本区
-        result_frame = tk.Frame(p, bg=D["card"])
-        result_frame.pack(fill=tk.X, padx=16, pady=(12, 0))
-        
-        result_header = tk.Frame(result_frame, bg=D["card"])
-        result_header.pack(fill=tk.X)
-        tk.Label(result_header, text="识别结果", bg=D["card"], fg=D["ink_sec"],
-                 font=(FT, 9, "bold")).pack(side=tk.LEFT)
-        
-        self.ocr_export_txt = tk.Button(result_header, text="导出 TXT", font=SM,
-                                        bg=D["card"], fg=D["accent"], relief="flat",
-                                        cursor="hand2", bd=0,
-                                        command=self._ocr_export_txt)
-        self.ocr_export_txt.pack(side=tk.RIGHT, padx=(8, 0))
-        
-        self.ocr_copy_btn = tk.Button(result_header, text="复制到剪贴板", font=SM,
-                                      bg=D["card"], fg=D["accent"], relief="flat",
-                                      cursor="hand2", bd=0,
-                                      command=self._ocr_copy)
-        self.ocr_copy_btn.pack(side=tk.RIGHT, padx=(8, 0))
-        
-        # 文本显示区
-        text_container = tk.Frame(result_frame, bg=D["border"], padx=1, pady=1)
-        text_container.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-        
-        self.ocr_text = tk.Text(text_container, font=("Microsoft YaHei UI", 10),
-                                bg=D["input_bg"], fg=D["ink"],
-                                relief="flat", bd=0, padx=8, pady=8,
-                                height=6, wrap=tk.WORD)
-        text_scroll = ttk.Scrollbar(text_container, orient=tk.VERTICAL, command=self.ocr_text.yview)
-        self.ocr_text.configure(yscrollcommand=text_scroll.set)
-        self.ocr_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        out_dir_frame = tk.Frame(p, bg=D["page"])
-        out_dir_frame.pack(fill=tk.X, pady=(12, 0))
-        tk.Label(out_dir_frame, text="输出目录", bg=D["page"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.ocr_out_dir_combo = ttk.Combobox(out_dir_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.ocr_out_dir_combo.set("与源文件同目录")
-        self.ocr_out_dir_combo.pack(side=tk.LEFT)
-        self.ocr_out_dir_btn = self._btn(out_dir_frame, "浏览", lambda: self._select_out_dir("ocr"), style="secondary")
-        self.ocr_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.ocr_out_dir_path = tk.StringVar(value="")
-        self.ocr_out_dir_label = tk.Label(out_dir_frame, textvariable=self.ocr_out_dir_path, bg=D["page"], fg=D["ink_dis"], font=XS)
-        self.ocr_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-        
-        self.ocr_pg, self.ocr_st, self.ocr_go, self.ocr_ca, _ = self._bar(p)
-        self.ocr_go.configure(text="开始识别", command=lambda: self._go("ocr"))
-        self.ocr_ca.configure(command=lambda: self._stop("ocr"))
+        # ── DI 化：UI 构建已迁移到 gui.panels.ocr_panel.OcrPanel ──
+        # _ocr_export_txt / _ocr_copy 业务逻辑方法留 main.py，通过 shim 访问 ocr_text。
+        from gui.panels.ocr_panel import OcrPanel
+        self._ocr_panel = OcrPanel(self.app_ctx, self.content)
+        self._ocr_panel.build()
+
+        c = self._ocr_panel.context
+        # ── 兼容 shim：self.ocr_xxx → OcrContext 同一对象引用 ──
+        self.ocr_lang          = c.lang
+        self.ocr_export_txt    = c.export_txt
+        self.ocr_copy_btn      = c.copy_btn
+        self.ocr_text          = c.text
+        self.ocr_out_dir_combo = c.out_dir_combo
+        self.ocr_out_dir_btn   = c.out_dir_btn
+        self.ocr_out_dir_path  = c.out_dir_path
+        self.ocr_out_dir_label = c.out_dir_label
+        self.ocr_pg            = c.pg
+        self.ocr_st            = c.st
+        self.ocr_go            = c.go
+        self.ocr_ca            = c.ca
 
     def _ocr_export_txt(self):
         text = self.ocr_text.get(1.0, tk.END).strip()
@@ -4339,97 +4021,40 @@ class FormatMaster:
     #  二维码生成器
     # ══════════════════════════════════════════
     def _p_qrcode(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["qrcode"] = p
-        self._hdr(p, "二维码生成器", "将文本、链接、联系方式等生成二维码图片")
+        # ── DI 化：UI 构建已迁移到 gui.panels.qrcode_panel.QrcodePanel ──
+        # qrcode 是特殊面板：go 按钮绑 _qr_generate（不是 _go("qrcode")），
+        # 走自己的生成流程。5 个业务逻辑方法（_qr_type_changed/_qr_toggle_eye/
+        # _qr_generate/_qr_cancel/_qr_save）留在 main.py，通过 shim 访问 qr_ 控件。
+        # 3 个非 UI 状态（_qr_eye_visible/_qr_photo/_qr_cancelled）是 self._qr_*
+        # 私有属性，留 main.py，不迁移到 QrcodeContext。
+        from gui.panels.qrcode_panel import QrcodePanel
+        self._qrcode_panel = QrcodePanel(self.app_ctx, self.content)
+        self._qrcode_panel.build()
 
-        # 输入区
-        s = self._card(p, "内容设置")
-        tk.Label(s, text="内容类型", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
-        self.qr_type = ttk.Combobox(s, values=["文本", "网址", "WiFi", "名片"], state="readonly", width=12)
-        self.qr_type.set("文本")
-        self.qr_type.grid(row=0, column=1, sticky="w", padx=(8, 0))
-        self.qr_type.bind("<<ComboboxSelected>>", lambda e: self._qr_type_changed())
+        c = self._qrcode_panel.context
+        # ── 兼容 shim：self.qr_xxx → QrcodeContext 同一对象引用 ──
+        self.qr_type          = c.type
+        self.qr_text          = c.text
+        self.qr_wifi_frame    = c.wifi_frame
+        self.qr_wifi_ssid     = c.wifi_ssid
+        self.qr_wifi_pass     = c.wifi_pass
+        self.qr_eye_btn       = c.eye_btn
+        self.qr_size          = c.size
+        self.qr_border        = c.border
+        self.qr_fg            = c.fg
+        self.qr_fg_entry      = c.fg_entry
+        self.qr_bg            = c.bg
+        self.qr_bg_entry      = c.bg_entry
+        self.qr_preview_label = c.preview_label
+        self.qr_pg            = c.pg
+        self.qr_st            = c.st
+        self.qr_go            = c.go
+        self.qr_ca            = c.ca
+        self.qr_status        = c.status
 
-        # 文本输入
-        tk.Label(s, text="内容", bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=0, sticky="nw", pady=(8, 0))
-        self.qr_text = tk.Text(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                               relief="flat", highlightthickness=1, highlightbackground=D["input_bd"],
-                               highlightcolor=D["accent"], height=3, width=40, wrap=tk.WORD)
-        self.qr_text.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=(8, 0))
-        self.qr_text.insert("1.0", "Hello World")
-
-        # WiFi 选项（默认隐藏）
-        self.qr_wifi_frame = tk.Frame(s, bg=D["card"])
-        wifi_row = tk.Frame(self.qr_wifi_frame, bg=D["card"])
-        wifi_row.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(wifi_row, text="WiFi名称", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.qr_wifi_ssid = tk.Entry(wifi_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                      highlightbackground=D["input_bd"],
-                                      highlightcolor=D["accent"], width=20)
-        self.qr_wifi_ssid.pack(side=tk.LEFT, padx=(8, 0))
-        tk.Label(wifi_row, text="密码", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
-        self.qr_wifi_pass = tk.Entry(wifi_row, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                      insertbackground=D["ink"], relief="flat", highlightthickness=1,
-                                      highlightbackground=D["input_bd"], highlightcolor=D["accent"],
-                                      width=20, show="*")
-        self.qr_wifi_pass.pack(side=tk.LEFT, padx=(8, 0))
+        # 非 UI 私有状态（留 main.py，不在 QrcodeContext 中）
         self._qr_eye_visible = False
-        self.qr_eye_btn = tk.Button(wifi_row, text="👁", font=("Segoe UI Symbol", 10),
-                                     bg=D["card"], relief="flat", bd=0, cursor="hand2",
-                                     command=self._qr_toggle_eye)
-        self.qr_eye_btn.pack(side=tk.LEFT, padx=(2, 0))
-
-        # 外观设置
-        qr_style = tk.Frame(s, bg=D["card"])
-        qr_style.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        tk.Label(qr_style, text="尺寸", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT)
-        self.qr_size = ttk.Combobox(qr_style, values=["200", "300", "400", "500", "600"], state="readonly", width=8)
-        self.qr_size.set("400")
-        self.qr_size.pack(side=tk.LEFT, padx=(8, 0))
-
-        tk.Label(qr_style, text="边距", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
-        self.qr_border = ttk.Combobox(qr_style, values=["1", "2", "4", "6"], state="readonly", width=6)
-        self.qr_border.set("4")
-        self.qr_border.pack(side=tk.LEFT, padx=(8, 0))
-
-        tk.Label(qr_style, text="前景色", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
-        self.qr_fg = tk.StringVar(value="#000000")
-        self.qr_fg_entry = tk.Entry(qr_style, textvariable=self.qr_fg, font=BODY, width=10,
-                                     bg=D["input_bg"], relief="flat", highlightthickness=1,
-                                     highlightbackground=D["input_bd"])
-        self.qr_fg_entry.pack(side=tk.LEFT, padx=(4, 0))
-
-        tk.Label(qr_style, text="背景色", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(16, 0))
-        self.qr_bg = tk.StringVar(value="#FFFFFF")
-        self.qr_bg_entry = tk.Entry(qr_style, textvariable=self.qr_bg, font=BODY, width=10,
-                                     bg=D["input_bg"], relief="flat", highlightthickness=1,
-                                     highlightbackground=D["input_bd"])
-        self.qr_bg_entry.pack(side=tk.LEFT, padx=(4, 0))
-
-        # 预览区
-        preview_frame = tk.Frame(p, bg=D["card"], highlightbackground=D["border"], highlightthickness=1)
-        preview_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(12, 0))
-        tk.Label(preview_frame, text="预览", bg=D["card"], fg=D["ink_sec"],
-                 font=(FT, 9, "bold")).pack(anchor=tk.W, padx=12, pady=(8, 4))
-
-        self.qr_preview_label = tk.Label(preview_frame, text="点击「生成二维码」预览", bg=D["card"],
-                                          fg=D["ink_dis"], font=BODY)
-        self.qr_preview_label.pack(expand=True, pady=(0, 12))
-
-        # 进度条 + 状态 (统一布局)
-        self.qr_pg, self.qr_st, self.qr_go, self.qr_ca, _ = self._bar(p)
-        self.qr_go.configure(text="生成二维码", command=self._qr_generate)
-        self.qr_ca.configure(command=self._qr_cancel, state=tk.DISABLED)
-        self.qr_status = self.qr_st  # 复用统一状态标签
-
-        # 底部按钮 (保存)
-        bottom_bar = tk.Frame(p, bg=D["page"])
-        bottom_bar.pack(fill=tk.X, pady=(8, 0))
-        self._btn(bottom_bar, "保存为图片", self._qr_save, "primary", padx=24).pack(side=tk.RIGHT)
-
-        self._qr_photo = None  # 保持引用防止GC
+        self._qr_photo = None       # 保持引用防止GC
         self._qr_cancelled = False
 
     def _qr_cancel(self):
@@ -5511,9 +5136,8 @@ class FormatMaster:
                 if hasattr(self, 'crp_out_dir_combo') and self.crp_out_dir_combo.get() == "自定义目录" and self.crp_out_dir_path.get():
                     od = self.crp_out_dir_path.get()
                 self.last_output_dir = od
-                preset_key = self.crp_preset.get()
-                mode = "cover" if "cover" in self.crp_mode.get() else "fit"
-                module_params = {"preset": preset_key, "crop_mode": mode}
+                # DI 委托：参数收集已迁移到 CropPanel
+                module_params = self._crop_panel.collect_params()
                 output_path = od
                 task_name = f"图像裁剪 - {len(files)}个文件"
                 task_id = self._add_task(task_name, "crop", {
@@ -5575,10 +5199,10 @@ class FormatMaster:
                     output_path = os.path.join(od, nm + ext)
                     module_params = self._image_panel.collect_params()
                 elif t == "doc":
-                    tgt = self.d_tgt.get()
+                    module_params = self._doc_panel.collect_params()
+                    tgt = module_params.get("target", "")
                     ext = tgt.split("（")[0]
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {"target": tgt}
                 elif t == "extract":
                     # DI 委托：参数收集已迁移到 ExtractPanel
                     module_params = self._extract_panel.collect_params()
@@ -5626,7 +5250,8 @@ class FormatMaster:
                         od = self.ocr_out_dir_path.get()
                     self.last_output_dir = od
                     output_path = os.path.join(od, nm + ".txt")
-                    module_params = {"lang": self.ocr_lang.get()}
+                    # DI 委托：参数收集已迁移到 OcrPanel
+                    module_params = self._ocr_panel.collect_params()
                 else:
                     module_params = {}
                 
