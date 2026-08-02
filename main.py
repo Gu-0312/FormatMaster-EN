@@ -1917,16 +1917,8 @@ class FormatMaster:
             # DI 委托：偏好收集已迁移到 AudioPanel
             prefs = self._audio_panel.collect_prefs()
         elif panel == "image":
-            prefs = {
-                "fmt": self.i_fmt.get(),
-                "quality": self.i_q.get(),
-                "size": self.i_sz.get(),
-                "rotate": self.i_rotate.get(),
-                "crop": self.i_crop.get(),
-                "grayscale": self.i_grayscale.get(),
-                "out_dir_combo": self.i_out_dir_combo.get() if hasattr(self, 'i_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.i_out_dir_path.get() if hasattr(self, 'i_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 ImagePanel
+            prefs = self._image_panel.collect_prefs()
         elif panel == "doc":
             prefs = {
                 "out_dir_combo": self.d_out_dir_combo.get() if hasattr(self, 'd_out_dir_combo') else "与源文件同目录",
@@ -1945,12 +1937,8 @@ class FormatMaster:
             # DI 委托：偏好收集已迁移到 PdfPanel
             prefs = self._pdf_panel.collect_prefs()
         elif panel == "compress_img":
-            prefs = {
-                "quality": self.ci_q.get(),
-                "size": self.ci_sz.get(),
-                "out_dir_combo": self.ci_out_dir_combo.get() if hasattr(self, 'ci_out_dir_combo') else "与源文件同目录",
-                "out_dir_path": self.ci_out_dir_path.get() if hasattr(self, 'ci_out_dir_path') else "",
-            }
+            # DI 委托：偏好收集已迁移到 CompressImgPanel
+            prefs = self._compress_img_panel.collect_prefs()
         elif panel == "rename":
             # DI 委托：偏好收集已迁移到 RenamePanel
             prefs = self._rename_panel.collect_prefs()
@@ -1985,10 +1973,8 @@ class FormatMaster:
                 "download_sub": self.m3u8_download_sub.get(),
             }
         elif panel == "detect":
-            prefs = {
-                "path": self.detect_path.get() if hasattr(self, 'detect_path') else "",
-                "auto_add": self.detect_auto_add.get() if hasattr(self, 'detect_auto_add') else True,
-            }
+            # DI 委托：偏好收集已迁移到 DetectPanel
+            prefs = self._detect_panel.collect_prefs()
         elif panel == "qrcode":
             prefs = {
                 "qr_type": self.qr_type.get() if hasattr(self, 'qr_type') else "文本",
@@ -2113,22 +2099,8 @@ class FormatMaster:
             # DI 委托：偏好恢复已迁移到 AudioPanel
             self._audio_panel.apply_prefs(prefs)
         elif panel == "image":
-            if prefs.get("fmt") and hasattr(self, 'i_fmt'):
-                self.i_fmt.set(prefs["fmt"])
-            if prefs.get("quality") and hasattr(self, 'i_q'):
-                self.i_q.set(prefs["quality"])
-            if prefs.get("size") and hasattr(self, 'i_sz'):
-                self.i_sz.set(prefs["size"])
-            if prefs.get("rotate") and hasattr(self, 'i_rotate'):
-                self.i_rotate.set(prefs["rotate"])
-            if prefs.get("crop") and hasattr(self, 'i_crop'):
-                self.i_crop.set(prefs["crop"])
-            if "grayscale" in prefs and hasattr(self, 'i_grayscale'):
-                self.i_grayscale.set(prefs["grayscale"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'i_out_dir_combo'):
-                self.i_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'i_out_dir_path'):
-                self.i_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 ImagePanel
+            self._image_panel.apply_prefs(prefs)
         elif panel == "doc":
             if prefs.get("out_dir_combo") and hasattr(self, 'd_out_dir_combo'):
                 self.d_out_dir_combo.set(prefs["out_dir_combo"])
@@ -2147,14 +2119,8 @@ class FormatMaster:
             # DI 委托：偏好恢复已迁移到 PdfPanel
             self._pdf_panel.apply_prefs(prefs)
         elif panel == "compress_img":
-            if prefs.get("quality") and hasattr(self, 'ci_q'):
-                self.ci_q.set(prefs["quality"])
-            if prefs.get("size") and hasattr(self, 'ci_sz'):
-                self.ci_sz.set(prefs["size"])
-            if prefs.get("out_dir_combo") and hasattr(self, 'ci_out_dir_combo'):
-                self.ci_out_dir_combo.set(prefs["out_dir_combo"])
-            if prefs.get("out_dir_path") and hasattr(self, 'ci_out_dir_path'):
-                self.ci_out_dir_path.set(prefs["out_dir_path"])
+            # DI 委托：偏好恢复已迁移到 CompressImgPanel
+            self._compress_img_panel.apply_prefs(prefs)
         elif panel == "rename":
             # DI 委托：偏好恢复已迁移到 RenamePanel
             self._rename_panel.apply_prefs(prefs)
@@ -2202,11 +2168,8 @@ class FormatMaster:
             if "download_sub" in prefs and hasattr(self, 'm3u8_download_sub'):
                 self.m3u8_download_sub.set(prefs["download_sub"])
         elif panel == "detect":
-            if prefs.get("path") and hasattr(self, 'detect_path'):
-                self.detect_path.delete(0, tk.END)
-                self.detect_path.insert(0, prefs["path"])
-            if "auto_add" in prefs and hasattr(self, 'detect_auto_add'):
-                self.detect_auto_add.set(prefs["auto_add"])
+            # DI 委托：偏好恢复已迁移到 DetectPanel
+            self._detect_panel.apply_prefs(prefs)
         elif panel == "qrcode":
             if prefs.get("qr_type") and hasattr(self, 'qr_type'):
                 self.qr_type.set(prefs["qr_type"])
@@ -2928,80 +2891,29 @@ class FormatMaster:
         self.a_ca            = c.ca
 
     def _p_image(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["image"] = p
-        self._hdr(p, "图片格式转换", "JPG · PNG · BMP · GIF · TIFF · WEBP · ICO 格式互转")
-        self._file_sec(p, "image",
-            [("图片文件","*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico *.tga"),("所有文件","*.*")])
-        s = self._card(p, "输出设置")
-        
-        s.columnconfigure(1, weight=1)
-        s.columnconfigure(3, weight=1)
-        
-        tk.Label(s, text="目标格式", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w", padx=(10, 8), pady=8)
-        self.i_fmt = ttk.Combobox(s, values=list(SUPPORTED_IMAGE.keys()), state="readonly", width=14)
-        self.i_fmt.set("PNG")
-        self.i_fmt.grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=8)
-        self.i_fmt.bind("<<ComboboxSelected>>", lambda e: self._update_format_hint("image"))
-        
-        tk.Label(s, text="质量", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=2, sticky="w", padx=(10, 8), pady=8)
-        self.i_q = ttk.Combobox(s, values=["100（无损）","95（高质量）","85（中等）","70（低质量）","50（压缩）"], state="readonly", width=14)
-        self.i_q.set("95（高质量）")
-        self.i_q.grid(row=0, column=3, sticky="ew", padx=(0, 10), pady=8)
-        
-        tk.Label(s, text="缩放", bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=0, sticky="w", padx=(10, 8), pady=8)
-        self.i_sz = ttk.Combobox(s, values=["原始大小","50%","25%","200%"], state="readonly", width=14)
-        self.i_sz.set("原始大小")
-        self.i_sz.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=8)
-        
-        tk.Label(s, text="旋转", bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=2, sticky="w", padx=(10, 8), pady=8)
-        self.i_rotate = ttk.Combobox(s, values=["0°","90°","180°","270°"], state="readonly", width=14)
-        self.i_rotate.set("0°")
-        self.i_rotate.grid(row=1, column=3, sticky="ew", padx=(0, 10), pady=8)
-        
-        tk.Label(s, text="裁剪", bg=D["card"], fg=D["ink"], font=SM).grid(row=2, column=0, sticky="w", padx=(10, 8), pady=8)
-        self.i_crop = ttk.Combobox(s, values=["原始比例","裁剪为正方形"], state="readonly", width=14)
-        self.i_crop.set("原始比例")
-        self.i_crop.grid(row=2, column=1, sticky="ew", padx=(0, 16), pady=8)
-        
-        self.i_grayscale = tk.BooleanVar(value=False)
-        grayscale_cb = tk.Checkbutton(s, text="转为黑白（灰度）", variable=self.i_grayscale,
-                                       bg=D["card"], fg=D["ink"], font=SM)
-        grayscale_cb.grid(row=2, column=2, columnspan=2, sticky="w", padx=10, pady=8)
-        
-        separator = tk.Frame(s, bg=D["border"], height=1)
-        separator.grid(row=3, column=0, columnspan=4, sticky="ew", padx=10, pady=10)
-        
-        tk.Label(s, text="水印处理", bg=D["card"], fg=D["ink"], font=(FT, 9, "bold")).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=(4, 4))
-        
-        tk.Label(s, text="水印文字", bg=D["card"], fg=D["ink"], font=SM).grid(row=5, column=0, sticky="w", padx=(10, 8), pady=8)
-        self.i_watermark = tk.Entry(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                     insertbackground=D["ink"], relief="flat",
-                                     highlightthickness=1, highlightbackground=D["input_bd"],
-                                     highlightcolor=D["accent"], width=16)
-        self.i_watermark.grid(row=5, column=1, sticky="ew", padx=(0, 16), pady=8)
-        
-        tk.Label(s, text="水印位置", bg=D["card"], fg=D["ink"], font=SM).grid(row=5, column=2, sticky="w", padx=(10, 8), pady=8)
-        self.i_watermark_pos = ttk.Combobox(s, values=["右下角","左下角","右上角","左上角","居中"], state="readonly", width=14)
-        self.i_watermark_pos.set("右下角")
-        self.i_watermark_pos.grid(row=5, column=3, sticky="ew", padx=(0, 10), pady=8)
+        # ── DI 化：构建逻辑已迁移到 gui.panels.image_panel.ImagePanel ──
+        from gui.panels.image_panel import ImagePanel
+        self._image_panel = ImagePanel(self.app_ctx, self.content)
+        self._image_panel.build()
 
-        # 输出目录（卡片内底部）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=6, column=0, columnspan=4, sticky="ew", padx=10, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.i_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.i_out_dir_combo.set("与源文件同目录")
-        self.i_out_dir_combo.pack(side=tk.LEFT)
-        self.i_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("image"), style="secondary")
-        self.i_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.i_out_dir_path = tk.StringVar(value="")
-        self.i_out_dir_label = tk.Label(out_frame, textvariable=self.i_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.i_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.i_pg, self.i_st, self.i_go, self.i_ca, _ = self._bar(p)
-        self.i_go.configure(command=lambda: self._go("image"))
-        self.i_ca.configure(command=lambda: self._stop("image"))
+        c = self._image_panel.context
+        # ── 兼容 shim：self.i_xxx → ImageContext 同一对象引用 ──
+        self.i_fmt          = c.fmt
+        self.i_q            = c.q
+        self.i_sz           = c.sz
+        self.i_rotate       = c.rotate
+        self.i_crop         = c.crop
+        self.i_grayscale    = c.grayscale
+        self.i_watermark    = c.watermark
+        self.i_watermark_pos = c.watermark_pos
+        self.i_out_dir_combo = c.out_dir_combo
+        self.i_out_dir_btn   = c.out_dir_btn
+        self.i_out_dir_path  = c.out_dir_path
+        self.i_out_dir_label = c.out_dir_label
+        self.i_pg            = c.pg
+        self.i_st            = c.st
+        self.i_go            = c.go
+        self.i_ca            = c.ca
 
     def _p_doc(self):
         p = tk.Frame(self.content, bg=D["page"])
@@ -3103,56 +3015,29 @@ class FormatMaster:
 
     # ── 格式检测 ──────────────────────────────
     def _p_detect(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["detect"] = p
-        self._hdr(p, "格式检测", "批量检测文件夹中所有文件的格式，支持按内容识别、文件详情预览和选择性批量转换")
-        
-        s = self._card(p, "检测设置")
-        
-        tk.Label(s, text="目标文件夹", bg=D["card"], fg=D["ink"], font=SM).grid(row=0, column=0, sticky="w")
-        self.detect_path = tk.Entry(s, font=BODY, bg=D["input_bg"], fg=D["ink"],
-                                     insertbackground=D["ink"], relief="flat",
-                                     highlightthickness=1, highlightbackground=D["input_bd"],
-                                     highlightcolor=D["accent"], width=40)
-        self.detect_path.grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        self._btn(s, "浏览", self._detect_browse, style="secondary", padx=12, pady=2).grid(row=0, column=2, padx=(4, 0))
-        
-        self.detect_auto_add = tk.BooleanVar(value=True)
-        tk.Checkbutton(s, text="自动添加到对应面板", variable=self.detect_auto_add,
-                       bg=D["card"], fg=D["ink"], font=SM).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        
-        # 可滚动结果区域（Canvas + Frame + Scrollbar）
-        container = tk.Frame(p, bg=D["card"])
-        container.pack(fill=tk.BOTH, expand=True, padx=16, pady=(12, 0))
-        
-        self.detect_canvas = tk.Canvas(container, bg=D["card"], highlightthickness=0)
-        vbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.detect_canvas.yview)
-        self.detect_rf = tk.Frame(self.detect_canvas, bg=D["card"])
-        
-        self.detect_rf.bind("<Configure>",
-            lambda e: self.detect_canvas.configure(scrollregion=self.detect_canvas.bbox("all")))
-        self.detect_canvas.create_window((0, 0), window=self.detect_rf, anchor="nw")
-        self.detect_canvas.configure(yscrollcommand=vbar.set)
-        
-        self.detect_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        def _bind_mw(e):
-            self.detect_canvas.bind_all("<MouseWheel>",
-                lambda ev: self.detect_canvas.yview_scroll(int(-1*(ev.delta/120)), "units"))
-        def _unbind_mw(e):
-            self.detect_canvas.unbind_all("<MouseWheel>")
-        self.detect_canvas.bind("<Enter>", _bind_mw)
-        self.detect_canvas.bind("<Leave>", _unbind_mw)
-        self.detect_rf.bind("<Enter>", _bind_mw)
-        self.detect_rf.bind("<Leave>", _unbind_mw)
-        
-        self.detect_pg, self.detect_st, self.detect_go, self.detect_ca, _ = self._bar(p)
-        self.detect_go.configure(text="开始检测", command=self._detect_start)
-        self.detect_ca.configure(command=self._detect_stop, state=tk.DISABLED)
-        
-        self.detect_file_list = []
-        self.detect_file_vars = []
+        # ── DI 化：UI 构建已迁移到 gui.panels.detect_panel.DetectPanel ──
+        # detect 是交互式检测器，业务逻辑（_detect_start/_detect_stop/
+        # _detect_scan_thread/_detect_apply_results/_detect_clear/
+        # _detect_batch_convert/_detect_toggle_all/_detect_browse）留在 main.py，
+        # 通过 shim 别名访问 detect_ 控件，指向 DetectContext 中的同一对象。
+        # detect_file_list/detect_file_vars 是 list，shim 指向同一 list 对象，
+        # main.py 中的 append/clear 操作直接作用于 DetectContext 中的 list。
+        from gui.panels.detect_panel import DetectPanel
+        self._detect_panel = DetectPanel(self.app_ctx, self.content)
+        self._detect_panel.build()
+
+        c = self._detect_panel.context
+        # ── 兼容 shim：self.detect_xxx → DetectContext 同一对象引用 ──
+        self.detect_path       = c.path
+        self.detect_auto_add   = c.auto_add
+        self.detect_canvas     = c.canvas
+        self.detect_rf         = c.rf
+        self.detect_pg         = c.pg
+        self.detect_st         = c.st
+        self.detect_go         = c.go
+        self.detect_ca         = c.ca
+        self.detect_file_list  = c.file_list
+        self.detect_file_vars  = c.file_vars
 
     def _detect_browse(self):
         last_dir = self._get_last_dir("detect")
@@ -3354,16 +3239,7 @@ class FormatMaster:
                     fmt = self.i_fmt.get() if hasattr(self, 'i_fmt') else "PNG"
                     ext = SUPPORTED_IMAGE.get(fmt, ".png")
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {
-                        "fmt": fmt,
-                        "quality": self.i_q.get() if hasattr(self, 'i_q') else "95（高质量）",
-                        "size": self.i_sz.get() if hasattr(self, 'i_sz') else "原始大小",
-                        "rotate": self.i_rotate.get() if hasattr(self, 'i_rotate') else "0°",
-                        "crop": self.i_crop.get() if hasattr(self, 'i_crop') else "原始比例",
-                        "grayscale": self.i_grayscale.get() if hasattr(self, 'i_grayscale') else False,
-                        "watermark": "",
-                        "watermark_pos": "右下角"
-                    }
+                    module_params = self._image_panel.collect_params()
                     task_type = "image"
                 elif key == "doc":
                     tgt = self.d_tgt.get() if hasattr(self, 'd_tgt') else ""
@@ -3690,31 +3566,23 @@ class FormatMaster:
 
     # ── 图片压缩 ──────────────────────────────
     def _p_compress_img(self):
-        p = tk.Frame(self.content, bg=D["page"])
-        self.panels["compress_img"] = p
-        self._hdr(p, "图片压缩", "批量压缩图片体积，保持格式不变，支持限制最大分辨率")
-        self._file_sec(p, "compress_img",
-            [("图片文件","*.jpg *.jpeg *.png *.bmp *.webp *.tiff"),("所有文件","*.*")])
-        s = self._card(p, "压缩设置")
-        self.ci_q  = self._row(s, "输出质量", ["95","85","75","60","50","40","30"], "75")
-        self.ci_sz = self._row(s, "最大分辨率", ["不限制","1920x1080","1280x720","800x600"], "不限制")
+        # ── DI 化：构建逻辑已迁移到 gui.panels.compress_img_panel.CompressImgPanel ──
+        from gui.panels.compress_img_panel import CompressImgPanel
+        self._compress_img_panel = CompressImgPanel(self.app_ctx, self.content)
+        self._compress_img_panel.build()
 
-        # 输出目录（卡片内）
-        out_frame = tk.Frame(s, bg=D["card"])
-        out_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16, pady=(8, 10))
-        tk.Label(out_frame, text="输出目录", bg=D["card"], fg=D["ink"], font=SM).pack(side=tk.LEFT, padx=(0, 8))
-        self.ci_out_dir_combo = ttk.Combobox(out_frame, values=["与源文件同目录", "自定义目录"], state="readonly", width=14)
-        self.ci_out_dir_combo.set("与源文件同目录")
-        self.ci_out_dir_combo.pack(side=tk.LEFT)
-        self.ci_out_dir_btn = self._btn(out_frame, "浏览", lambda: self._select_out_dir("compress_img"), style="secondary")
-        self.ci_out_dir_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.ci_out_dir_path = tk.StringVar(value="")
-        self.ci_out_dir_label = tk.Label(out_frame, textvariable=self.ci_out_dir_path, bg=D["card"], fg=D["ink_dis"], font=XS)
-        self.ci_out_dir_label.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.ci_pg, self.ci_st, self.ci_go, self.ci_ca, _ = self._bar(p)
-        self.ci_go.configure(command=lambda: self._go("compress_img"))
-        self.ci_ca.configure(command=lambda: self._stop("compress_img"))
+        c = self._compress_img_panel.context
+        # ── 兼容 shim：self.ci_xxx → CompressImgContext 同一对象引用 ──
+        self.ci_q             = c.q
+        self.ci_sz            = c.sz
+        self.ci_out_dir_combo = c.out_dir_combo
+        self.ci_out_dir_btn   = c.out_dir_btn
+        self.ci_out_dir_path  = c.out_dir_path
+        self.ci_out_dir_label = c.out_dir_label
+        self.ci_pg            = c.pg
+        self.ci_st            = c.st
+        self.ci_go            = c.go
+        self.ci_ca            = c.ca
 
     # ── 批量重命名 ────────────────────────────
     def _p_rename(self):
@@ -5705,16 +5573,7 @@ class FormatMaster:
                 elif t == "image":
                     ext = SUPPORTED_IMAGE[self.i_fmt.get()]
                     output_path = os.path.join(od, nm + ext)
-                    module_params = {
-                        "fmt": self.i_fmt.get(),
-                        "quality": self.i_q.get(),
-                        "size": self.i_sz.get(),
-                        "watermark": self.i_watermark.get(),
-                        "watermark_pos": self.i_watermark_pos.get(),
-                        "rotate": self.i_rotate.get(),
-                        "crop": self.i_crop.get(),
-                        "grayscale": self.i_grayscale.get()
-                    }
+                    module_params = self._image_panel.collect_params()
                 elif t == "doc":
                     tgt = self.d_tgt.get()
                     ext = tgt.split("（")[0]
@@ -5756,7 +5615,7 @@ class FormatMaster:
                 elif t == "compress_img":
                     ext = os.path.splitext(fn)[1]
                     output_path = os.path.join(od, nm + "_compressed" + ext)
-                    module_params = {"quality": self.ci_q.get(), "size": self.ci_sz.get()}
+                    module_params = self._compress_img_panel.collect_params()
                 elif t == "rename":
                     output_path = od
                     # DI 委托：参数收集已迁移到 RenamePanel（与 _go 路径一致）
