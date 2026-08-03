@@ -19,6 +19,8 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+_bench*
+_theme*
 .idea/
 .vscode/
 *.sublime-project

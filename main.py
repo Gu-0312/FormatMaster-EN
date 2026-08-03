@@ -129,6 +129,7 @@ class FormatMaster:
         self.converting = False
         self.panels_disabled = False
         self.last_output_dir = ""
+        self._theme_dirty = set()  # 需要主题刷新的面板 key（切换主题后延迟重绘）
         self.video_conv  = VideoConverter()
         self.audio_conv  = AudioConverter()
         self.image_conv  = ImageConverter()
@@ -310,18 +311,18 @@ class FormatMaster:
     # ── 主界面 ────────────────────────────────
     def _ui(self):
         # 顶部工具栏
-        toolbar = tk.Frame(self.root, bg=D["page"], height=40)
-        toolbar.pack(side=tk.TOP, fill=tk.X)
-        toolbar.pack_propagate(False)
+        self.toolbar = tk.Frame(self.root, bg=D["page"], height=40)
+        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+        self.toolbar.pack_propagate(False)
         
         # 关于按钮（最右侧）
-        self._about_lbl = tk.Label(toolbar, text="关于", bg=D["page"], fg=D["ink_sec"],
+        self._about_lbl = tk.Label(self.toolbar, text="关于", bg=D["page"], fg=D["ink_sec"],
                              font=("Segoe UI", 10), cursor="hand2",
                              padx=12, pady=6)
         self._about_lbl.pack(side=tk.RIGHT, padx=(0, 16), pady=6)
         
         # 主题切换按钮
-        self._theme_btn = tk.Button(toolbar, text="☾", font=("Segoe UI", 16),
+        self._theme_btn = tk.Button(self.toolbar, text="☾", font=("Segoe UI", 16),
                                     bg=D["page"], fg=D["ink_sec"], relief="flat",
                                     cursor="hand2", bd=0, padx=6,
                                     activebackground=D["card_alt"],
@@ -339,12 +340,12 @@ class FormatMaster:
         self._about_lbl.bind("<Button-1>", lambda e: self._show_about() if not getattr(self, 'panels_disabled', False) else None)
         
         # 侧边栏
-        sb = tk.Frame(self.root, bg=D["sidebar"], width=230)
+        self.sb = sb = tk.Frame(self.root, bg=D["sidebar"], width=230)
         sb.pack(side=tk.LEFT, fill=tk.Y)
         sb.pack_propagate(False)
 
-        sep = tk.Frame(self.root, bg=D["border"], width=1)
-        sep.pack(side=tk.LEFT, fill=tk.Y)
+        self.sep = tk.Frame(self.root, bg=D["border"], width=1)
+        self.sep.pack(side=tk.LEFT, fill=tk.Y)
 
         # Logo
         logo_f = tk.Frame(sb, bg=D["sidebar"])
@@ -539,50 +540,71 @@ class FormatMaster:
         return names.get(key, key)
 
     def _toggle_theme(self):
+        import time as _t; _t0 = _t.time()
         self._theme = "dark" if self._theme == "light" else "light"
         USER_PREFS.set("global", "theme", self._theme)
+        _t1 = _t.time()
         self._apply_theme()
+        print(f"[THEME-TS] _toggle_theme total: {_t.time()-_t0:.3f}s (apply_theme: {_t.time()-_t1:.3f}s)", flush=True)
 
     def _apply_theme(self, is_init=False):
+        import time as _t; _t0 = _t.time()
         colors = D_DARK if self._theme == "dark" else D_LIGHT
         for k, v in colors.items():
             D[k] = v
 
+        _t1 = _t.time()
         self._ttk()
+        _t2 = _t.time()
+
+        # 构建颜色映射表一次，供所有重绘方法使用，并缓存到实例变量
+        cmap = self._build_theme_color_map()
+        self._color_map = cmap  # 缓存供 _switch 使用
 
         self.root.configure(bg=D["page"])
         if hasattr(self, 'toolbar'):
             self.toolbar.configure(bg=D["page"])
+            self._recolor_widget(self.toolbar, cmap)
+        if hasattr(self, 'sep'):
+            self.sep.configure(bg=D["border"])
         if hasattr(self, 'main_content'):
             self.main_content.configure(bg=D["page"])
+            self._recolor_widget(self.main_content, cmap)
         if hasattr(self, 'content'):
             self.content.configure(bg=D["page"])
+            self._recolor_widget(self.content, cmap)
         if hasattr(self, 'bottom_frame'):
             self.bottom_frame.configure(bg=D["card"])
-            self._recolor_bottom_panel()
+            self._recolor_bottom_panel(cmap)
 
         self._set_title_bar_theme()
+        _t3 = _t.time()
 
-        # 启动时跳过全量重绘：_ui() 构建面板时已用正确主题色（__init__ L116-118 已设 D），
-        # _recolor_widget_recursive 遍历全部 16 面板控件耗时 4s+，启动时是冗余的。
-        # 只在运行时切换主题才需要全量重绘。
-        if not is_init:
-            self._recolor_sidebar()
-            if hasattr(self, 'status_frame'):
-                self._recolor_widget(self.status_frame)
+        if is_init:
+            pass
+        else:
+            if hasattr(self, 'sb') and self.sb:
+                self._recolor_widget(self.sb, cmap)
+            _t4 = _t.time()
+            cur = self.current_tab.get() if hasattr(self, 'current_tab') else "video"
+            if cur and cur in self.panels:
+                self._recolor_widget(self.panels[cur], cmap)
+            _t5 = _t.time()
+            self._theme_dirty = set(self.panels.keys())
+            self._theme_dirty.discard(cur)
 
         if hasattr(self, '_theme_btn'):
             self._theme_btn.configure(text="☀" if self._theme == "dark" else "☾")
 
-        cur = self.current_tab.get() if hasattr(self, 'current_tab') else "video"
-        if cur:
-            self._switch(cur)
+        if not is_init:
+            print(f"  [apply_theme] ttk={_t2-_t1:.3f}s recolor_bottom={_t3-_t2:.3f}s sidebar={_t4-_t3:.3f}s current_panel={_t5-_t4:.3f}s total={_t5-_t0:.3f}s", flush=True)
 
-    def _recolor_bottom_panel(self):
+    def _recolor_bottom_panel(self, color_map=None):
         if not hasattr(self, 'bottom_frame'):
             return
-        cmap = self._build_theme_color_map()
-        self._recolor_widget_recursive(self.bottom_frame, cmap)
+        if color_map is None:
+            color_map = self._build_theme_color_map()
+        self._recolor_widget_recursive(self.bottom_frame, color_map)
         # Reconfigure treeview tag colors
         if hasattr(self, 'task_tree'):
             try:
@@ -674,33 +696,43 @@ class FormatMaster:
         for widget in self.root.winfo_children():
             self._recolor_widget_recursive(widget, cmap)
 
-    def _recolor_widget(self, widget):
-        cmap = self._build_theme_color_map()
-        self._recolor_widget_recursive(widget, cmap)
+    def _recolor_widget(self, widget, color_map=None):
+        if color_map is None:
+            color_map = self._build_theme_color_map()
+        self._recolor_widget_recursive(widget, color_map)
+
+# 主题着色属性分类（类常量，避免每次调用重建）
+    _FG_ATTRS = {"fg", "foreground", "activeforeground", "selectforeground", "disabledforeground"}
+    _RECOLOR_ATTRS = ["fg", "bg", "highlightbackground", "highlightcolor",
+                      "activebackground", "activeforeground",
+                      "selectbackground", "selectforeground",
+                      "disabledforeground", "troughcolor"]
 
     def _recolor_widget_recursive(self, widget, color_map):
-        fg_attrs = {"fg", "foreground", "activeforeground", "selectforeground", "disabledforeground"}
-        bg_attrs = {"bg", "background", "highlightbackground", "highlightcolor",
-                     "activebackground", "selectbackground", "troughcolor",
-                     "fieldbackground"}
-        for attr in ["fg", "bg", "highlightbackground", "highlightcolor",
-                     "activebackground", "activeforeground",
-                     "selectbackground", "selectforeground",
-                     "disabledforeground", "troughcolor"]:
-            try:
-                val = widget.cget(attr)
-                if val:
+        fg_attrs = self._FG_ATTRS
+        # 批量获取当前控件的颜色属性值
+        try:
+            cget = widget.cget
+            for attr in self._RECOLOR_ATTRS:
+                try:
+                    val = cget(attr)
+                    if not val:
+                        continue
                     key = val.upper() if val.startswith("#") else val
-                    if key in color_map:
+                    mapped = color_map.get(key)
+                    if mapped:
                         grp = "fg" if attr in fg_attrs else "bg"
-                        widget.configure(**{attr: color_map[key][grp]})
-            except Exception:
-                _debug_log(f"主题着色失败: {attr}")
+                        widget.configure(**{attr: mapped[grp]})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # 递归处理子控件
         try:
             for child in widget.winfo_children():
                 self._recolor_widget_recursive(child, color_map)
         except Exception:
-            _debug_log("主题递归着色失败")
+            pass
 
     def _nav_update(self):
         cur = self.current_tab.get()
@@ -1999,6 +2031,11 @@ class FormatMaster:
                 pass
         try:
             if tab in self.panels:
+                # 切换主题后延迟重绘：如果该面板标记为 dirty，先重绘再显示
+                if tab in self._theme_dirty:
+                    cmap = getattr(self, '_color_map', None)
+                    self._recolor_widget(self.panels[tab], cmap)
+                    self._theme_dirty.discard(tab)
                 self.panels[tab].pack(fill=tk.BOTH, expand=True, padx=20, pady=12)
             else:
                 self._log_status(f"面板不存在: {tab}", "error")
