@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)](https://microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.2.0-orange.svg)]()
+[![Release](https://img.shields.io/badge/Release-v1.3.0-orange.svg)]()
 
 ---
 
@@ -252,7 +252,7 @@
 
 #### Download
 
-Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.2.0) page — no installation required, just double-click `格式大师.exe`.
+Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.0) page — no installation required, just double-click `格式大师.exe`.
 
 #### Build from Source
 
@@ -566,7 +566,7 @@ FormatMaster/
 
 #### 下载使用
 
-从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.2.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
+从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
 
 #### 从源码运行
 
@@ -637,7 +637,7 @@ FormatMaster/
 
 ### 📝 更新日志
 
-#### v1.2.0 (2026-07-19)
+#### v1.3.0 (2026-07-23)
 - 📥 新增视频下载功能（基于yt-dlp，支持数百个平台）
 - 🎬 新增视频快速预设（一键应用常用配置组合）
 - 🔒 新增PDF密码历史记录（保存最近10条密码，支持一键复用）
