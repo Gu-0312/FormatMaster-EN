@@ -1,4 +1,5 @@
 Pillow>=10.0.0
+rapidocr-onnxruntime>=1.3.0
 pyinstaller>=6.0.0
 windnd>=1.0.7
 pdf2docx>=0.5.13
@@ -8,3 +9,5 @@ python-pptx>=1.0.2
 pypdf>=6.0.0
 reportlab>=4.5.0
 PyMuPDF>=1.27.0
+qrcode[pil]>=7.4
+pywin32>=305
