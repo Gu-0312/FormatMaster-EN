@@ -103,33 +103,51 @@ class TestBatchRenameTransforms:
     def test_case_upper(self, tmp_path):
         # 用 output_dir 隔离：Windows 文件系统大小写不敏感，
         # 原地大小写转换会被 os.path.exists 判定为已存在而跳过。
-        # .upper() 也会把扩展名变大写 → PHOTO.JPG
+        # 修复后大小写只作用于文件名主体，扩展名保留原样 → PHOTO.jpg
         out_dir = os.path.join(str(tmp_path), "out")
         os.makedirs(out_dir)
         files = [_make_file(tmp_path, "photo.jpg")]
         result = batch_rename(files, "{name}", start_num=1, case="upper", output_dir=out_dir)
-        assert _renamed_names(result) == ["PHOTO.JPG"]
+        assert _renamed_names(result) == ["PHOTO.jpg"]
 
     def test_case_lower(self, tmp_path):
         out_dir = os.path.join(str(tmp_path), "out")
         os.makedirs(out_dir)
         files = [_make_file(tmp_path, "PHOTO.JPG")]
         result = batch_rename(files, "{name}", start_num=1, case="lower", output_dir=out_dir)
-        assert _renamed_names(result) == ["photo.jpg"]
+        # 扩展名保留原大写 → .JPG（修复后不再动扩展名）
+        assert _renamed_names(result) == ["photo.JPG"]
 
     def test_case_title(self, tmp_path):
         out_dir = os.path.join(str(tmp_path), "out")
         os.makedirs(out_dir)
         files = [_make_file(tmp_path, "my photo.jpg")]
         result = batch_rename(files, "{name}", start_num=1, case="title", output_dir=out_dir)
-        # str.title() 把扩展名 "jpg" 也当单词 → "Jpg"（Python 标准行为）
-        assert _renamed_names(result) == ["My Photo.Jpg"]
+        # 修复后扩展名保留原样 → .jpg（不再变成 .Jpg）
+        assert _renamed_names(result) == ["My Photo.jpg"]
 
     def test_regex_replace(self, tmp_path):
         files = [_make_file(tmp_path, "img123.jpg")]
         result = batch_rename(files, "{name}", start_num=1,
                               regex_pattern=r"\d+", regex_replace="NUM")
         assert _renamed_names(result) == ["imgNUM.jpg"]
+
+    def test_case_preserves_double_extension(self, tmp_path):
+        # splitext 只切最后一段扩展名，.tar.gz 的 .tar 部分属文件名主体会被转换
+        # 这是 os.path.splitext 的标准行为，测试如实记录
+        out_dir = os.path.join(str(tmp_path), "out")
+        os.makedirs(out_dir)
+        files = [_make_file(tmp_path, "archive.tar.gz")]
+        result = batch_rename(files, "{name}", start_num=1, case="upper", output_dir=out_dir)
+        # body="archive.tar" 被 upper → ARCHIVE.TAR，ext=".gz" 保留
+        assert _renamed_names(result) == ["ARCHIVE.TAR.gz"]
+
+    def test_case_none_no_change(self, tmp_path):
+        out_dir = os.path.join(str(tmp_path), "out")
+        os.makedirs(out_dir)
+        files = [_make_file(tmp_path, "Photo.jpg")]
+        result = batch_rename(files, "{name}", start_num=1, case="none", output_dir=out_dir)
+        assert _renamed_names(result) == ["Photo.jpg"]
 
 
 class TestBatchRenameEdgeCases:

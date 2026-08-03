@@ -3414,12 +3414,16 @@ class FormatMaster:
             except re.error:
                 pass
 
-        if case == "upper":
-            new_name = new_name.upper()
-        elif case == "lower":
-            new_name = new_name.lower()
-        elif case == "title":
-            new_name = new_name.title()
+        if case in ("upper", "lower", "title"):
+            # 大小写转换只作用于文件名主体，保留扩展名原样
+            _body, _ext = os.path.splitext(new_name)
+            if case == "upper":
+                _body = _body.upper()
+            elif case == "lower":
+                _body = _body.lower()
+            elif case == "title":
+                _body = _body.title()
+            new_name = _body + _ext
 
         return new_name
 
