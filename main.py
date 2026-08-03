@@ -50,157 +50,11 @@ from core.m3u8_downloader import M3U8Downloader
 from gui.pdf_editor_panel import PdfEditorPanel
 from utils.combobox_style import style_combobox
 from app.context import AppContext
+from app.exceptions import EX_HINT, _hint_ex, _debug_log
+from app.theme import D, D_LIGHT, D_DARK, FT, DISPLAY, H2, BODY, BODY_B, SM, XS, NAV, NAV_B, BTN
+from utils.format_helpers import extract_urls
 
 
-# ═══════════════════════════════════════════════
-#  异常 → 中文提示映射
-# ═══════════════════════════════════════════════
-EX_HINT = {
-    "FileNotFoundError": "找不到输入文件，请检查路径",
-    "PermissionError": "没有访问权限，请检查文件/目录权限",
-    "KeyError": "缺少必要参数，请检查设置",
-    "ValueError": "参数值不合法，请检查输入",
-    "OSError": "系统错误，文件可能被占用或路径无效",
-    "IndexError": "索引越界，数据可能不完整",
-    "TypeError": "类型错误，数据格式不匹配",
-    "AttributeError": "功能暂不支持此操作",
-    "subprocess.CalledProcessError": "子进程执行失败，请检查FFmpeg安装",
-    "RuntimeError": "运行时错误，文件可能已损坏或不支持",
-    "json.JSONDecodeError": "媒体信息解析失败，文件可能已损坏",
-    "MemoryError": "内存不足，请关闭其他程序后重试",
-    "TimeoutError": "操作超时，文件可能过大或已损坏",
-    "ImportError": "缺少必要组件或依赖库，请重新安装",
-    "ModuleNotFoundError": "缺少功能模块，请重新安装程序",
-    "ConnectionError": "网络连接失败，请检查网络",
-    "UnicodeDecodeError": "文件编码不兼容，请尝试其他格式",
-    "UnicodeEncodeError": "文件名包含不兼容字符，请重命名",
-    "requests.exceptions.ConnectionError": "网络连接失败，请检查网络",
-    "pdfminer.pdfparser.PDFSyntaxError": "PDF文件语法错误，文件可能已损坏",
-    "fitz.FileDataError": "PDF文件已损坏，无法打开",
-    "fitz.EmptyFileError": "PDF文件为空",
-    "PdfReadError": "PDF文件读取失败，文件可能已损坏或加密",
-}
-
-def _hint_ex(ex):
-    """为常见异常生成中文说明，帮助用户理解错误原因"""
-    en = type(ex).__name__
-    for k, v in EX_HINT.items():
-        if k in en:
-            return v
-    return None
-
-def _debug_log(msg):
-    """写调试日志到文件和 stderr，不影响 UI。"""
-    import traceback as _tb
-    import sys as _sys
-    import datetime as _dt
-    ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] {msg}\n"
-    try:
-        log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "FormatMaster")
-        os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, "debug.log")
-        with open(log_path, "a", encoding="utf-8") as _f:
-            _f.write(line)
-            _tb.print_exc(file=_f)
-        if os.path.getsize(log_path) > 2 * 1024 * 1024:
-            with open(log_path, "r", encoding="utf-8") as _f:
-                _f.seek(max(0, os.path.getsize(log_path) - 1024 * 1024))
-                _f.readline()
-                tail = _f.read()
-            with open(log_path, "w", encoding="utf-8") as _f:
-                _f.write(tail)
-    except Exception:
-        pass
-    if os.environ.get("FORMATMASTER_DEBUG", "") == "1":
-        try:
-            _sys.stderr.write(f"[FormatMaster Debug] {line}")
-            _tb.print_exc(file=_sys.stderr)
-            _sys.stderr.flush()
-        except Exception:
-            pass
-
-# ═══════════════════════════════════════════════
-#  Design Tokens - Modern Flat Style
-# ═══════════════════════════════════════════════
-D = {
-    "page":         "#F5F6FA",
-    "card":         "#FFFFFF",
-    "card_alt":     "#FAFBFC",
-    "sidebar":      "#FFFFFF",
-    "sidebar_sel":  "#F0F1F5",
-    "accent":       "#F05A42",
-    "accent_soft":  "#FF7B69",
-    "accent_pale":  "#FFF1EF",
-    "accent_deep":  "#D04532",
-    "ink":          "#1A1A2E",
-    "ink_sec":      "#6B7280",
-    "ink_dis":      "#9CA3AF",
-    "ink_inv":      "#FFFFFF",
-    "border":       "#E5E7EB",
-    "border_hi":    "#D1D5DB",
-    "divider":      "#F3F4F6",
-    "ok":           "#10B981",
-    "warn":         "#F59E0B",
-    "err":          "#EF4444",
-    "input_bg":     "#FFFFFF",
-    "input_bd":     "#E5E7EB",
-    "input_focus":  "#F05A42",
-    "prog_trough":  "#E5E7EB",
-    "prog_fill":    "#F05A42",
-    "select_bg":    "#FDDBD6",
-    "select_fg":    "#C0392B",
-    "select_bold":  "#A83228",
-}
-
-D_LIGHT = dict(D)
-
-D_DARK = {
-    "page":         "#1E1E2E",
-    "card":         "#2A2A3C",
-    "card_alt":     "#323248",
-    "sidebar":      "#252536",
-    "sidebar_sel":  "#323248",
-    "accent":       "#F05A42",
-    "accent_soft":  "#FF7B69",
-    "accent_pale":  "#3D2A28",
-    "accent_deep":  "#D04532",
-    "ink":          "#E4E4E7",
-    "ink_sec":      "#A1A1AA",
-    "ink_dis":      "#71717A",
-    "ink_inv":      "#FFFFFF",
-    "border":       "#3F3F50",
-    "border_hi":    "#525266",
-    "divider":      "#323248",
-    "ok":           "#22C55E",
-    "warn":         "#F59E0B",
-    "err":          "#EF4444",
-    "input_bg":     "#1A1A2E",
-    "input_bd":     "#3F3F50",
-    "input_focus":  "#F05A42",
-    "prog_trough":  "#3F3F50",
-    "prog_fill":    "#F05A42",
-    "select_bg":    "#3D2A28",
-    "select_fg":    "#FF7B69",
-    "select_bold":  "#FF7B69",
-}
-
-# 字体
-FT  = "Microsoft YaHei UI"
-DISPLAY = (FT, 22, "bold")
-H2      = (FT, 14, "bold")
-BODY    = (FT, 10)
-BODY_B  = (FT, 10, "bold")
-SM      = (FT, 9)
-XS      = (FT, 8)
-NAV     = (FT, 10)
-NAV_B   = (FT, 10, "bold")
-BTN     = (FT, 10, "bold")
-
-
-def _extract_urls(text):
-    """从文本中提取所有 http(s) URL"""
-    return list(set(re.findall(r"https?://[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef<>\"']+", text)))
 
 
 class FormatMaster:
@@ -4208,7 +4062,7 @@ class FormatMaster:
             self.m3u8_out_dir.set(d)
 
     def _m3u8_parse_url(self):
-        urls = _extract_urls(self.m3u8_url.get("1.0", tk.END))
+        urls = extract_urls(self.m3u8_url.get("1.0", tk.END))
         if not urls:
             messagebox.showwarning("提示", "请先输入M3U8链接")
             return
@@ -4271,7 +4125,7 @@ class FormatMaster:
 
     def _m3u8_batch_add(self):
         raw = self.m3u8_url.get("1.0", tk.END)
-        urls = _extract_urls(raw)
+        urls = extract_urls(raw)
         if not urls:
             messagebox.showwarning("提示", "请先输入有效的M3U8链接")
             return
@@ -4315,7 +4169,7 @@ class FormatMaster:
         return hashlib.md5(url.encode()).hexdigest()[:12]
 
     def _m3u8_add_to_favorites(self):
-        urls = _extract_urls(self.m3u8_url.get("1.0", tk.END))
+        urls = extract_urls(self.m3u8_url.get("1.0", tk.END))
         if not urls:
             messagebox.showwarning("提示", "请先输入链接")
             return
