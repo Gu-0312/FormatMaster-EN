@@ -4454,12 +4454,36 @@ class FormatMaster:
     #  FFmpeg
     # ══════════════════════════════════════════
     def _check_ffmpeg(self):
+        """检测 FFmpeg：先同步本地检测（毫秒级），有则立即就绪；无则启动带进度反馈的下载。
+
+        修复"一直显示检测中"：原实现直接 download_async，本地有 FFmpeg 也要等
+        子线程 callback；且下载期间无 progress 反馈，标签卡在"检测中"。
+        改为先同步检测，本地有立即更新；本地无则标签变"下载中"并实时显示进度。
+        """
         def cb(ok, msg=""):
             try:
                 self.root.after(0, lambda: self._ff(ok, msg))
             except RuntimeError:
                 # root already destroyed (测试/退出时)
                 pass
+
+        # 阶段1：同步本地检测（无网络，毫秒级）—— 本地有则立即"已就绪"，不再卡"检测中"
+        if self.ffmpeg_mgr.is_available():
+            self._ff(True, "FFmpeg已就绪")
+            return
+
+        # 阶段2：本地无 → 标签立即变"下载中"（不再卡"检测中"），启动带进度的下载
+        self.ff_lbl.configure(text="FFmpeg · 下载中...", fg=D["ink_dis"], cursor="")
+
+        def on_progress(pct, msg):
+            # 下载进度实时反馈到 ff_lbl（符合"实时状态反馈"偏好）
+            try:
+                self.root.after(0, lambda: self.ff_lbl.configure(
+                    text=f"FFmpeg · 下载中 {pct}%" if 0 < pct < 100 else f"FFmpeg · {msg}"))
+            except RuntimeError:
+                pass
+
+        self.ffmpeg_mgr.progress_callback = on_progress
         try:
             self.ffmpeg_mgr.download_async(cb)
         except Exception as e:

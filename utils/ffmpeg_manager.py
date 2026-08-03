@@ -29,6 +29,9 @@ class FFmpegManager:
 
     def download_async(self, callback=None):
         if self._downloading:
+            # 已在下载中：回调通知调用方，不再静默忽略（避免调用方无限等待）
+            if callback:
+                callback(True, "正在下载中...")
             return
         threading.Thread(target=self._download, args=(callback,), daemon=True).start()
 
