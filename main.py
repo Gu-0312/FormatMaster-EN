@@ -175,7 +175,7 @@ class FormatMaster:
         self._setup_drag_drop()
         self._check_ffmpeg()
         self._check_ytdlp()
-        self._apply_theme()
+        self._apply_theme(is_init=True)
 
     # ── ttk 主题 ──────────────────────────────
     def _ttk(self):
@@ -543,7 +543,7 @@ class FormatMaster:
         USER_PREFS.set("global", "theme", self._theme)
         self._apply_theme()
 
-    def _apply_theme(self):
+    def _apply_theme(self, is_init=False):
         colors = D_DARK if self._theme == "dark" else D_LIGHT
         for k, v in colors.items():
             D[k] = v
@@ -562,10 +562,14 @@ class FormatMaster:
             self._recolor_bottom_panel()
 
         self._set_title_bar_theme()
-        self._recolor_sidebar()
 
-        if hasattr(self, 'status_frame'):
-            self._recolor_widget(self.status_frame)
+        # 启动时跳过全量重绘：_ui() 构建面板时已用正确主题色（__init__ L116-118 已设 D），
+        # _recolor_widget_recursive 遍历全部 16 面板控件耗时 4s+，启动时是冗余的。
+        # 只在运行时切换主题才需要全量重绘。
+        if not is_init:
+            self._recolor_sidebar()
+            if hasattr(self, 'status_frame'):
+                self._recolor_widget(self.status_frame)
 
         if hasattr(self, '_theme_btn'):
             self._theme_btn.configure(text="☀" if self._theme == "dark" else "☾")
