@@ -178,11 +178,13 @@ class PdfEditor:
             src = fitz.open(pdf_path)
         except Exception:
             return False
+        if src.needs_pass:
+            src.close()
+            return False
         self._snapshot()
         new_indices = []
         for i in range(len(src)):
-            start_at = len(self._doc) - 1 if len(self._doc) > 0 else -1
-            self._doc.insert_pdf(src, from_page=i, to_page=i, start_at=start_at)
+            self._doc.insert_pdf(src, from_page=i, to_page=i, start_at=-1)
             new_indices.append(len(self._doc) - 1)
         src.close()
         self._page_order = (self._page_order[:at_index] +
@@ -201,7 +203,10 @@ class PdfEditor:
             pil_img = Image.open(img_path)
             if pil_img.mode != "RGB":
                 pil_img = pil_img.convert("RGB")
-            img_bytes = pil_img.tobytes("jpeg", "RGB")
+            import io
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG")
+            img_bytes = buf.getvalue()
             rect = fitz.Rect(0, 0, pil_img.width, pil_img.height)
             page = self._doc.new_page(width=pil_img.width, height=pil_img.height)
             page.insert_image(rect, stream=img_bytes)
@@ -245,8 +250,7 @@ class PdfEditor:
                 real_idx = self._page_order[i]
                 tmp = fitz.open()
                 tmp.insert_pdf(self._doc, from_page=real_idx, to_page=real_idx)
-                start_at = len(self._doc) - 1 if len(self._doc) > 0 else -1
-                self._doc.insert_pdf(tmp, from_page=0, to_page=0, start_at=start_at)
+                self._doc.insert_pdf(tmp, from_page=0, to_page=0, start_at=-1)
                 tmp.close()
                 new_indices.append(len(self._doc) - 1)
         self._page_order = (self._page_order[:at_index] +
