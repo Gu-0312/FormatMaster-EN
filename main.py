@@ -52,7 +52,7 @@ from utils.combobox_style import style_combobox
 from app.context import AppContext
 from app.exceptions import EX_HINT, _hint_ex, _debug_log
 from app.theme import D, D_LIGHT, D_DARK, FT, DISPLAY, H2, BODY, BODY_B, SM, XS, NAV, NAV_B, BTN
-from utils.format_helpers import extract_urls
+from utils.format_helpers import extract_urls, format_size, parse_time, format_time
 
 
 
@@ -2164,7 +2164,7 @@ class FormatMaster:
         if "props_labels" not in d:
             return
         
-        file_size = self._format_size(os.path.getsize(filepath))
+        file_size = format_size(os.path.getsize(filepath))
         file_name = os.path.basename(filepath)
         
         d["props_labels"]["文件名"].configure(text=file_name)
@@ -2180,16 +2180,6 @@ class FormatMaster:
             self._get_audio_info(filepath, key)
         elif ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]:
             self._get_image_info(filepath, key)
-
-    def _format_size(self, size):
-        if size < 1024:
-            return f"{size} B"
-        elif size < 1024 * 1024:
-            return f"{size / 1024:.1f} KB"
-        elif size < 1024 * 1024 * 1024:
-            return f"{size / (1024 * 1024):.1f} MB"
-        else:
-            return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
     def _get_video_info(self, filepath, key):
         def get_info():
@@ -2932,7 +2922,7 @@ class FormatMaster:
             detected[cat].append(fp)
             
             content_type = self._detect_format_by_content(fp)
-            size_str = self._format_size(os.path.getsize(fp))
+            size_str = format_size(os.path.getsize(fp))
             file_info.append((fp, cat, size_str, content_type))
             
             if (i + 1) % 20 == 0 or i == total - 1:
@@ -3125,7 +3115,7 @@ class FormatMaster:
                 if matching:
                     _, _, size_str, content_type = matching[0]
                 else:
-                    size_str = self._format_size(os.path.getsize(fp))
+                    size_str = format_size(os.path.getsize(fp))
                     content_type = None
 
                 fn = os.path.basename(fp)
@@ -4749,23 +4739,6 @@ class FormatMaster:
         }
         pg, st, go, ca = m.get(t, (None, None, None, None))
         return {"pg": pg, "st": st, "go": go, "ca": ca}
-
-    def _parse_time(self, time_str):
-        try:
-            parts = list(map(float, time_str.split(":")))
-            if len(parts) == 3:
-                return parts[0] * 3600 + parts[1] * 60 + parts[2]
-            elif len(parts) == 2:
-                return parts[0] * 60 + parts[1]
-            return float(parts[0])
-        except Exception:
-            return 0
-
-    def _format_time(self, seconds):
-        h = int(seconds // 3600)
-        m = int((seconds % 3600) // 60)
-        s = seconds % 60
-        return f"{h:02d}:{m:02d}:{s:06.3f}"
 
     def _show_complete_dialog(self, title, success_count, total_count, output_dir, elapsed_time):
         messagebox.showinfo("完成", f"成功转换 {success_count}/{total_count} 个文件")
