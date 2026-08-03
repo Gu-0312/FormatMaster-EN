@@ -81,23 +81,23 @@ def _window_proc(hwnd, msg, wp, lp):
 
 def register_drop(hwnd, callback):
     if not isinstance(hwnd, int) or hwnd <= 0:
-        print(f"✗ 无效的窗口句柄: {hwnd}")
+        print("[drag_drop] 无效句柄: {}".format(hwnd))
         return False
     
     if hwnd in _callbacks:
-        print(f"✗ 窗口句柄 {hwnd} 已注册拖拽")
+        print("[drag_drop] 句柄 {} 已注册".format(hwnd))
         return False
     
     try:
         if not user32.IsWindow(hwnd):
-            print(f"✗ 窗口句柄 {hwnd} 对应的窗口不存在")
+            print("[drag_drop] 句柄 {} 窗口不存在".format(hwnd))
             return False
         
         shell32.DragAcceptFiles(hwnd, True)
         
         old_proc = user32.GetWindowLongPtrW(hwnd, GWL_WNDPROC)
         if not old_proc:
-            print(f"✗ 获取原始窗口过程失败")
+            print("[drag_drop] 获取原始窗口过程失败")
             return False
         
         _old_wndprocs[hwnd] = old_proc
@@ -108,10 +108,10 @@ def register_drop(hwnd, callback):
         user32.SetWindowLongPtrW(hwnd, GWL_WNDPROC, ctypes.cast(new_proc, ctypes.c_void_p))
         _proc_refs[hwnd] = new_proc
         
-        print(f"✓ 纯 ctypes 拖拽已注册 (hwnd: {hwnd})")
+        print("[drag_drop] ctypes 拖拽已注册 (hwnd: {})".format(hwnd))
         return True
     except Exception as e:
-        print(f"✗ 纯 ctypes 拖拽注册失败: {e}")
+        print("[drag_drop] ctypes 拖拽注册失败: {}".format(e))
         if hwnd in _old_wndprocs:
             del _old_wndprocs[hwnd]
         if hwnd in _callbacks:
@@ -140,10 +140,10 @@ def unregister_drop(hwnd):
         if hwnd in _proc_refs:
             del _proc_refs[hwnd]
         
-        print(f"✓ 拖拽已注销 (hwnd: {hwnd})")
+        print("[drag_drop] 拖拽已注销 (hwnd: {})".format(hwnd))
         return True
     except Exception as e:
-        print(f"✗ 拖拽注销失败: {e}")
+        print("[drag_drop] 拖拽注销失败: {}".format(e))
         return False
 
 
@@ -167,6 +167,7 @@ class SafeDropHandler:
         self._callback = None
         self._is_running = True
         self._hwnd = None
+        self._enabled = True
     
     def register_callback(self, callback):
         self._callback = callback
@@ -179,8 +180,12 @@ class SafeDropHandler:
     
     def _enqueue_files(self, files):
         """将文件放入队列（可在任意线程调用）"""
-        if self._is_running:
+        if self._is_running and self._enabled:
             self._queue.put(files)
+    
+    def set_enabled(self, enabled):
+        """设置是否启用拖拽接收"""
+        self._enabled = enabled
     
     def _process_queue(self):
         """在主线程中处理队列"""

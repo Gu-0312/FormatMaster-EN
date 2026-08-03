@@ -19,6 +19,10 @@ class FFmpegManager:
     def __init__(self, progress_callback=None):
         self.progress_callback = progress_callback
         self._downloading = False
+        # 结构化错误详情：每个失败源/阶段一条记录，供 UI 展示完整信息
+        # 格式: [{"phase": "download"|"extract"|"verify", "url": str,
+        #         "type": str, "msg": str}]
+        self.last_errors = []
 
     def is_available(self):
         return get_ffmpeg_path() is not None and get_ffprobe_path() is not None
@@ -32,8 +36,18 @@ class FFmpegManager:
         if self.progress_callback:
             self.progress_callback(pct, msg)
 
+    def _record_error(self, phase, msg, url="", exc=None):
+        """记录一条结构化错误，不截断，保留异常类型供诊断。"""
+        self.last_errors.append({
+            "phase": phase,
+            "url": url,
+            "type": type(exc).__name__ if exc is not None else "",
+            "msg": str(msg),
+        })
+
     def _download(self, callback=None):
         self._downloading = True
+        self.last_errors = []  # 每次下载前清空，重试时不会累积旧错误
 
         # 1) 本地bin目录已有
         if self.is_available():
@@ -93,11 +107,20 @@ class FFmpegManager:
                 break
             except Exception as e:
                 last_error = str(e)
+                self._record_error("download", last_error, url=url, exc=e)
                 self._report(15, f"源{idx+1}失败: {last_error[:60]}")
                 continue
 
         if not downloaded:
-            self._report(0, "下载失败，请手动安装FFmpeg")
+            # 下载失败后，再次检查系统 PATH
+            sys_ffmpeg_fallback = shutil.which("ffmpeg")
+            if sys_ffmpeg_fallback:
+                self._report(100, "下载失败但检测到系统FFmpeg")
+                if callback:
+                    callback(True, "使用系统FFmpeg（下载失败）")
+                self._downloading = False
+                return
+            self._report(0, f"下载失败，请手动安装FFmpeg。最后错误: {last_error[:80]}")
             if callback:
                 callback(False, f"下载失败: {last_error[:100]}")
             self._downloading = False
@@ -121,6 +144,7 @@ class FFmpegManager:
                 pass
 
         except Exception as e:
+            self._record_error("extract", str(e), exc=e)
             self._report(0, f"解压失败: {e}")
             if callback:
                 callback(False, f"解压失败: {e}")
@@ -133,6 +157,7 @@ class FFmpegManager:
             if callback:
                 callback(True, "FFmpeg安装成功")
         else:
+            self._record_error("verify", "解压后仍检测不到 ffmpeg.exe/ffprobe.exe")
             self._report(0, "FFmpeg安装异常，文件可能损坏")
             if callback:
                 callback(False, "安装异常")

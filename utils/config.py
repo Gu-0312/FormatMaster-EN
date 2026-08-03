@@ -4,7 +4,7 @@ import sys
 import shutil
 
 APP_NAME = "格式大师"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.3.0"
 
 # ═══════════════════════════════════════════════
 #  路径管理（核心修复区）
@@ -71,6 +71,31 @@ def _find_ffmpeg(name: str):
     # 3. 系统PATH
     return shutil.which(name.replace(".exe", ""))
 
+# ═══════════════════════════════════════════════
+#  FFmpeg 错误信息中文翻译
+# ═══════════════════════════════════════════════
+FFMPEG_ERROR_MAP = {
+    "No such file or directory": "找不到输入文件，请检查路径是否正确",
+    "Invalid data found when processing input": "文件格式不支持或文件已损坏",
+    "Unknown encoder": "缺少编码器，请检查FFmpeg安装或换用其他编码",
+    "codec not currently supported in container": "当前封装格式不支持该编码器，请换用其他格式",
+    "Permission denied": "无法写入输出文件，权限不足",
+    "not found": "找不到必要组件，请重新安装FFmpeg",
+    "Could not find codec parameters": "无法解析媒体参数，文件可能已损坏",
+    "Invalid argument": "参数无效，请检查设置",
+    "Connection refused": "无法连接到服务器",
+    "Device or resource busy": "设备或资源繁忙，请稍后重试",
+    "ValueError": "参数值错误",
+    "FileNotFoundError": "找不到输入文件",
+}
+
+def translate_ffmpeg_error(stderr_text):
+    """将 FFmpeg 错误输出翻译为中文说明"""
+    for eng, chn in FFMPEG_ERROR_MAP.items():
+        if eng.lower() in stderr_text.lower():
+            return chn
+    return "转换失败，请检查文件是否完整或尝试其他格式"
+
 def get_ffmpeg_path():
     name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
     return _find_ffmpeg(name)
@@ -106,6 +131,108 @@ def get_history_path():
 def get_presets_path():
     """获取预设模板文件路径"""
     return os.path.join(get_user_data_dir(), "presets.json")
+
+def get_user_prefs_path():
+    """获取用户偏好设置文件路径"""
+    return os.path.join(get_user_data_dir(), "user_prefs.json")
+
+
+class UserPrefs:
+    def __init__(self):
+        self.prefs = {}
+        self._load()
+    
+    def _load(self):
+        path = get_user_prefs_path()
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    import json
+                    self.prefs = json.load(f)
+            except Exception:
+                self.prefs = {}
+    
+    def _save(self):
+        path = get_user_prefs_path()
+        try:
+            import json
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(self.prefs, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+    
+    def get(self, panel, key, default=None):
+        return self.prefs.get(panel, {}).get(key, default)
+    
+    def set(self, panel, key, value):
+        if panel not in self.prefs:
+            self.prefs[panel] = {}
+        self.prefs[panel][key] = value
+        self._save()
+    
+    def save_panel(self, panel, params):
+        self.prefs[panel] = params
+        self._save()
+    
+    def get_panel(self, panel):
+        return self.prefs.get(panel, {})
+
+USER_PREFS = UserPrefs()
+
+
+class ConversionHistory:
+    """转换历史记录管理"""
+
+    MAX_RECORDS = 200
+
+    def __init__(self):
+        self.records = []
+        self._load()
+
+    def _load(self):
+        path = get_history_path()
+        if os.path.exists(path):
+            try:
+                import json
+                with open(path, 'r', encoding='utf-8') as f:
+                    self.records = json.load(f)
+            except Exception:
+                self.records = []
+
+    def _save(self):
+        path = get_history_path()
+        try:
+            import json
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(self.records, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def add(self, record: dict):
+        """添加一条历史记录"""
+        import time as tm
+        record["time"] = tm.strftime("%Y-%m-%d %H:%M:%S")
+        record["timestamp"] = tm.time()
+        self.records.insert(0, record)
+        if len(self.records) > self.MAX_RECORDS:
+            self.records = self.records[:self.MAX_RECORDS]
+        self._save()
+
+    def get_all(self, limit=None):
+        if limit:
+            return self.records[:limit]
+        return self.records
+
+    def clear(self):
+        self.records.clear()
+        self._save()
+
+    def delete(self, index):
+        if 0 <= index < len(self.records):
+            self.records.pop(index)
+            self._save()
+
+CONV_HISTORY = ConversionHistory()
 
 # ═══════════════════════════════════════════════
 #  格式与参数配置（以下保持不变）
@@ -172,20 +299,29 @@ DOC_READ_FORMATS = {
     ".html": "网页", ".htm": "网页",
     ".jpg": "图片", ".jpeg": "图片", ".png": "图片",
     ".bmp": "图片", ".tiff": "图片", ".webp": "图片",
+    ".md": "Markdown", ".epub": "EPUB电子书",
+    ".rtf": "RTF富文本", ".odt": "ODT文档",
+    ".ofd": "OFD文档",
 }
 
 DOC_CONVERSION_MAP = {
-    "PDF文档": [".docx", ".doc", ".txt", ".jpg", ".png", ".html"],
-    "Word文档": [".pdf", ".txt", ".html", ".doc", ".wps"],
-    "Word97文档": [".pdf", ".txt", ".docx"],
-    "WPS文档": [".docx", ".pdf", ".txt"],
-    "Excel表格": [".pdf", ".csv", ".txt"],
-    "CSV表格": [".xlsx", ".txt"],
-    "PPT演示": [".pdf", ".txt", ".jpg", ".png", ".ppt", ".dps"],
-    "PPT97演示": [".pptx"],
-    "WPS演示": [".pptx"],
-    "WPS表格": [".xlsx"],
-    "图片": [".pdf"],
-    "文本文件": [".pdf", ".xlsx"],
-    "网页": [".pdf"],
+    "PDF文档": [".docx", ".doc", ".txt", ".jpg", ".png", ".html", ".pptx", ".xlsx"],
+    "Word文档": [".pdf", ".txt", ".html", ".doc", ".wps", ".jpg", ".png", ".pptx", ".md", ".xlsx"],
+    "Word97文档": [".pdf", ".txt", ".docx", ".html", ".md"],
+    "WPS文档": [".docx", ".pdf", ".txt", ".html", ".md"],
+    "Excel表格": [".pdf", ".csv", ".txt", ".jpg", ".png", ".html", ".md", ".et", ".docx"],
+    "Excel97表格": [".xlsx", ".pdf", ".csv", ".txt", ".jpg", ".png", ".html", ".md"],
+    "CSV表格": [".xlsx", ".pdf", ".txt", ".html", ".md"],
+    "PPT演示": [".pdf", ".txt", ".jpg", ".png", ".ppt", ".dps", ".docx", ".html", ".md"],
+    "PPT97演示": [".pptx", ".pdf", ".txt"],
+    "WPS演示": [".pptx", ".pdf", ".txt"],
+    "WPS表格": [".xlsx", ".pdf", ".csv"],
+    "图片": [".pdf", ".docx"],
+    "文本文件": [".pdf", ".xlsx", ".docx", ".pptx", ".html", ".md"],
+    "网页": [".pdf", ".docx", ".txt", ".xlsx", ".md"],
+    "Markdown": [".html", ".pdf", ".docx", ".txt"],
+    "EPUB电子书": [".pdf", ".txt", ".html", ".docx"],
+    "RTF富文本": [".txt", ".pdf", ".docx"],
+    "ODT文档": [".pdf", ".docx", ".txt"],
+    "OFD文档": [".pdf"],
 }

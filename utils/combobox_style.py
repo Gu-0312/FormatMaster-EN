@@ -1,11 +1,11 @@
-"""自定义 Combobox 下拉列表样式 - Hover 深蓝 + Active 橙色"""
+"""自定义 Combobox 下拉列表样式"""
 import tkinter as tk
 
 
 # ── 下拉列表配色 ──
 _POPUP_BG = "#FFFFFF"
 _POPUP_FG = "#1A1A2E"
-_HOVER_BG = "#1e40af"
+_HOVER_BG = "#F97316"
 _HOVER_FG = "#FFFFFF"
 _ACTIVE_BG = "#ea580c"
 _ACTIVE_FG = "#FFFFFF"
@@ -21,10 +21,13 @@ def style_combobox(combobox):
     _values = [list(combobox.cget("values")) if combobox.cget("values") else []]
 
     def _open(e=None):
+        # 弹窗已打开时不重复创建，防止双击关闭再打开导致闪烁
+        if _popup[0] and _popup[0].winfo_exists():
+            return "break"
         _close()
         vals = combobox.cget("values")
         if not vals:
-            return
+            return "break"
         _values[0] = list(vals)
 
         # 计算位置
@@ -72,8 +75,11 @@ def style_combobox(combobox):
         lb.bind("<Leave>", _on_leave)
         pop.bind("<Escape>", lambda e: _close())
 
-        # 延迟绑定全局关闭，避免自身点击触发关闭
-        pop.after(50, lambda: combobox.bind_all("<Button-1>", _global_close))
+        # 用 root 窗口的 Button-1 关闭弹出（不干扰子控件）
+        root = combobox.winfo_toplevel()
+        _handler_id[0] = root.bind("<Button-1>", _global_close, add="+")
+
+        return "break"  # 阻止事件传播到 ttk 类级绑定，防止原生下拉弹出
 
     def _close():
         if _popup[0] and _popup[0].winfo_exists():
@@ -81,10 +87,14 @@ def style_combobox(combobox):
         _popup[0] = None
         _listbox[0] = None
         _active_idx[0] = -1
-        try:
-            combobox.unbind_all("<Button-1>")
-        except Exception:
-            pass
+        # 移除 root 上的全局关闭绑定
+        if _handler_id[0]:
+            try:
+                root = combobox.winfo_toplevel()
+                root.unbind("<Button-1>", _handler_id[0])
+            except Exception:
+                pass
+            _handler_id[0] = None
 
     def _global_close(event):
         w = event.widget
@@ -129,19 +139,24 @@ def style_combobox(combobox):
         idx = lb.nearest(event.y)
         if 0 <= idx < len(_values[0]):
             combobox.set(_values[0][idx])
-            # 触发 ComboboxSelected 事件
             combobox.event_generate("<<ComboboxSelected>>")
         _close()
+
+    _handler_id = [None]
 
     # 替换原生下拉：移除 Tcl 级绑定，绑定自定义弹出
     try:
         combobox.tk.call('bind', combobox._w, '<Button-1>', '')
     except Exception:
         pass
+    try:
+        combobox.tk.call('bind', combobox._w, '<Double-Button-1>', '')
+    except Exception:
+        pass
     combobox.bind("<Button-1>", _open)
+    combobox.bind("<Double-Button-1>", _open)
     combobox.bind("<Return>", _open)
     combobox.bind("<space>", _open)
     combobox.bind("<Escape>", lambda e: _close())
 
-    # 暴露关闭方法
     combobox._styled_close = _close
