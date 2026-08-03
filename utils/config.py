@@ -4,7 +4,7 @@ import sys
 import shutil
 
 APP_NAME = "格式大师"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 # ═══════════════════════════════════════════════
 #  路径管理（核心修复区）

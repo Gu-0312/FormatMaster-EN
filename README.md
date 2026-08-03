@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)](https://microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.3.0-orange.svg)]()
+[![Release](https://img.shields.io/badge/Release-v1.3.1-orange.svg)]()
 
 ---
 
@@ -252,7 +252,7 @@
 
 #### Download
 
-Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.0) page — no installation required, just double-click `格式大师.exe`.
+Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.1) page — no installation required, just double-click `格式大师.exe`.
 
 #### Build from Source
 
@@ -566,7 +566,7 @@ FormatMaster/
 
 #### 下载使用
 
-从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
+从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.1) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
 
 #### 从源码运行
 
@@ -636,6 +636,15 @@ FormatMaster/
 ---
 
 ### 📝 更新日志
+
+#### v1.3.1 (2026-08-03)
+- 🏗  架构重构：16 个功能面板 DI 化迁移至独立模块，main.py 瘦身
+- 🔧 接入 app.exceptions/app.theme/utils.format_helpers 公共模块，消除内联重复
+- 🐛 修复批量重命名大小写转换误改扩展名问题（`photo.jpg` → `PHOTO.JPG` → `PHOTO.jpg`）
+- 🧪 新增 pytest 单元测试套件（72 测试覆盖纯函数与 _fmt_n 回归）
+- ⚡ 新增硬件加速支持（NVIDIA NVENC / Intel QSV / AMD AMF）
+- 🔧 FFmpeg 下载失败增强 UX（重试 + 错误详情 + 手动选择 + 下载页）
+- 📦 PyInstaller 打包配置增强（onedir + collect-all fitz/PIL/rapidocr）
 
 #### v1.3.0 (2026-07-23)
 - 📥 新增视频下载功能（基于yt-dlp，支持数百个平台）
