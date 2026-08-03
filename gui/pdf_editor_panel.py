@@ -237,6 +237,7 @@ class PdfEditorPanel(tk.Frame):
         self._info_label = None
         self._status_label = None
         self._render_gen = 0
+        self._thumb_thread = None
 
         # 响应式布局参数
         self._columns = 4
@@ -399,6 +400,13 @@ class PdfEditorPanel(tk.Frame):
         return cols
 
     def _on_canvas_resize(self, event=None):
+        # 防抖：延迟150ms再执行，避免窗口拖拽时高频触发
+        if hasattr(self, '_resize_after_id') and self._resize_after_id:
+            self.after_cancel(self._resize_after_id)
+        self._resize_after_id = self.after(150, self._do_canvas_resize)
+
+    def _do_canvas_resize(self):
+        self._resize_after_id = None
         new_cols = self._calc_columns()
         if new_cols != self._columns:
             self._columns = new_cols
@@ -554,8 +562,9 @@ class PdfEditorPanel(tk.Frame):
                     import traceback
                     traceback.print_exc()
 
-        t = threading.Thread(target=_worker, daemon=True)
+        t = threading.Thread(target=_worker, daemon=True, name="pdf_thumbs")
         t.start()
+        self._thumb_thread = t
 
     def _place_thumb(self, page_num, pil_img, gen=0):
         if gen != self._render_gen:
@@ -582,8 +591,10 @@ class PdfEditorPanel(tk.Frame):
             image=tk_img, tags="thumb"
         )
         self._thumb_refs.append(tk_img)
-        if len(self._thumb_refs) > self.editor.page_count * 2:
-            self._thumb_refs = self._thumb_refs[-self.editor.page_count:]
+        # 限制引用数量，防止长文档内存增长
+        max_refs = max(self.editor.page_count * 2, 50)
+        if len(self._thumb_refs) > max_refs:
+            self._thumb_refs = self._thumb_refs[-max_refs:]
         items["img"] = img_id
         self._item_to_page[img_id] = page_num
         if items["text"]:
@@ -890,4 +901,8 @@ class PdfEditorPanel(tk.Frame):
         return self.editor.page_count > 0
 
     def cleanup(self):
+        self._render_gen += 1
         self.editor.close()
+        # 等待缩略图线程结束（最多 3 秒）
+        if getattr(self, '_thumb_thread', None) and self._thumb_thread.is_alive():
+            self._thumb_thread.join(timeout=3.0)
