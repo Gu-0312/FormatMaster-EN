@@ -16,7 +16,7 @@ EN_TEXTS = {
     "video_edit": "Crop Cover", "video_tools": "Video Tools",
     "audio_edit": "Audio Trim", "image_compress": "Image Compress",
     "watermark": "Watermark", "ocr": "OCR",
-    "super_resolution": "Enhance", "table_ocr": "Table OCR",
+    "table_ocr": "Table OCR",
     "format_detect": "Format Detect", "thumbnails": "Thumbnails",
     "qrcode": "QR Code", "hash": "Hash Check",
     "batch_rename": "Batch Rename", "monitor": "Folder Watch",
@@ -97,8 +97,6 @@ NAV_GROUPS = [
     ("智能工具", [
         dict(key="ocr", text="OCR识别", icon=FluentIcon.FONT,
              factory=_page("gui_qt.panels.ocr_panel", "OcrPanelPage")),
-        dict(key="super_resolution", text="画质增强", icon=FluentIcon.PHOTO,
-             factory=_page("gui_qt.panels.sr_panel", "SrPanelPage")),
         dict(key="table_ocr", text="表格识别", icon=FluentIcon.TILES,
              factory=_page("gui_qt.panels.table_ocr_panel", "TableOcrPanelPage")),
         dict(key="format_detect", text="格式检测", icon=FluentIcon.SEARCH,
