@@ -1,6 +1,7 @@
 """格式大师 — PySide6 + Fluent Widgets UI 入口。
 
 运行：python main_qt.py
+支持：python main_qt.py --convert "文件路径"（右键菜单集成，启动后自动打开）
 （旧 tkinter 入口 main.py 已删除，本文件为唯一入口）
 """
 import os
@@ -31,4 +32,11 @@ def _setup_high_dpi():
 if __name__ == "__main__":
     _setup_high_dpi()
     from gui_qt.app import run  # noqa: E402
-    run()
+    # --convert <path>：右键菜单集成入口
+    convert_path = None
+    args = sys.argv[1:]
+    if "--convert" in args:
+        i = args.index("--convert")
+        if i + 1 < len(args):
+            convert_path = args[i + 1]
+    run(convert_path=convert_path)

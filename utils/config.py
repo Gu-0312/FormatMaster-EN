@@ -282,7 +282,8 @@ SUPPORTED_AUDIO = {
 
 SUPPORTED_IMAGE = {
     "JPG": ".jpg", "PNG": ".png", "BMP": ".bmp", "GIF": ".gif",
-    "TIFF": ".tiff", "WEBP": ".webp", "ICO": ".ico", "TGA": ".tga",
+    "TIFF": ".tiff", "WEBP": ".webp", "AVIF": ".avif",
+    "ICO": ".ico", "TGA": ".tga",
 }
 
 VIDEO_CODECS = {

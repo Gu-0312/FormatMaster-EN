@@ -1,4 +1,5 @@
 Pillow>=10.0.0
+pillow-avif-plugin>=1.4
 rapidocr-onnxruntime>=1.3.0
 pyinstaller>=6.0.0
 pdf2docx>=0.5.13

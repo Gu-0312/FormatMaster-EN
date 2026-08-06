@@ -4,6 +4,7 @@ MainWindow：FluentWindow + Mica 云母背景（Win11，Win10 自动降级）
 + 侧边导航（nav_registry 全量注册）+ 亮/暗/跟随系统主题。
 启动时应用 Prism 设计系统全局样式。
 """
+import os
 import sys
 
 from PySide6.QtGui import QFont
@@ -45,6 +46,10 @@ class MainWindow(FluentWindow):
         self.services = QtServices()
         self.theme_mgr = ThemeManager(self.services)
         self.services.theme_mgr = self.theme_mgr
+
+        # ── 语言（必须在导航构建前设置，导航文案随语言渲染）──
+        from gui_qt import i18n
+        i18n.set_language(self.services.get_pref("language", "zh"))
 
         # ── Prism 窗口注册（必须在 apply_saved 之前，
         #     确保 QSS 作用域为窗口级而非全局 app）──
@@ -189,8 +194,12 @@ class MainWindow(FluentWindow):
         super().closeEvent(e)
 
 
-def run():
-    """应用入口：python main_qt.py"""
+def run(convert_path=None):
+    """应用入口：python main_qt.py
+
+    convert_path: 右键菜单 --convert 传入的文件路径，启动后自动打开
+    对应面板并添加文件（见 _auto_open_convert_file）。
+    """
     app = QApplication(sys.argv)
     app.setApplicationName("FormatMaster")
 
@@ -212,7 +221,41 @@ def run():
     window.navigationInterface.panel._isMenuButtonVisible = False
     window.navigationInterface.panel.expand(False)
 
+    # ── 右键菜单 --convert：窗口就绪后自动打开对应面板并添加文件 ──
+    if convert_path and os.path.isfile(convert_path):
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(
+            400, lambda: _auto_open_convert_file(window, convert_path))
+
     sys.exit(app.exec())
+
+
+# 扩展名 → 面板 key（右键菜单自动路由）
+_CONVERT_ROUTE = [
+    ("video", {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm",
+               ".m4v", ".mpg", ".mpeg", ".ts"}),
+    ("audio", {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a", ".wma"}),
+    ("image", {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff",
+               ".webp", ".ico", ".tga", ".avif"}),
+    ("document", {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt",
+                  ".pptx", ".txt"}),
+]
+
+
+def _auto_open_convert_file(window, path):
+    """右键菜单打开：按扩展名路由到对应面板并添加文件。"""
+    try:
+        ext = os.path.splitext(path)[1].lower()
+        for key, exts in _CONVERT_ROUTE:
+            if ext in exts and key in window.pages:
+                page = window.pages[key]
+                window.switchTo(page)
+                fc = getattr(page, "file_card", None)
+                if fc is not None and hasattr(fc, "add_files"):
+                    fc.add_files([path])
+                return
+    except Exception:  # noqa: BLE001 - 路由失败不影响应用启动
+        pass
 
 
 def _check_update_on_startup(window):

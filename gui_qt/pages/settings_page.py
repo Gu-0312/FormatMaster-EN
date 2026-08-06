@@ -135,6 +135,26 @@ class SettingsPage(ScrollArea):
         self.card_outdir.clicked.connect(self._pick_outdir)
         g.addSettingCard(self.card_outdir)
 
+        from gui_qt import i18n
+        self.card_lang = PushSettingCard(
+            "简体中文" if i18n.current() == "zh" else "English",
+            FluentIcon.LANGUAGE, "界面语言",
+            "简体中文 / English，切换后重启应用生效", g)
+        self.card_lang.clicked.connect(self._toggle_lang)
+        g.addSettingCard(self.card_lang)
+
+    def _toggle_lang(self):
+        from gui_qt import i18n
+        nxt = "en" if i18n.current() == "zh" else "zh"
+        i18n.set_language(nxt)
+        self.services.set_pref("language", nxt)
+        self.card_lang.setContent("English" if nxt == "en" else "简体中文")
+        from gui_qt.components import toast
+        toast.show_info(
+            self, "语言已切换，重启应用后生效"
+            if nxt == "en" else
+            "Language switched, restart to apply")
+
     def _on_autostart(self, on):
         from gui_qt.components import toast
         if _set_autostart(bool(on)):
@@ -240,6 +260,14 @@ class SettingsPage(ScrollArea):
     def _build_advanced(self):
         g = self._group("高级")
 
+        from gui_qt import context_menu as _cm
+        self.card_menu = PushSettingCard(
+            "已安装" if _cm.installed() else "未安装", FluentIcon.MENU,
+            "文件右键菜单",
+            "右键任意文件 →「用格式大师转换」直接打开；点击切换安装状态", g)
+        self.card_menu.clicked.connect(self._toggle_context_menu)
+        g.addSettingCard(self.card_menu)
+
         ffmpeg_path = get_ffmpeg_path() or "未找到"
         self.card_ffmpeg = PushSettingCard(
             ffmpeg_path, FluentIcon.COMMAND_PROMPT, "FFmpeg 路径",
@@ -254,6 +282,24 @@ class SettingsPage(ScrollArea):
         self.card_debug.checkedChanged.connect(
             lambda on: self.services.set_pref("debug", bool(on)))
         g.addSettingCard(self.card_debug)
+
+    def _toggle_context_menu(self):
+        from gui_qt import context_menu as cm
+        from gui_qt.components import toast
+        if cm.installed():
+            err = cm.uninstall()
+            if err:
+                toast.show_error(self, f"卸载失败：{err}")
+                return
+            self.card_menu.setContent("未安装")
+            toast.show_info(self, "已卸载右键菜单")
+        else:
+            err = cm.install()
+            if err:
+                toast.show_error(self, f"安装失败：{err}")
+                return
+            self.card_menu.setContent("已安装")
+            toast.show_success(self, "已安装右键菜单")
 
     def _redetect_ffmpeg(self):
         from gui_qt.components import toast

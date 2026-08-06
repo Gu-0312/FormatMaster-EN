@@ -6,6 +6,43 @@
 """
 from qfluentwidgets import FluentIcon
 
+from gui_qt.i18n import tr
+
+# 条目英文名（中英双语；key → English label）
+EN_TEXTS = {
+    "home": "Home", "video": "Video Convert", "audio": "Audio Convert",
+    "image": "Image Convert", "document": "Document Convert",
+    "gif": "GIF Convert", "pdf": "PDF Tools", "pdf_editor": "PDF Editor",
+    "video_edit": "Crop Cover", "video_tools": "Video Tools",
+    "audio_edit": "Audio Trim", "image_compress": "Image Compress",
+    "watermark": "Watermark", "ocr": "OCR",
+    "super_resolution": "Enhance", "table_ocr": "Table OCR",
+    "format_detect": "Format Detect", "thumbnails": "Thumbnails",
+    "qrcode": "QR Code", "hash": "Hash Check",
+    "batch_rename": "Batch Rename", "monitor": "Folder Watch",
+    "download": "Video Download", "m3u8": "M3U8 Download",
+    "tasks": "Tasks", "history": "History",
+    "settings": "Settings", "about": "About",
+}
+
+# 分组英文名
+GROUP_EN = {
+    "首页": "Home", "转换中心": "Convert", "编辑处理": "Edit",
+    "智能工具": "Tools", "网络下载": "Download", "管理中心": "Manage",
+}
+
+
+def label(item):
+    """条目显示名（按当前语言）。"""
+    en = EN_TEXTS.get(item["key"])
+    return tr(item["text"], en) if en else item["text"]
+
+
+def group_label(group):
+    """分组显示名（按当前语言）。"""
+    en = GROUP_EN.get(group)
+    return tr(group, en) if en else group
+
 
 def _ph(name):
     """未迁移功能的占位页工厂。"""
@@ -48,6 +85,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.pdf_editor_panel", "PdfEditorPanelPage")),
         dict(key="video_edit", text="封面裁剪", icon=FluentIcon.EDIT,
              factory=_page("gui_qt.panels.crop_panel", "CropPanelPage")),
+        dict(key="video_tools", text="视频处理", icon=FluentIcon.SCROLL,
+             factory=_page("gui_qt.panels.video_edit_panel", "VideoToolsPanelPage")),
         dict(key="audio_edit", text="音频处理", icon=FluentIcon.MICROPHONE,
              factory=_page("gui_qt.panels.audio_trim_panel", "AudioTrimPanelPage")),
         dict(key="image_compress", text="图片压缩", icon=FluentIcon.ZIP_FOLDER,
@@ -58,6 +97,10 @@ NAV_GROUPS = [
     ("智能工具", [
         dict(key="ocr", text="OCR识别", icon=FluentIcon.FONT,
              factory=_page("gui_qt.panels.ocr_panel", "OcrPanelPage")),
+        dict(key="super_resolution", text="画质增强", icon=FluentIcon.PHOTO,
+             factory=_page("gui_qt.panels.sr_panel", "SrPanelPage")),
+        dict(key="table_ocr", text="表格识别", icon=FluentIcon.TILES,
+             factory=_page("gui_qt.panels.table_ocr_panel", "TableOcrPanelPage")),
         dict(key="format_detect", text="格式检测", icon=FluentIcon.SEARCH,
              factory=_page("gui_qt.panels.detect_panel", "DetectPanelPage")),
         dict(key="thumbnails", text="视频缩略图", icon=FluentIcon.TILES,
@@ -66,6 +109,10 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.qrcode_panel", "QrcodePanelPage")),
         dict(key="hash", text="哈希校验", icon=FluentIcon.FINGERPRINT,
              factory=_page("gui_qt.panels.hash_panel", "HashPanelPage")),
+        dict(key="batch_rename", text="批量重命名", icon=FluentIcon.EDIT,
+             factory=_page("gui_qt.panels.batch_rename_panel", "BatchRenamePanelPage")),
+        dict(key="monitor", text="文件夹监视", icon=FluentIcon.TILES,
+             factory=_page("gui_qt.panels.monitor_panel", "MonitorPanelPage")),
     ]),
     ("网络下载", [
         dict(key="download", text="视频下载", icon=FluentIcon.DOWNLOAD,

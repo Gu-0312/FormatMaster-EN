@@ -36,14 +36,15 @@ def build_navigation(window, services, theme_mgr):
 
         # 分组小标题（首页不显示）
         if idx > 0:
-            nav.addItemHeader(group, pos)
+            nav.addItemHeader(nav_registry.group_label(group), pos)
 
         for item in items:
             page = item["factory"](window, services)
             if not page.objectName():
                 page.setObjectName(f"page_{item['key']}")
             pages[item["key"]] = page
-            window.addSubInterface(page, item["icon"], item["text"], pos)
+            window.addSubInterface(page, item["icon"],
+                                   nav_registry.label(item), pos)
 
         prev_pos = pos
 

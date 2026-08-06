@@ -135,6 +135,9 @@ class ImageConverter:
                 save_kwargs['optimize'] = True
             elif ext == '.webp':
                 save_kwargs['quality'] = quality
+            elif ext == '.avif':
+                # AVIF 编码依赖 pillow-avif-plugin（requirements 已加入）
+                save_kwargs['quality'] = quality
             elif ext == '.tiff':
                 save_kwargs['compression'] = 'tiff_lzw'
 
