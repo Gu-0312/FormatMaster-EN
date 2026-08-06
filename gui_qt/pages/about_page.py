@@ -50,9 +50,18 @@ class AboutPage(ScrollArea):
 
         icon_path = get_resource_path(os.path.join("assets", "icon.ico"))
         if icon_path and os.path.isfile(icon_path):
+            from PySide6.QtCore import QSize
+            from PySide6.QtGui import QIcon
             from qfluentwidgets import ImageLabel
-            logo = ImageLabel(icon_path)
-            logo.scaledToWidth(80)
+            # 用 QIcon 选择 ico 最高清帧（256x256）再按需缩放；
+            # QPixmap 直接加载 .ico 只会取 16x16 帧，放大显示会模糊。
+            # 同时按 HiDPI 系数请求物理像素，保证 125%/150% 缩放下清晰。
+            dpr = self.devicePixelRatioF() or 1.0
+            pm = QIcon(icon_path).pixmap(
+                QSize(max(1, int(80 * dpr)), max(1, int(80 * dpr))))
+            pm.setDevicePixelRatio(dpr)
+            logo = ImageLabel(pm)
+            logo.setFixedSize(80, 80)
             logo.setBorderRadius(16, 16, 16, 16)
             app_box.addWidget(logo, 0, Qt.AlignTop)
 
