@@ -94,12 +94,18 @@ def build_navigation(window, services, theme_mgr):
 
 
 def _setup_shortcuts(window, keys):
-    """为前 9 个功能页注册 Ctrl+1~9 快捷键。"""
+    """为前 9 个功能页注册 Ctrl+1~9 快捷键。
+
+    注意：window.switchTo 期望页面对象（不是 key 字符串），
+    需先经 window.pages 解析——直接传 key 会静默失效。
+    """
     key_list = list(keys)
     for i, key in enumerate(key_list[:9], 1):
         act = QAction(window)
         act.setShortcut(QKeySequence(f"Ctrl+{i}"))
-        act.triggered.connect(lambda _, k=key: window.switchTo(k))
+        act.triggered.connect(
+            lambda _, k=key: window.pages.get(k)
+            and window.switchTo(window.pages[k]))
         window.addAction(act)
 
 
