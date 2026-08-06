@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)](https://microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.3.1-orange.svg)]()
+[![Release](https://img.shields.io/badge/Release-v1.3.5-orange.svg)]()
 
 ---
 
@@ -42,6 +42,11 @@
 | 🔍 Format Detect | Batch scan folder, auto-classify by format, content header detection |
 | 📥 Video Download | Download from Bilibili, YouTube, Weibo, Instagram, etc. (via yt-dlp) |
 | 📊 Status Stream | Real-time progress logs with auto-scroll and error highlighting |
+| 🖼 Video Frame Extract | Extract key frames at fixed intervals for covers, previews & scene shots |
+| 🚫 Video De-logo | Remove corner watermarks with FFmpeg delogo (auto-clamped region) |
+| 💾 Task Queue Persistence | Interrupted tasks restored after restart, one-click retry |
+| 🔁 Retry Failed Tasks | Re-queue failed / cancelled tasks directly from Task Center |
+| 🌐 Bilingual UI | Full Chinese / English switching across navigation, panels, toasts & task hints |
 
 ---
 
@@ -252,7 +257,7 @@
 
 #### Download
 
-Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.1) page — no installation required, just double-click `格式大师.exe`.
+Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.5) page — no installation required, just double-click `格式大师.exe`.
 
 #### Build from Source
 
@@ -575,7 +580,7 @@ FormatMaster/
 
 #### 下载使用
 
-从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.1) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
+从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.3.5) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
 
 #### 从源码运行
 
@@ -656,6 +661,15 @@ FormatMaster/
 ---
 
 ### 📝 更新日志
+
+#### v1.3.5 (2026-08-06)
+- 🌐 全站中英双语：导航/面板/按钮/下拉选项/任务提示 400+ 文案双语化
+- 💾 任务队列持久化：应用退出后自动恢复中断任务，任务中心可一键重试
+- 🔁 失败任务一键重试：任务中心新增重试按钮（失败/取消任务直接重新入队）
+- 🖼 新增视频抽帧：按固定间隔批量截取关键帧（封面、预览、场景截图）
+- 🚫 新增视频去水印：FFmpeg delogo 滤镜，区域自动钳制防止越界
+- ⚡ 并发任务数按 CPU 核数自适应推荐（≥8 核推荐 4）
+- 📦 打包瘦身：排除 onnxruntime 可选子模块（transformers/quantization/tools）
 
 #### v1.3.1 (2026-08-03)
 - 🏗  架构重构：16 个功能面板 DI 化迁移至独立模块，main.py 瘦身

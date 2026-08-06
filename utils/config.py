@@ -6,7 +6,7 @@ import shutil
 import threading
 
 APP_NAME = tr("格式大师", "FormatMaster")
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.5"
 
 # ═══════════════════════════════════════════════
 #  路径管理（核心修复区）

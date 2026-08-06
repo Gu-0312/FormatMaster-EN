@@ -237,7 +237,7 @@ def app_version():
         try:
             return platform.python_version()
         except Exception:
-            return "1.3.1"
+            return "1.3.5"
 
 
 def collect():
