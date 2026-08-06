@@ -136,23 +136,27 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_outdir)
 
         from gui_qt import i18n
-        self.card_lang = PushSettingCard(
-            "简体中文" if i18n.current() == "zh" else "English",
+        self.card_lang = _ComboSettingCard(
             FluentIcon.LANGUAGE, "界面语言",
-            "简体中文 / English，切换后重启应用生效", g)
-        self.card_lang.clicked.connect(self._toggle_lang)
+            "简体中文 / English，切换后重启应用生效",
+            ["简体中文", "English"], g)
+        self.card_lang.comboBox.setCurrentIndex(
+            1 if i18n.current() == "en" else 0)
+        self.card_lang.comboBox.currentIndexChanged.connect(
+            self._on_lang_changed)
         g.addSettingCard(self.card_lang)
 
-    def _toggle_lang(self):
+    def _on_lang_changed(self, idx):
         from gui_qt import i18n
-        nxt = "en" if i18n.current() == "zh" else "zh"
-        i18n.set_language(nxt)
-        self.services.set_pref("language", nxt)
-        self.card_lang.setContent("English" if nxt == "en" else "简体中文")
+        lang = "en" if idx == 1 else "zh"
+        if lang == i18n.current():
+            return
+        i18n.set_language(lang)
+        self.services.set_pref("language", lang)
         from gui_qt.components import toast
         toast.show_info(
             self, "语言已切换，重启应用后生效"
-            if nxt == "en" else
+            if lang == "en" else
             "Language switched, restart to apply")
 
     def _on_autostart(self, on):
