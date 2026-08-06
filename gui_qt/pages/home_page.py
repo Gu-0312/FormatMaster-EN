@@ -19,7 +19,7 @@ from gui_qt.components import design_system as ds
 from gui_qt.components.stat_card_new import StatCard
 from gui_qt.components.quick_function_row import QuickFunctionRow
 from gui_qt.components.recent_tasks_table import RecentTasksTable
-from gui_qt.components.changelog_card import ChangelogCard
+from gui_qt.components.tips_card import TipsCard
 from gui_qt.components.system_info_card import SystemInfoCard
 from gui_qt.components.open_source_card import OpenSourceCard
 
@@ -130,8 +130,8 @@ class HomePage(QWidget):
         self.recent_tasks.btn_clear.clicked.connect(self._clear_tasks)
         lv.addWidget(self.recent_tasks, 1)
 
-        self.changelog = ChangelogCard()
-        lv.addWidget(self.changelog)
+        self.tips = TipsCard()
+        lv.addWidget(self.tips)
         h.addWidget(left, 7)
 
         # 右栏：系统信息 + 开源项目
