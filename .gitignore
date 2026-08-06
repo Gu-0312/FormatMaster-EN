@@ -36,6 +36,10 @@ FormatMaster/
 .trae/
 FormatMaster/
 
+# 工具内部数据（记忆日志 / 其他工具配置），不入库
+.workbuddy/
+.qoder/
+
 # 一次性调试/截图脚本，禁止入库
 /fix_*.py
 /capture_*.ps1
