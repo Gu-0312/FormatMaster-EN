@@ -76,7 +76,10 @@ def _window_proc(hwnd, msg, wp, lp):
             except Exception:
                 pass
         return 0
-    return user32.CallWindowProcW(_old_wndprocs[hwnd], hwnd, msg, wp, lp)
+    old = _old_wndprocs.get(hwnd)
+    if old:
+        return user32.CallWindowProcW(old, hwnd, msg, wp, lp)
+    return 0
 
 
 def register_drop(hwnd, callback):

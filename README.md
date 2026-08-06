@@ -265,57 +265,61 @@ cd FormatMaster
 pip install -r requirements.txt
 
 # Run the application
-python main.py
+python main_qt.py
 
 # Build executable
 python build.py
 ```
 
-### 📡 API Server
+### 📡 REST API
 
-FormatMaster includes a REST API for Postman / frontend integration:
-
-```bash
-# Start the API server
-python api_server.py
-
-# Server runs on http://localhost:5000
-```
+> **已移除**：旧的 Flask REST API（`api_server.py`）已随 v1.3.x 的 PySide6 迁移删除（Flask 依赖已不在 requirements 中）。
 
 ### 🛠 Tech Stack
 
-- **GUI**: Python tkinter + ttk
+- **GUI**: PySide6 + qfluentwidgets (Fluent Widgets, Prism design system)
 - **Video/Audio**: FFmpeg (auto-download or system PATH)
 - **Image**: Pillow
 - **Document**: python-docx, openpyxl, python-pptx, pypdf, pdf2docx, reportlab, PyMuPDF
 - **Word → PDF**: Microsoft Word COM automation
 - **PPT → PDF**: Microsoft PowerPoint COM automation
 - **Video Download**: yt-dlp
-- **API**: Flask
 - **Packaging**: PyInstaller
 
 ### 📁 Project Structure
 
 ```
 FormatMaster/
-├── main.py              # Application entry point (GUI)
-├── api_server.py        # REST API server
+├── main_qt.py           # Application entry point (PySide6 GUI)
 ├── build.py             # PyInstaller build script
 ├── requirements.txt     # Python dependencies
 ├── assets/
 │   └── icon.ico         # Application icon
-├── core/
+├── gui_qt/              # PySide6 + Fluent Widgets UI
+│   ├── app.py           # MainWindow (FluentWindow + Mica)
+│   ├── nav_registry.py  # Navigation registry (single source of truth)
+│   ├── services.py      # QtServices container
+│   ├── task_manager.py  # Task queue (signal-driven, FIFO)
+│   ├── pages/           # Home / Tasks / History / Settings / About
+│   ├── panels/          # Feature panels (video, audio, pdf, ocr, ...)
+│   └── components/      # Sidebar, theme manager, design system
+├── core/                # Business logic, no UI dependency
 │   ├── video_converter.py   # Video conversion (FFmpeg)
 │   ├── audio_converter.py   # Audio conversion (FFmpeg)
 │   ├── image_converter.py   # Image conversion (Pillow)
 │   ├── doc_converter.py     # Document conversion (168+ combos)
 │   ├── video_downloader.py  # Video download (yt-dlp)
-│   ├── image_cropper.py     # Preset image cropping
+│   ├── pdf_editor.py        # PDF editing
+│   ├── ocr_tool.py          # OCR via RapidOCR
 │   └── tools.py             # PDF merge/split/encrypt/compress, image compress, batch rename
-└── utils/
-    ├── config.py            # Configuration & format definitions
-    ├── ffmpeg_manager.py    # FFmpeg download & management
-    └── dnd.py               # Drag-and-drop support
+├── utils/
+│   ├── config.py            # Configuration & format definitions
+│   ├── ffmpeg_manager.py    # FFmpeg download & management
+│   ├── hardware_accel.py    # NVENC / QSV / AMF detection
+│   └── format_helpers.py    # Format helpers
+└── app/
+    ├── theme.py             # Theme colors
+    └── exceptions.py        # EX_HINT Chinese error mapping
 ```
 
 ### 🖥 Technical Features
@@ -579,7 +583,7 @@ cd FormatMaster
 pip install -r requirements.txt
 
 # 运行应用
-python main.py
+python main_qt.py
 
 # 打包为exe
 python build.py
@@ -587,38 +591,49 @@ python build.py
 
 ### 🛠 技术栈
 
-- **界面**: Python tkinter + ttk
+- **界面**: Python PySide6 + qfluentwidgets（Fluent Widgets，Prism 设计系统）
 - **视频/音频**: FFmpeg（自动下载或使用系统PATH）
 - **图片**: Pillow
 - **文档**: python-docx、openpyxl、python-pptx、pypdf、pdf2docx、reportlab、PyMuPDF
 - **Word转PDF**: 调用本地 Microsoft Word COM 自动化
 - **PPT转PDF**: 调用本地 Microsoft PowerPoint COM 自动化
 - **视频下载**: yt-dlp
-- **API**: Flask
 - **打包**: PyInstaller
 
 ### 📁 项目结构
 
 ```
 FormatMaster/
-├── main.py              # 主程序入口（GUI界面）
-├── api_server.py        # REST API服务器
+├── main_qt.py           # 主程序入口（PySide6 界面）
 ├── build.py             # PyInstaller打包脚本
 ├── requirements.txt     # Python依赖
 ├── assets/
 │   └── icon.ico         # 应用图标
-├── core/
+├── gui_qt/              # PySide6 + Fluent Widgets 界面
+│   ├── app.py           # MainWindow（FluentWindow + Mica）
+│   ├── nav_registry.py  # 导航注册真源
+│   ├── services.py      # QtServices 服务容器
+│   ├── task_manager.py  # 任务队列（信号驱动，FIFO）
+│   ├── pages/           # 首页/任务/历史/设置/关于
+│   ├── panels/          # 功能面板（视频、音频、PDF、OCR 等）
+│   └── components/      # 侧边栏、主题管理、设计系统
+├── core/                # 业务逻辑（无 UI 依赖）
 │   ├── video_converter.py   # 视频转换（FFmpeg）
 │   ├── audio_converter.py   # 音频转换（FFmpeg）
 │   ├── image_converter.py   # 图片转换（Pillow）
 │   ├── doc_converter.py     # 文档转换（168+种组合）
 │   ├── video_downloader.py  # 视频下载（yt-dlp）
-│   ├── image_cropper.py     # 预设裁剪
+│   ├── pdf_editor.py        # PDF编辑
+│   ├── ocr_tool.py          # OCR识别（RapidOCR）
 │   └── tools.py             # PDF合并/拆分/加密/压缩、图片压缩、批量重命名
-└── utils/
-    ├── config.py            # 配置与格式定义
-    ├── ffmpeg_manager.py    # FFmpeg下载管理
-    └── dnd.py               # 拖拽支持
+├── utils/
+│   ├── config.py            # 配置与格式定义
+│   ├── ffmpeg_manager.py    # FFmpeg下载管理
+│   ├── hardware_accel.py    # NVENC / QSV / AMF 硬件加速检测
+│   └── format_helpers.py    # 格式辅助工具
+└── app/
+    ├── theme.py             # 主题颜色
+    └── exceptions.py        # EX_HINT 异常中文映射
 ```
 
 ### 🖥 技术特性

@@ -12,6 +12,9 @@ from utils.config import get_ffprobe_path
 # 按风险规避要求：强制 3 秒超时，获取失败则直接返回 None，绝不占用 UI 主线程
 FFPROBE_TIMEOUT = 3
 
+# 转换管线用超时（秒）— 允许更大文件，但仍防止卡死
+FFPROBE_TIMEOUT_LONG = 10
+
 
 def get_ffprobe_info(filepath):
     """读取媒体文件元数据，返回字典：
@@ -60,6 +63,33 @@ def get_ffprobe_info(filepath):
         return None
     except FileNotFoundError:
         return None
+    except Exception:
+        return None
+
+
+def get_ffprobe_raw(filepath, timeout=None):
+    """读取媒体文件的原始 ffprobe JSON 数据（format + streams）。
+
+    用于转换管线中需要 duration / codec / has_audio 等原始字段的场景。
+    timeout 默认 FFPROBE_TIMEOUT_LONG（10 秒），可自定义。
+    获取失败返回 None。
+    """
+    ffprobe = get_ffprobe_path()
+    if not ffprobe:
+        return None
+    try:
+        cmd = [
+            ffprobe, "-v", "quiet", "-print_format", "json",
+            "-show_format", "-show_streams", filepath
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore',
+            timeout=timeout or FFPROBE_TIMEOUT_LONG,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        return json.loads(result.stdout)
     except Exception:
         return None
 

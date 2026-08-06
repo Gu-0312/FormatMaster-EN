@@ -1,2 +1,5 @@
 # 开发/测试依赖
 pytest>=8.0.0
+ruff>=0.6.0
+# 测试需要 core.tools 导入 PIL
+Pillow>=10.0.0

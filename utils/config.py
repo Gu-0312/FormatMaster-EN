@@ -2,6 +2,7 @@
 import os
 import sys
 import shutil
+import threading
 
 APP_NAME = "格式大师"
 APP_VERSION = "1.3.1"
@@ -140,6 +141,7 @@ def get_user_prefs_path():
 class UserPrefs:
     def __init__(self):
         self.prefs = {}
+        self._lock = threading.Lock()
         self._load()
     
     def _load(self):
@@ -150,32 +152,46 @@ class UserPrefs:
                     import json
                     self.prefs = json.load(f)
             except Exception:
+                # 备份损坏的文件
+                try:
+                    backup = path + ".bak"
+                    if os.path.exists(backup):
+                        os.remove(backup)
+                    os.rename(path, backup)
+                except Exception:
+                    pass
                 self.prefs = {}
     
     def _save(self):
         path = get_user_prefs_path()
         try:
             import json
-            with open(path, 'w', encoding='utf-8') as f:
+            tmp = path + ".tmp"
+            with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(self.prefs, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
+            os.replace(tmp, path)
+        except Exception as e:
+            print(f"[WARN] 保存用户偏好失败: {e}")
     
     def get(self, panel, key, default=None):
-        return self.prefs.get(panel, {}).get(key, default)
+        with self._lock:
+            return self.prefs.get(panel, {}).get(key, default)
     
     def set(self, panel, key, value):
-        if panel not in self.prefs:
-            self.prefs[panel] = {}
-        self.prefs[panel][key] = value
-        self._save()
+        with self._lock:
+            if panel not in self.prefs:
+                self.prefs[panel] = {}
+            self.prefs[panel][key] = value
+            self._save()
     
     def save_panel(self, panel, params):
-        self.prefs[panel] = params
-        self._save()
+        with self._lock:
+            self.prefs[panel] = params
+            self._save()
     
     def get_panel(self, panel):
-        return self.prefs.get(panel, {})
+        with self._lock:
+            return dict(self.prefs.get(panel, {}))
 
 USER_PREFS = UserPrefs()
 
@@ -187,6 +203,7 @@ class ConversionHistory:
 
     def __init__(self):
         self.records = []
+        self._lock = threading.Lock()
         self._load()
 
     def _load(self):
@@ -197,40 +214,54 @@ class ConversionHistory:
                 with open(path, 'r', encoding='utf-8') as f:
                     self.records = json.load(f)
             except Exception:
+                # 备份损坏的文件
+                try:
+                    backup = path + ".bak"
+                    if os.path.exists(backup):
+                        os.remove(backup)
+                    os.rename(path, backup)
+                except Exception:
+                    pass
                 self.records = []
 
     def _save(self):
         path = get_history_path()
         try:
             import json
-            with open(path, 'w', encoding='utf-8') as f:
+            tmp = path + ".tmp"
+            with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(self.records, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
+            os.replace(tmp, path)
+        except Exception as e:
+            print(f"[WARN] 保存转换历史失败: {e}")
 
     def add(self, record: dict):
         """添加一条历史记录"""
         import time as tm
         record["time"] = tm.strftime("%Y-%m-%d %H:%M:%S")
         record["timestamp"] = tm.time()
-        self.records.insert(0, record)
-        if len(self.records) > self.MAX_RECORDS:
-            self.records = self.records[:self.MAX_RECORDS]
-        self._save()
+        with self._lock:
+            self.records.insert(0, record)
+            if len(self.records) > self.MAX_RECORDS:
+                self.records = self.records[:self.MAX_RECORDS]
+            self._save()
 
     def get_all(self, limit=None):
-        if limit:
-            return self.records[:limit]
-        return self.records
+        with self._lock:
+            if limit:
+                return list(self.records[:limit])
+            return list(self.records)
 
     def clear(self):
-        self.records.clear()
-        self._save()
+        with self._lock:
+            self.records.clear()
+            self._save()
 
     def delete(self, index):
-        if 0 <= index < len(self.records):
-            self.records.pop(index)
-            self._save()
+        with self._lock:
+            if 0 <= index < len(self.records):
+                self.records.pop(index)
+                self._save()
 
 CONV_HISTORY = ConversionHistory()
 
@@ -289,6 +320,36 @@ RESOLUTIONS = {
     "720p (1280x720)": (1280, 720),
     "480p (854x480)": (854, 480),
     "360p (640x360)": (640, 360),
+}
+
+# ── 视频转换预设模板 ────────────────────────────
+# 每个预设包含一组面板参数，选择后自动填充
+VIDEO_CONVERT_PRESETS = {
+    "自定义": {},
+    "高质量": {
+        "codec": "默认", "preset": "原始质量", "res": "原始分辨率",
+        "fps": "原始帧率", "br": "自动", "copy_mode": False,
+    },
+    "Web 优化": {
+        "codec": "H.265", "preset": "中速", "res": "1080p (1920x1080)",
+        "fps": "30", "br": "5M", "copy_mode": False,
+    },
+    "小体积": {
+        "codec": "H.265", "preset": "慢速", "res": "720p (1280x720)",
+        "fps": "30", "br": "2M", "copy_mode": False,
+    },
+    "极速复制": {
+        "codec": "默认", "preset": "原始质量", "res": "原始分辨率",
+        "fps": "原始帧率", "br": "自动", "copy_mode": True,
+    },
+    "手机竖屏": {
+        "codec": "H.264", "preset": "中速", "res": "720p (1280x720)",
+        "fps": "30", "br": "3M", "copy_mode": False,
+    },
+    "4K 影院": {
+        "codec": "H.265", "preset": "高质量", "res": "4K (3840x2160)",
+        "fps": "原始帧率", "br": "20M", "copy_mode": False,
+    },
 }
 
 DOC_READ_FORMATS = {

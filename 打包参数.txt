@@ -1,1 +1,0 @@
---add-data "D:\格式大师\FormatMaster1.3.0\FormatMaster\bin";bin

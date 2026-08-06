@@ -1,0 +1,26 @@
+# Ruff 配置：最小化质量门禁
+# 只启用"真正会引发错误"的规则子集，避免存量风格问题阻塞 CI。
+# 后续可在门禁稳定后逐步扩大规则集（如加入 F401/F841/I 等）。
+
+target-version = "py311"
+line-length = 150
+
+exclude = [
+    "venv",
+    "build",
+    "dist",
+    ".pytest_cache",
+    "__pycache__",
+]
+
+[lint]
+select = [
+    "E9",    # 语法/运行时错误
+    "F811",  # 重复定义（覆盖已有导入）
+    "F821",  # 使用未定义的名称
+    "F823",  # 函数引用了未定义的局部名
+]
+
+[format]
+# 不强制格式化存量代码
+quote-style = "preserve"

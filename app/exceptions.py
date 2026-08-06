@@ -33,8 +33,10 @@ EX_HINT = {
 def _hint_ex(ex):
     """为常见异常生成中文说明，帮助用户理解错误原因"""
     en = type(ex).__name__
+    full_name = f"{type(ex).__module__}.{en}"
     for k, v in EX_HINT.items():
-        if k in en:
+        # 支持完整类名（如 subprocess.CalledProcessError）和类名（如 CalledProcessError）
+        if k == full_name or k == en:
             return v
     return None
 

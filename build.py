@@ -1,4 +1,4 @@
-"""打包脚本 - 将格式大师打包为exe
+"""打包脚本 - 将格式大师打包为exe（新版 PySide6 / Fluent Widgets）
 
 风险规避：
 1. 默认使用文件夹模式（--onedir），测试 PyMuPDF 等 C 扩展库能否正常加载；
@@ -13,7 +13,7 @@ import os
 
 def main(onefile=False):
     project_dir = os.path.dirname(os.path.abspath(__file__))
-    main_script = os.path.join(project_dir, "main.py")
+    main_script = os.path.join(project_dir, "main_qt.py")
 
     icon_path = os.path.join(project_dir, "assets", "icon.ico")
     cmd = [
@@ -50,8 +50,6 @@ def main(onefile=False):
         # 风险规避：完整收集 PyMuPDF 的二进制与资源
         "--collect-all", "fitz",
         "--hidden-import", "PIL",
-        "--hidden-import", "PIL._tkinter_finder",
-        "--hidden-import", "PIL.ImageTk",
         "--collect-submodules", "PIL",
         # COM自动化（Word/PPT转PDF）
         "--hidden-import", "win32com",
@@ -59,55 +57,45 @@ def main(onefile=False):
         "--hidden-import", "pythoncom",
         # 二维码
         "--hidden-import", "qrcode",
-        # 拖拽
-        "--hidden-import", "windnd",
-        # 项目内部模块
+        # 工具模块
         "--hidden-import", "utils.tool_downloader",
         "--hidden-import", "utils.presets",
-        "--hidden-import", "utils.combobox_style",
         "--hidden-import", "utils.drag_drop_ctypes",
         "--hidden-import", "utils.format_helpers",
-        # 新架构模块
+        "--hidden-import", "utils.hardware_accel",
+        # 应用层
         "--hidden-import", "app",
         "--hidden-import", "app.theme",
         "--hidden-import", "app.exceptions",
-        "--hidden-import", "app.context",
-        # 面板模块
-        "--hidden-import", "gui.panels",
-        "--hidden-import", "gui.panels.base_panel",
-        "--hidden-import", "gui.panels.video_panel",
-        "--hidden-import", "gui.panels.audio_panel",
-        "--hidden-import", "gui.panels.rename_panel",
-        "--hidden-import", "gui.panels.extract_panel",
-        "--hidden-import", "gui.panels.compress_panel",
-        "--hidden-import", "gui.panels.gif_panel",
-        "--hidden-import", "gui.panels.pdf_panel",
-        "--hidden-import", "gui.panels.compress_img_panel",
-        "--hidden-import", "gui.panels.detect_panel",
-        "--hidden-import", "gui.panels.image_panel",
-        "--hidden-import", "gui.panels.doc_panel",
-        "--hidden-import", "gui.panels.download_panel",
-        "--hidden-import", "gui.panels.crop_panel",
-        "--hidden-import", "gui.panels.ocr_panel",
-        "--hidden-import", "gui.panels.qrcode_panel",
-        "--hidden-import", "gui.panels.m3u8_panel",
+        # 新版 GUI（PySide6）
+        "--hidden-import", "gui_qt",
+        "--hidden-import", "gui_qt.app",
+        "--hidden-import", "gui_qt.services",
+        "--hidden-import", "gui_qt.task_manager",
+        "--hidden-import", "gui_qt.nav_registry",
+        "--hidden-import", "gui_qt.update_checker",
+        "--hidden-import", "gui_qt.widgets",
+        "--hidden-import", "gui_qt.components",
+        "--hidden-import", "gui_qt.pages",
+        "--hidden-import", "gui_qt.panels",
+        # PySide6 / qfluentwidgets
+        "--collect-submodules", "qfluentwidgets",
+        "--hidden-import", "qfluentwidgets",
         # 核心模块
         "--hidden-import", "core.image_cropper",
         "--hidden-import", "core.m3u8_downloader",
         "--hidden-import", "core.ocr_tool",
+        "--hidden-import", "core.audio_trimmer",
+        "--hidden-import", "core.hash_tool",
+        "--hidden-import", "core.watermark_tool",
+        "--hidden-import", "core.thumbnail_sheet",
+        "--hidden-import", "core.pdf_extract",
+        "--hidden-import", "core.pdf_to_image",
         "--hidden-import", "rapidocr_onnxruntime",
         "--hidden-import", "rapidocr_onnxruntime.onnxruntime",
         "--hidden-import", "onnxruntime",
         "--collect-all", "rapidocr_onnxruntime",
         "--collect-all", "onnxruntime",
-        "--hidden-import", "core.pdf_editor",
-        "--hidden-import", "gui",
-        "--hidden-import", "gui.pdf_editor_panel",
-        # tkinter
-        "--hidden-import", "tkinter",
-        "--hidden-import", "tkinter.ttk",
-        "--hidden-import", "tkinter.filedialog",
-        "--hidden-import", "tkinter.messagebox",
         # 标准库
         "--hidden-import", "json",
         "--hidden-import", "threading",
@@ -151,4 +139,3 @@ if __name__ == "__main__":
     # 支持命令行参数 --onefile 切换为单文件模式
     use_onefile = "--onefile" in sys.argv
     main(onefile=use_onefile)
-

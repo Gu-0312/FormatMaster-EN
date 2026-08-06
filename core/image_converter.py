@@ -94,9 +94,12 @@ class ImageConverter:
                     progress_callback(35, "转为灰度...")
 
             if resize_factor != 1.0:
+                if resize_factor <= 0:
+                    img.close()
+                    raise ValueError("resize_factor 必须大于 0")
                 width, height = img.size
-                new_width = int(width * resize_factor)
-                new_height = int(height * resize_factor)
+                new_width = max(1, int(width * resize_factor))
+                new_height = max(1, int(height * resize_factor))
                 img = img.resize((new_width, new_height), Image.LANCZOS)
                 if progress_callback:
                     progress_callback(40, f"缩放{int(resize_factor*100)}%...")

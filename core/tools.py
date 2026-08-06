@@ -263,7 +263,10 @@ def pdf_split(pdf_path, output_dir, page_ranges, progress_cb=None):
 
 def pdf_get_page_count(pdf_path):
     from pypdf import PdfReader
-    return len(PdfReader(pdf_path).pages)
+    try:
+        return len(PdfReader(pdf_path).pages)
+    except Exception:
+        return 0
 
 
 # ═══════════════════════════════════════════════

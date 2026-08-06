@@ -51,6 +51,8 @@ class VideoDownloader:
             "no_check_certificates": True,
             "ignoreerrors": True,
             "source_address": "0.0.0.0",
+            "socket_timeout": 10,
+            "extractor_args": {"youtube": {"skip": ["dash"]}},
         }
         opts.update(extra)
         return opts
@@ -145,9 +147,16 @@ class VideoDownloader:
                     except Exception:
                         continue
                 raise RuntimeError(
-                    "抖音/ TikTok 受平台限制无法直接下载。\n"
-                    "抖音网页版强制要求登录态，且 cookies 有效期很短。\n"
-                    "建议使用 YouTube / B站等其它平台。"
+                    "抖音/TikTok 链接解析失败：平台强制要求有效的 Cookie 认证。\n\n"
+                    "【原因】抖音网页版已强制开启登录态校验，匿名请求会被拦截；\n"
+                    "        Cookies 有效期极短（通常仅数小时），需频繁刷新。\n\n"
+                    "【解决方案】\n"
+                    "1. 浏览器打开抖音网页版 → 随便浏览/播放一个视频 → 刷新页面（刷新 Cookie）\n"
+                    "2. 在程序的「Cookie」输入框粘贴完整 Cookie 字符串（F12 → Network → 任意请求 → Request Headers → Cookie）\n"
+                    "3. 或命令行启动自动读取浏览器 Cookie：\n"
+                    "   python main_qt.py --cookies-from-browser chrome\n"
+                    "   （支持 chrome / edge / firefox / opera）\n\n"
+                    "【替代建议】优先使用 YouTube、Bilibili、Twitter/X 等开放平台链接，成功率更高。"
                 )
             raise RuntimeError(f"解析失败：{err_str}")
 

@@ -341,7 +341,7 @@ class DocumentConverter:
             if word:
                 try: word.Quit()
                 except Exception: pass
-            raise e
+            raise
         finally:
             pythoncom.CoUninitialize()
 
@@ -1095,7 +1095,7 @@ class DocumentConverter:
             if ppt:
                 try: ppt.Quit()
                 except Exception: pass
-            raise e
+            raise
         finally:
             pythoncom.CoUninitialize()
 
@@ -1132,7 +1132,7 @@ class DocumentConverter:
             if ppt:
                 try: ppt.Quit()
                 except Exception: pass
-            raise e
+            raise
         finally:
             pythoncom.CoUninitialize()
 
