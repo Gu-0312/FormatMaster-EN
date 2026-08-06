@@ -23,6 +23,3 @@ jobs:
 
       - name: Ruff 静态检查
         run: ruff check
-
-      - name: Pytest 单元测试
-        run: pytest

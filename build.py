@@ -15,9 +15,19 @@ def main(onefile=False):
     project_dir = os.path.dirname(os.path.abspath(__file__))
     main_script = os.path.join(project_dir, "main_qt.py")
 
+    # 输出目录：默认项目外同盘上级（避免项目内 build/dist 被清理/污染）
+    out_root = os.environ.get("FORMATMASTER_DIST",
+                              os.path.join(os.path.dirname(project_dir), "FormatMaster_dist"))
+    dist_path = os.path.join(out_root, "dist")
+    work_path = os.path.join(out_root, "build")
+    os.makedirs(out_root, exist_ok=True)
+
     icon_path = os.path.join(project_dir, "assets", "icon.ico")
     cmd = [
         sys.executable, "-m", "PyInstaller",
+        "--distpath", dist_path,
+        "--workpath", work_path,
+        "--specpath", out_root,
         # 风险规避：默认 onedir，确认 fitz 加载正常后再切 --onefile
         "--onefile" if onefile else "--onedir",
         "--windowed",
@@ -75,9 +85,16 @@ def main(onefile=False):
         "--hidden-import", "gui_qt.nav_registry",
         "--hidden-import", "gui_qt.update_checker",
         "--hidden-import", "gui_qt.widgets",
+        "--hidden-import", "gui_qt.i18n",
+        "--hidden-import", "gui_qt.context_menu",
         "--hidden-import", "gui_qt.components",
         "--hidden-import", "gui_qt.pages",
         "--hidden-import", "gui_qt.panels",
+        # 风险规避：nav_registry 用 importlib 动态加载面板/页面/组件，
+        # PyInstaller 静态分析无法发现，必须 collect-submodules 全量收集
+        "--collect-submodules", "gui_qt.panels",
+        "--collect-submodules", "gui_qt.pages",
+        "--collect-submodules", "gui_qt.components",
         # PySide6 / qfluentwidgets
         "--collect-submodules", "qfluentwidgets",
         "--hidden-import", "qfluentwidgets",
@@ -91,6 +108,11 @@ def main(onefile=False):
         "--hidden-import", "core.thumbnail_sheet",
         "--hidden-import", "core.pdf_extract",
         "--hidden-import", "core.pdf_to_image",
+        "--hidden-import", "core.pdf_form",
+        "--hidden-import", "core.video_tools",
+        "--hidden-import", "core.video_downloader",
+        "--hidden-import", "core.table_recognizer",
+        "--hidden-import", "pillow_avif",
         "--hidden-import", "rapidocr_onnxruntime",
         "--hidden-import", "rapidocr_onnxruntime.onnxruntime",
         "--hidden-import", "onnxruntime",
@@ -115,7 +137,7 @@ def main(onefile=False):
     print(f"正在打包格式大师（{mode}模式）...")
     result = subprocess.run(cmd, cwd=project_dir)
     if result.returncode == 0:
-        dist_dir = os.path.join(project_dir, "dist")
+        dist_dir = dist_path
         if onefile:
             exe_path = os.path.join(dist_dir, "格式大师.exe")
             if os.path.exists(exe_path):
