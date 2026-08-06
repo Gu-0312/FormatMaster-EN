@@ -13,8 +13,11 @@ from PIL import Image
 
 from utils.config import get_user_data_dir
 
-MODEL_URL = ("https://github.com/xinntao/Real-ESRGAN/releases/download/"
-             "v0.2.5.0/RealESRGAN_x4plus.onnx")
+# 官方 xinntao release 无 .onnx（只有 .pth），改用 Qualcomm AI Hub
+# 预导出的 Real-ESRGAN-x4plus ONNX（zip 内含 onnx，下载后自动解压）。
+MODEL_URL = ("https://qaihub-public-assets.s3.us-west-2.amazonaws.com/"
+             "qai-hub-models/models/real_esrgan_x4plus/releases/v0.55.0/"
+             "real_esrgan_x4plus-onnx-float.zip")
 MODEL_FILENAME = "RealESRGAN_x4plus.onnx"
 
 
@@ -27,42 +30,69 @@ def model_ready():
 
 
 def _download(url, dest, progress_cb=None):
-    """下载模型到 dest，progress_cb(percent, msg)。"""
+    """下载模型 zip 并解压出 onnx 到 dest，progress_cb(percent, msg)。
+
+    带 ZIP 完整性校验（PK 头）与失败重试，网络抖动/中断可自动续试。
+    """
+    import zipfile
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    tmp = dest + ".part"
+    zip_tmp = dest + ".zip.part"
     req = urllib.request.Request(
         url, headers={"User-Agent": "Mozilla/5.0 FormatMaster"})
-
-    def _hook(blocks, block_size, total):
-        if progress_cb and total > 0:
-            progress_cb(min(99, int(blocks * block_size * 100 / total)),
-                        "下载模型中…")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp, \
-                open(tmp, "wb") as f:
-            total = int(resp.headers.get("Content-Length", 0) or 0)
-            done = 0
-            while True:
-                chunk = resp.read(1 << 16)
-                if not chunk:
-                    break
-                f.write(chunk)
-                done += len(chunk)
-                if progress_cb and total:
-                    progress_cb(min(99, int(done * 100 / total)),
-                                "下载模型中…")
-        os.replace(tmp, dest)
-        if progress_cb:
-            progress_cb(100, "模型下载完成")
-        return True
-    except Exception as e:  # noqa: BLE001
+    last_err = None
+    for attempt in range(3):
         try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        if progress_cb:
-            progress_cb(-1, f"模型下载失败: {e}")
-        return False
+            # 1. 下载 zip（0-75%）
+            with urllib.request.urlopen(req, timeout=60) as resp, \
+                    open(zip_tmp, "wb") as f:
+                total = int(resp.headers.get("Content-Length", 0) or 0)
+                done = 0
+                while True:
+                    chunk = resp.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    if progress_cb and total:
+                        progress_cb(min(75, int(done * 100 / total)),
+                                    "下载模型中…")
+            # 完整性校验：zip 以 PK\x03\x04 开头
+            with open(zip_tmp, "rb") as f:
+                if f.read(4) != b"PK\x03\x04":
+                    raise RuntimeError("下载不完整，重试中")
+            # 2. 解压提取 .onnx（75-100%）
+            if progress_cb:
+                progress_cb(80, "解压模型…")
+            with zipfile.ZipFile(zip_tmp) as zf:
+                onnx_names = [n for n in zf.namelist()
+                              if n.lower().endswith(".onnx")]
+                if not onnx_names:
+                    raise RuntimeError("压缩包内未找到 onnx 模型")
+                with zf.open(onnx_names[0]) as src, open(dest, "wb") as dst:
+                    while True:
+                        chunk = src.read(1 << 16)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+            # 清理临时 zip（失败不影响结果——模型已解压成功）
+            try:
+                os.remove(zip_tmp)
+            except OSError:
+                pass
+            if progress_cb:
+                progress_cb(100, "模型下载完成")
+            return True
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            try:
+                os.remove(zip_tmp)
+            except OSError:
+                pass
+            if progress_cb:
+                progress_cb(-1, f"模型下载失败（第 {attempt + 1} 次）: {e}")
+    if progress_cb:
+        progress_cb(-1, f"模型下载失败: {last_err}")
+    return False
 
 
 def download_model_async(progress_cb=None, done_cb=None):
