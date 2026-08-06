@@ -144,8 +144,11 @@ class TaskCard(Card):
         self.btn_pause.setToolTip(tr("暂停", "Pause"))
         self.btn_cancel = TransparentToolButton(FluentIcon.CLOSE, self)
         self.btn_cancel.setToolTip(tr("取消", "Cancel"))
+        self.btn_retry = TransparentToolButton(FluentIcon.SYNC, self)
+        self.btn_retry.setToolTip(tr("重试", "Retry"))
         h.addWidget(self.btn_pause)
         h.addWidget(self.btn_cancel)
+        h.addWidget(self.btn_retry)
         self._sync_buttons()
 
     def _meta_text(self):
@@ -159,6 +162,7 @@ class TaskCard(Card):
         running_like = s in (tm.RUNNING, tm.PAUSED, tm.WAITING)
         self.btn_pause.setVisible(s in (tm.RUNNING, tm.PAUSED, tm.WAITING))
         self.btn_cancel.setVisible(running_like)
+        self.btn_retry.setVisible(s in (tm.FAILED, tm.CANCELLED))
         if s == tm.PAUSED:
             self.btn_pause.setIcon(FluentIcon.PLAY)
             self.btn_pause.setToolTip(tr("恢复", "Resume"))
@@ -167,10 +171,12 @@ class TaskCard(Card):
             self.btn_pause.setToolTip(tr("暂停", "Pause"))
 
     # ── 供页面连接的外部动作 ───────────────────────
-    def wire(self, on_pause, on_cancel):
+    def wire(self, on_pause, on_cancel, on_retry=None):
         """连接按钮动作；on_pause 由页面根据状态分发暂停/恢复。"""
         self.btn_pause.clicked.connect(lambda: on_pause(self.task.task_id))
         self.btn_cancel.clicked.connect(lambda: on_cancel(self.task.task_id))
+        if on_retry is not None:
+            self.btn_retry.clicked.connect(lambda: on_retry(self.task.task_id))
 
     # ── 信号刷新 ─────────────────────────────────
     def on_progress(self, pct, msg, speed):

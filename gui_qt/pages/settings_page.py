@@ -217,11 +217,21 @@ class SettingsPage(ScrollArea):
             lambda on: self.services.set_pref("gpu_accel", bool(on)))
         g.addSettingCard(self.card_gpu)
 
+        # 并发建议值：按 CPU 核数自适应（逻辑核 ≥8 推荐 4，否则 2）
+        import os as _os
+        _cores = 1
+        try:
+            _cores = _os.cpu_count() or 1
+        except Exception:  # noqa: BLE001
+            pass
+        _suggest = 4 if _cores >= 8 else 2
         self.card_parallel = _ComboSettingCard(
-            FluentIcon.SYNC, tr("并行转换", "Parallel convert"), tr("同时执行的任务数（建议 1~4）", "Concurrent tasks (1~4 recommended)"),
+            FluentIcon.SYNC, tr("并行转换", "Parallel convert"),
+            tr("同时执行的任务数（本机 {} 核，建议 {}）", "Concurrent tasks ({} cores, {} recommended)").format(_cores, _suggest),
             ["1", "2", "3", "4", "6", "8"], g)
+        # 首次使用（无偏好）时默认采用核数建议值
         self.card_parallel.comboBox.setCurrentText(
-            str(self.services.get_pref("parallel", 1)))
+            str(self.services.get_pref("parallel", _suggest)))
         self.card_parallel.comboBox.currentTextChanged.connect(
             self._on_parallel_changed)
         g.addSettingCard(self.card_parallel)

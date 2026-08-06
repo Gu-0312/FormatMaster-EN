@@ -117,7 +117,12 @@ def main(onefile=False):
         "--hidden-import", "rapidocr_onnxruntime.onnxruntime",
         "--hidden-import", "onnxruntime",
         "--collect-all", "rapidocr_onnxruntime",
-        "--collect-all", "onnxruntime",
+        # 体积瘦身：onnxruntime 只收二进制与核心包（OCR 推理不需要 transformers/
+        # quantization/tools 等可选工具子包，可省 100+ MB）
+        "--collect-binaries", "onnxruntime",
+        "--exclude-module", "onnxruntime.transformers",
+        "--exclude-module", "onnxruntime.quantization",
+        "--exclude-module", "onnxruntime.tools",
         # 标准库
         "--hidden-import", "json",
         "--hidden-import", "threading",

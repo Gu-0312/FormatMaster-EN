@@ -87,6 +87,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.crop_panel", "CropPanelPage")),
         dict(key="video_tools", text=tr("视频处理", "Video Tools"), icon=FluentIcon.SCROLL,
              factory=_page("gui_qt.panels.video_edit_panel", "VideoToolsPanelPage")),
+        dict(key="frame_extract", text=tr("视频抽帧", "Extract frames"), icon=FluentIcon.CAMERA,
+             factory=_page("gui_qt.panels.video_frame_panel", "VideoFramePanelPage")),
         dict(key="audio_edit", text=tr("音频处理", "Audio Tools"), icon=FluentIcon.MICROPHONE,
              factory=_page("gui_qt.panels.audio_trim_panel", "AudioTrimPanelPage")),
         dict(key="image_compress", text=tr("图片压缩", "Image Compress"), icon=FluentIcon.ZIP_FOLDER,

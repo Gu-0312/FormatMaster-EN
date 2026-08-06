@@ -10,6 +10,7 @@
 - 速度：按进度增量与源文件大小估算 MB/s
 """
 from gui_qt.i18n import tr
+import json
 import os
 import threading
 import time
@@ -63,6 +64,7 @@ class Task:
     retry_count: int = 0      # 已重试次数
     max_retries: int = 0      # 最大重试次数（0=不重试）
     last_progress: int = 0    # 失败时进度，用于判断是否可断点续传
+    runner_key: str = ""      # runner 重建标识（持久化恢复后按 key 重建，空=不可重建）
 
 
 def make_output_path(file_path: str, out_dir: str, ext: str) -> str:
@@ -111,6 +113,91 @@ class TaskManager(QObject):
         except Exception:
             self.max_parallel = 1
         self.max_parallel = max(1, min(self.max_parallel, 8))
+        # 任务快照持久化：应用退出后恢复未完成任务（标记为中断，可一键重试）
+        self._runner_factories = {}   # runner_key -> fn(task, progress_cb) -> bool
+        self._load_snapshot()
+
+    # ── 快照持久化 ─────────────────────────────
+    @staticmethod
+    def _snapshot_path():
+        from utils.config import get_user_data_dir
+        return os.path.join(get_user_data_dir(), "task_queue.json")
+
+    def register_runner(self, runner_key, factory):
+        """注册可重建的 runner 工厂（供持久化恢复任务重试用）。"""
+        if runner_key:
+            self._runner_factories[runner_key] = factory
+
+    def save_snapshot(self):
+        """保存未完成任务（WAITING/RUNNING/PAUSED）的元数据。"""
+        try:
+            pending = [t for t in self._tasks.values()
+                       if t.state in (WAITING, RUNNING, PAUSED)]
+            if not pending:
+                return
+            data = [{
+                "name": t.name, "task_type": t.task_type,
+                "file_path": t.file_path, "output_path": t.output_path,
+                "params": t.params, "priority": t.priority,
+                "created_at": t.created_at, "history_type": t.history_type,
+                "history_target": t.history_target, "runner_key": t.runner_key,
+            } for t in pending]
+            path = self._snapshot_path()
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, path)
+        except Exception:  # noqa: BLE001 - 快照失败不应影响任务
+            pass
+
+    def _load_snapshot(self):
+        """启动时恢复未完成任务：标记为 FAILED（应用退出中断），用户可一键重试。"""
+        try:
+            path = self._snapshot_path()
+            if not os.path.isfile(path):
+                return
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            os.remove(path)
+            for item in data:
+                try:
+                    task = Task(
+                        task_id=self._next_id, name=item.get("name", ""),
+                        task_type=item.get("task_type", ""),
+                        file_path=item.get("file_path", ""),
+                        output_path=item.get("output_path", ""),
+                        params=dict(item.get("params") or {}),
+                        priority=int(item.get("priority", 0)),
+                        state=FAILED,
+                        error=tr("应用上次退出时任务中断，可点击重试", "Interrupted by app exit, click retry"),
+                        created_at=float(item.get("created_at", time.time())),
+                        history_type=item.get("history_type", ""),
+                        history_target=item.get("history_target", ""),
+                        runner_key=item.get("runner_key", ""))
+                    self._tasks[task.task_id] = task
+                    self._next_id += 1
+                except Exception:  # noqa: BLE001
+                    continue
+            if data:
+                self.sig_log.emit(
+                    tr("已恢复 {} 个中断任务（任务中心可重试）",
+                       "Restored {} interrupted tasks (retry in Tasks)").format(len(data)),
+                    "warning")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _ensure_runner(self, task):
+        """确保 task 有可执行的 runner（视频内置链路无需 runner）。"""
+        if task.runner is not None or task.task_type == "video":
+            return True
+        factory = self._runner_factories.get(task.runner_key)
+        if factory is None:
+            return False
+        try:
+            task.runner = factory(task)
+            return task.runner is not None
+        except Exception:  # noqa: BLE001
+            return False
 
     # ── 对外查询 ─────────────────────────────────
     def get_task(self, task_id: int):
@@ -126,12 +213,13 @@ class TaskManager(QObject):
     # ── 入队 ─────────────────────────────────────
     def add_task(self, name, task_type, file_path, output_path, params,
                  runner, canceller=None, history_type="", history_target="",
-                 priority=0, need_ffmpeg=True, max_retries=0):
+                 priority=0, need_ffmpeg=True, max_retries=0, runner_key=""):
         """通用入队入口（阶段2）：runner(task, progress_cb) -> bool。
 
         progress_cb(pct, msg) 内部已含暂停冻结与取消拦截（抛 InterruptedError）。
         FFmpeg 未就绪（need_ffmpeg=True 时）返回 None。
         max_retries：失败后自动重试次数（默认不重试）。
+        runner_key：可重建 runner 的标识（持久化恢复后重试需要，可选）。
         """
         if need_ffmpeg and not self.services.ffmpeg_ready():
             self.sig_log.emit(tr("FFmpeg 未就绪，无法添加任务", "FFmpeg not ready, cannot add task"), "error")
@@ -150,12 +238,14 @@ class TaskManager(QObject):
                         runner=runner, canceller=canceller,
                         history_type=history_type,
                         history_target=history_target,
-                        max_retries=max(0, int(max_retries)))
+                        max_retries=max(0, int(max_retries)),
+                        runner_key=runner_key)
             self._tasks[task_id] = task
             self._queue.append(task_id)
         self.sig_log.emit(tr("任务已添加到队列：{}", "Task queued: {}").format(task.name), "info")
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
+        self.save_snapshot()
         return task_id
 
     def add_video_task(self, file_path, output_path, params, priority=0,
@@ -184,6 +274,7 @@ class TaskManager(QObject):
         self.sig_log.emit(tr("任务已添加到队列：{}", "Task queued: {}").format(task.name), "info")
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
+        self.save_snapshot()
         return task_id
 
     # ── 调度 ─────────────────────────────────────
@@ -220,6 +311,7 @@ class TaskManager(QObject):
         task.state = state
         self.sig_state.emit(task.task_id, state)
         self._check_batch_done()
+        self.save_snapshot()
 
     def _check_batch_done(self):
         """检查是否所有任务都已结束，若是则发射 sig_batch_done。"""
@@ -484,3 +576,35 @@ class TaskManager(QObject):
                     self._queue.remove(task_id)
             self._set_state(task, CANCELLED)
             self.sig_log.emit(tr("{} 已取消", "{} cancelled").format(os.path.basename(task.file_path)), "info")
+
+    # ── 一键重试 ─────────────────────────────────
+    def retry_task(self, task_id):
+        """重试失败/取消的任务：重新入队执行。
+
+        内存任务 runner 闭包仍有效可直接重跑；持久化恢复的任务（runner 丢失）
+        通过 runner_key 工厂重建；两者都不可用时提示回面板重新添加。
+        """
+        task = self._tasks.get(task_id)
+        if task is None or task.state not in (FAILED, CANCELLED):
+            return False
+        if not os.path.isfile(task.file_path):
+            self.sig_log.emit(
+                tr("无法重试：源文件不存在", "Cannot retry: source file missing"), "error")
+            return False
+        if not self._ensure_runner(task):
+            self.sig_log.emit(
+                tr("该任务需在对应面板重新添加", "Re-add this task from its panel"), "warning")
+            return False
+        task.retry_count = 0
+        task.progress = 0
+        task.speed = ""
+        task.error = ""
+        task.state = WAITING
+        with self._lock:
+            if task.task_id not in self._queue:
+                self._queue.append(task.task_id)
+        self.sig_log.emit(tr("任务已重新入队：{}", "Task requeued: {}").format(task.name), "info")
+        self.sig_state.emit(task.task_id, WAITING)
+        self._schedule_next()
+        self.save_snapshot()
+        return True

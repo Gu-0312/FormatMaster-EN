@@ -1,4 +1,4 @@
-"""video_tools — 视频处理工具集（剪辑 / 合并 / 字幕烧录 / 变速）。
+"""video_tools — 视频处理工具集（剪辑 / 合并 / 字幕烧录 / 变速 / 去水印）。
 
 统一基于 FFmpeg 子进程 + FFmpegProgressReader 进度解析，
 复用 core/video_converter 的调用范式；不依赖 GUI。
@@ -7,7 +7,7 @@
 import os
 import subprocess
 
-from core.ffmpeg_executor import get_ffprobe_info
+from core.ffmpeg_executor import get_ffprobe_info, get_ffprobe_raw
 from core.ffmpeg_progress import FFmpegProgressReader
 from utils.config import get_ffmpeg_path
 
@@ -153,3 +153,42 @@ def change_speed(input_path, output_path, rate, progress_cb=None,
             "-c:v", "libx264", "-preset", "fast", "-c:a", "aac",
             "-map_metadata", "0", output_path]
     return _run(args, duration, "变速处理中", progress_cb, cancel_check)
+
+
+def remove_logo(input_path, output_path, x, y, w, h, progress_cb=None,
+                cancel_check=None):
+    """视频去水印：用 FFmpeg delogo 滤镜对指定区域做插值模糊。
+
+    x/y/w/h 为水印区域（像素坐标与尺寸）。delogo 通过周围像素插值
+    模糊覆盖，适合台标/角落水印；全屏大面积水印效果有限。
+    区域自动钳制到画面内且不贴边（delogo 需 1px 插值边界）。
+    """
+    try:
+        x, y, w, h = int(x), int(y), int(w), int(h)
+    except (TypeError, ValueError):
+        return False
+    # 读取视频分辨率用于钳制区域
+    width, height = 0, 0
+    try:
+        raw = get_ffprobe_raw(input_path, timeout=10)
+        if raw and raw.get("streams"):
+            for s in raw["streams"]:
+                if s.get("codec_type") == "video" and s.get("width"):
+                    width, height = int(s["width"]), int(s["height"])
+                    break
+    except Exception:
+        pass
+    if width > 0 and height > 0:
+        # delogo 不允许区域贴边（内部插值需要边界），钳制到 [1, 尺寸-2]
+        x = max(1, min(x, width - 2))
+        y = max(1, min(y, height - 2))
+        w = min(w, width - x - 2)
+        h = min(h, height - y - 2)
+    if w <= 0 or h <= 0:
+        return False
+    duration = _duration_of(input_path) or 1.0
+    args = ["-i", input_path,
+            "-vf", f"delogo=x={x}:y={y}:w={w}:h={h}:show=0",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-c:a", "copy", "-map_metadata", "0", output_path]
+    return _run(args, duration, "去水印处理中", progress_cb, cancel_check)

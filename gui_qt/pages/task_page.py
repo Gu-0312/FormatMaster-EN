@@ -118,9 +118,13 @@ class TaskPage(ScrollArea):
     def _add_card(self, task):
         card = TaskCard(task)
         card.wire(on_pause=self._toggle_pause,
-                  on_cancel=self.services.task_manager.cancel_task)
+                  on_cancel=self.services.task_manager.cancel_task,
+                  on_retry=self._retry_task)
         self._cards[task.task_id] = card
         self.list_layout.addWidget(card)
+
+    def _retry_task(self, task_id):
+        self.services.task_manager.retry_task(task_id)
 
     def _toggle_pause(self, task_id):
         mgr = self.services.task_manager

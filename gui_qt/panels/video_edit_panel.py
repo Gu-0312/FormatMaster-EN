@@ -25,6 +25,7 @@ MODES = [
     ("merge", tr("合并视频", "Merge videos")),
     ("subtitle", tr("字幕烧录", "Burn subtitle")),
     ("speed", tr("变速处理", "Change Speed")),
+    ("delogo", tr("去水印", "Remove logo")),
 ]
 
 SUB_EXTS = {".srt", ".ass", ".ssa", ".vtt"}
@@ -76,6 +77,9 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.action_bar = ActionBar(tr("开始处理", "Start"))
         lay.addWidget(self.action_bar)
 
+        # 注册 runner 工厂：持久化恢复的任务可重建执行器（按 params["mode"] 分发）
+        self.services.task_manager.register_runner(
+            "video_tools", lambda task: self._runner)
         self._wire_tasks()
 
     def _build_params_card(self):
@@ -136,6 +140,23 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         srow2.addStretch(1)
         sec.add_widget(self.w_speed)
 
+        # 去水印：水印区域（delogo 选区）
+        self.w_delogo = QWidget()
+        g2 = FormGrid(columns=4)
+        from PySide6.QtWidgets import QSpinBox
+        self.sb_dx = QSpinBox(); self.sb_dx.setRange(0, 10000)
+        self.sb_dy = QSpinBox(); self.sb_dy.setRange(0, 10000)
+        self.sb_dw = QSpinBox(); self.sb_dw.setRange(1, 10000); self.sb_dw.setValue(120)
+        self.sb_dh = QSpinBox(); self.sb_dh.setRange(1, 10000); self.sb_dh.setValue(60)
+        g2.add_field(tr("X", "X"), self.sb_dx)
+        g2.add_field(tr("Y", "Y"), self.sb_dy)
+        g2.add_field(tr("宽", "W"), self.sb_dw)
+        g2.add_field(tr("高", "H"), self.sb_dh)
+        v2 = QVBoxLayout(self.w_delogo)
+        v2.setContentsMargins(0, 0, 0, 0)
+        v2.addLayout(g2)
+        sec.add_widget(self.w_delogo)
+
         self._mode_changed()
         return sec
 
@@ -151,6 +172,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.w_clip.setVisible(mode == "clip")
         self.w_sub.setVisible(mode == "subtitle")
         self.w_speed.setVisible(mode == "speed")
+        self.w_delogo.setVisible(mode == "delogo")
         # 提示文案随模式变化
         if mode == "merge":
             self.file_card.set_target_fmt(tr("合并为 1 个文件", "Merge into 1 file"))
@@ -158,6 +180,8 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
             self.file_card.set_target_fmt(tr("烧录字幕", "Burn subtitles"))
         elif mode == "speed":
             self.file_card.set_target_fmt(tr("变速处理", "Change Speed"))
+        elif mode == "delogo":
+            self.file_card.set_target_fmt(tr("去水印", "Remove logo"))
         else:
             self.file_card.set_target_fmt(tr("剪辑片段", "Clip"))
 
@@ -170,6 +194,8 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
             "end": _parse_time(self.ed_end.text()),
             "subtitle_path": self.ed_sub.text().strip(),
             "rate": float(self.cb_speed.currentText().replace("x", "")),
+            "dl_x": self.sb_dx.value(), "dl_y": self.sb_dy.value(),
+            "dl_w": self.sb_dw.value(), "dl_h": self.sb_dh.value(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -242,9 +268,15 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
                         runner=self._runner,
                         history_type=tr("视频处理", "Video Tools"), history_target=tr("字幕", "Subtitles"),
                         need_ffmpeg=True)
-        # speed
+        # speed / delogo
         out = tm.make_output_path(f, self.out_row.path(),
                                   os.path.splitext(f)[1] or ".mp4")
+        if mode == "delogo":
+            return dict(name=tr("视频去水印", "Remove Logo"), task_type="video_tools",
+                        file_path=f, output_path=out, params=params,
+                        runner=self._runner, runner_key="video_tools",
+                        history_type=tr("视频处理", "Video Tools"), history_target=tr("去水印", "Remove logo"),
+                        need_ffmpeg=True)
         return dict(name=tr("视频变速", "Change Speed"), task_type="video_tools",
                     file_path=f, output_path=out, params=params,
                     runner=self._runner,
@@ -266,5 +298,10 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
             return video_tools.burn_subtitle(task.file_path,
                                              p.get("subtitle_path", ""),
                                              task.output_path, progress_cb=prog)
+        if mode == "delogo":
+            return video_tools.remove_logo(
+                task.file_path, task.output_path,
+                p.get("dl_x", 0), p.get("dl_y", 0),
+                p.get("dl_w", 120), p.get("dl_h", 60), progress_cb=prog)
         return video_tools.change_speed(task.file_path, task.output_path,
                                         p.get("rate", 1.0), progress_cb=prog)
