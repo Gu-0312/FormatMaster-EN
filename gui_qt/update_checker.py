@@ -3,6 +3,7 @@
 后台线程请求 GitHub API，语义化版本比较，发现新版本通过信号通知 UI。
 所有网络失败/超时静默忽略，绝不阻塞启动。
 """
+from gui_qt.i18n import tr
 import json
 import re
 import socket
@@ -86,11 +87,11 @@ def show_update_dialog(parent, new_version, url):
         from qfluentwidgets import MessageBox
 
         box = MessageBox(
-            "发现新版本",
-            f"格式大师 v{new_version} 已发布，是否前往 GitHub 查看并下载？",
+            tr("发现新版本", "New version available"),
+            tr("格式大师 v{} 已发布，是否前往 GitHub 查看并下载？", "FormatMaster v{} released — open GitHub to view and download?").format(new_version),
             parent)
-        box.yesButton.setText("前往下载")
-        box.cancelButton.setText("暂不")
+        box.yesButton.setText(tr("前往下载", "Go to download"))
+        box.cancelButton.setText(tr("暂不", "Not now"))
         if box.exec():
             QDesktopServices.openUrl(QUrl(url))
     except Exception:

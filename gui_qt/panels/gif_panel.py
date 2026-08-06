@@ -17,10 +17,10 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 from utils.config import get_ffmpeg_path
 
 # 预置值（与 tkinter 版 gif_panel 一致）
-WIDTH_VALUES = ["原始", "640", "480", "320", "240"]
+WIDTH_VALUES = [tr("原始", "Original"), "640", "480", "320", "240"]
 FPS_VALUES = ["10", "15", "20", "24", "30"]
 START_VALUES = ["0"]
-DURATION_VALUES = ["5", "10", "15", "30", "60", "全部"]
+DURATION_VALUES = ["5", "10", "15", "30", "60", tr("全部", "All")]
 
 GIF_SRC_EXTS = {".mp4", ".avi", ".mkv", ".mov", ".flv", ".webm", ".ts"}
 
@@ -35,7 +35,7 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("GIF转换", "GIF convert")))
         lay.addWidget(CaptionLabel(
-            "将视频片段转换为GIF动图，支持自定义分辨率和帧率"))
+            tr("将视频片段转换为GIF动图，支持自定义分辨率和帧率", "Convert video clips to GIF with custom resolution and FPS")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=GIF_SRC_EXTS)
         lay.addWidget(self.file_card)
@@ -52,16 +52,16 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
             return cb
 
         self.cb_w = grid.add_field(
-            "宽度", _combo(WIDTH_VALUES, "480"),
-            hint="输出 GIF 宽度，原始保持原尺寸")
+            tr("宽度", "Width"), _combo(WIDTH_VALUES, "480"),
+            hint=tr("输出 GIF 宽度，原始保持原尺寸", "Output GIF width, original = keep size"))
         self.cb_fps = grid.add_field(
-            "帧率", _combo(FPS_VALUES, "15"),
-            hint="帧率越高动图越流畅，文件也越大")
+            tr("帧率", "Frame rate"), _combo(FPS_VALUES, "15"),
+            hint=tr("帧率越高动图越流畅，文件也越大", "Higher FPS = smoother GIF, larger file"))
         self.cb_start = grid.add_field(
-            "开始(秒)", _combo(START_VALUES, "0"))
+            tr("开始(秒)", "Start (sec)"), _combo(START_VALUES, "0"))
         self.cb_dur = grid.add_field(
-            "时长(秒)", _combo(DURATION_VALUES, "10"),
-            hint="片段时长，全部为整个视频")
+            tr("时长(秒)", "Duration (sec)"), _combo(DURATION_VALUES, "10"),
+            hint=tr("片段时长，全部为整个视频", "Segment duration, all = whole video"))
         card.add_form(grid)
         lay.addWidget(card)
 
@@ -117,21 +117,21 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         p = task.params
         ffmpeg = get_ffmpeg_path()
         if not ffmpeg:
-            task.error = "FFmpeg 未找到"
+            task.error = tr("FFmpeg 未找到", "FFmpeg not found")
             return False
 
         cmd = [ffmpeg, "-y", "-progress", "pipe:1"]
         start = p.get("start", "0")
-        dur = p.get("duration", "全部")
+        dur = p.get("duration", tr("全部", "All"))
         fps = p.get("fps", "10")
-        w_val = p.get("width", "原始")
+        w_val = p.get("width", tr("原始", "Original"))
         if start != "0":
             cmd += ["-ss", start]
         cmd += ["-i", task.file_path]
-        if dur != "全部":
+        if dur != tr("全部", "All"):
             cmd += ["-t", dur]
         vf = f"fps={fps}"
-        if w_val != "原始":
+        if w_val != tr("原始", "Original"):
             vf += f",scale={w_val}:-1:flags=lanczos"
         cmd += ["-vf", vf, "-loop", "0", task.output_path]
 
@@ -142,7 +142,7 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         self._proc_holder["p"] = proc
 
         total_ms = None
-        if dur != "全部":
+        if dur != tr("全部", "All"):
             try:
                 total_ms = float(dur) * 1000000
             except (ValueError, TypeError):
@@ -162,7 +162,7 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
                     ms = int(line.split("=")[1].strip())
                     if total_ms:
                         pct = min(100, int(ms / total_ms * 100))
-                        prog(pct, "正在转换...")
+                        prog(pct, tr("正在转换...", "Converting…"))
                 except (ValueError, IndexError, TypeError):
                     pass
         self._proc_holder["p"] = None
@@ -178,13 +178,13 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         out_dir = self.out_row.resolve_dir(f)
         out_path = tm.make_output_path(f, out_dir, ".gif")
         return dict(
-            name=f"视频转GIF - {os.path.basename(f)}",
+            name=f"{tr('视频转GIF', 'Video to GIF')} - {os.path.basename(f)}",
             task_type="gif", file_path=f, output_path=out_path,
             params=params, runner=self._runner, canceller=self._cancel_proc,
-            history_type="视频转 GIF", history_target="GIF")
+            history_type=tr("视频转 GIF", "Video to GIF"), history_target="GIF")
 
     def _start(self):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要转换的视频文件"
+        return tr("请先添加要转换的视频文件", "Add video files to convert first")

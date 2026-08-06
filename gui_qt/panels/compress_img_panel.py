@@ -15,7 +15,7 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 
 # 预置值（与 tkinter 版 compress_img_panel 一致）
 QUALITY_VALUES = ["95", "85", "75", "60", "50", "40", "30"]
-SIZE_VALUES = ["不限制", "1920x1080", "1280x720", "800x600"]
+SIZE_VALUES = [tr("不限制", "No limit"), "1920x1080", "1280x720", "800x600"]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
 
@@ -30,21 +30,21 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("图片压缩", "Image compress")))
         lay.addWidget(CaptionLabel(
-            "批量压缩图片体积，保持格式不变，支持限制最大分辨率"))
+            tr("批量压缩图片体积，保持格式不变，支持限制最大分辨率", "Batch compress images keeping format, with optional max resolution")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
 
         from gui_qt.components.form_widgets import FormSection, FormGrid
-        sec = FormSection("压缩设置", FluentIcon.ZIP_FOLDER)
+        sec = FormSection(tr("压缩设置", "Compress settings"), FluentIcon.ZIP_FOLDER)
         grid = FormGrid(columns=2)
 
         self.cb_q = grid.add_field(
-            "输出质量", self._combo(QUALITY_VALUES, "75"),
-            hint="压缩后图片质量，数值越低体积越小")
+            tr("输出质量", "Output quality"), self._combo(QUALITY_VALUES, "75"),
+            hint=tr("压缩后图片质量，数值越低体积越小", "Output quality, lower = smaller file"))
         self.cb_sz = grid.add_field(
-            "最大分辨率", self._combo(SIZE_VALUES, "不限制"),
-            hint="限制输出图片的最大分辨率")
+            tr("最大分辨率", "Max resolution"), self._combo(SIZE_VALUES, tr("不限制", "No limit")),
+            hint=tr("限制输出图片的最大分辨率", "Limit max output resolution"))
         sec.add_form(grid)
         lay.addWidget(sec)
 
@@ -54,7 +54,7 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始压缩")
+        self.action_bar = ActionBar(tr("开始压缩", "Compress"))
         lay.addWidget(self.action_bar)
 
         self._wire_tasks()
@@ -97,9 +97,9 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
     def _runner(self, task, prog):
         p = task.params
         q = int(p.get("quality", "75"))
-        sz_str = p.get("size", "不限制")
+        sz_str = p.get("size", tr("不限制", "No limit"))
         max_sz = None
-        if sz_str != "不限制":
+        if sz_str != tr("不限制", "No limit"):
             w, h = sz_str.split("x")
             max_sz = (int(w), int(h))
         return image_compress(task.file_path, task.output_path,
@@ -112,14 +112,14 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         out_dir = self.out_row.resolve_dir(f)
         out_path = os.path.join(out_dir, nm + "_compressed" + ext)
         return dict(
-            name=f"图片压缩 - {os.path.basename(f)}",
+            name=f"{tr('图片压缩', 'Image Compress')} - {os.path.basename(f)}",
             task_type="compress_img", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
-            history_type="图片压缩", history_target=params["quality"],
+            history_type=tr("图片压缩", "Image Compress"), history_target=params["quality"],
             need_ffmpeg=False)
 
     def _start(self):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要压缩的图片"
+        return tr("请先添加要压缩的图片", "Add images to compress first")

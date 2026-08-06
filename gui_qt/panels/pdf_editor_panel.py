@@ -120,12 +120,12 @@ class _DialogBase(FluentDialogBase):
 
 
 class _WatermarkDialog(_DialogBase):
-    POSITIONS = ["左上角", "右上角", "左下角", "右下角", "居中"]
+    POSITIONS = [tr("左上角", "Top left"), tr("右上角", "Top right"), tr("左下角", "Bottom left"), tr("右下角", "Bottom right"), tr("居中", "Center")]
 
     def __init__(self, parent=None):
-        super().__init__("水印设置", parent)
+        super().__init__(tr("水印设置", "Watermark settings"), parent)
         self.ed_text = LineEdit()
-        self.ed_text.setText("格式大师")
+        self.ed_text.setText(tr("格式大师", "FormatMaster"))
         self.cb_pos = ComboBox()
         self.cb_pos.addItems(self.POSITIONS)
         self.cb_pos.setCurrentText(self.POSITIONS[3])
@@ -135,13 +135,13 @@ class _WatermarkDialog(_DialogBase):
         self.cb_opacity.setCurrentText("0.3")
 
         self._form.addRow(tr("水印文字", "Watermark text"), self.ed_text)
-        self._form.addRow("位置", self.cb_pos)
+        self._form.addRow(tr("位置", "Position"), self.cb_pos)
         self._form.addRow(tr("不透明度", "Opacity"), self.cb_opacity)
 
     def _on_ok(self):
         text = self.ed_text.text().strip()
         if not text:
-            toast.show_warning(self, "水印文字不能为空")
+            toast.show_warning(self, tr("水印文字不能为空", "Watermark text cannot be empty"))
             return
         self.result = (text, self.cb_pos.currentText(),
                        round(float(self.cb_opacity.currentText()), 1))
@@ -149,10 +149,10 @@ class _WatermarkDialog(_DialogBase):
 
 
 class _PageNumDialog(_DialogBase):
-    POSITIONS = ["底部居中", "底部左对齐", "底部右对齐", "顶部居中"]
+    POSITIONS = [tr("底部居中", "Bottom center"), tr("底部左对齐", "Bottom left"), tr("底部右对齐", "Bottom right"), tr("顶部居中", "Top center")]
 
     def __init__(self, parent=None):
-        super().__init__("页码设置", parent)
+        super().__init__(tr("页码设置", "Page number settings"), parent)
         self.sb_start = SpinBox()
         self.sb_start.setRange(1, 99999)
         self.sb_start.setValue(1)
@@ -162,9 +162,9 @@ class _PageNumDialog(_DialogBase):
         self.ed_fmt = LineEdit()
         self.ed_fmt.setText("— {n} —")
 
-        self._form.addRow("起始编号", self.sb_start)
-        self._form.addRow("位置", self.cb_pos)
-        self._form.addRow("格式（{n}=页码）", self.ed_fmt)
+        self._form.addRow(tr("起始编号", "Start number"), self.sb_start)
+        self._form.addRow(tr("位置", "Position"), self.cb_pos)
+        self._form.addRow(tr("格式（{n}=页码）", "Format ({n}=page)"), self.ed_fmt)
 
     def _on_ok(self):
         self.result = (self.sb_start.value(), self.cb_pos.currentText(),
@@ -173,11 +173,11 @@ class _PageNumDialog(_DialogBase):
 
 
 class _MetadataDialog(_DialogBase):
-    FIELDS = [("标题", "title"), ("作者", "author"),
-              ("主题", "subject"), ("关键词", "keywords")]
+    FIELDS = [(tr("标题", "Title"), "title"), (tr("作者", "Author"), "author"),
+              (tr("主题", "Theme"), "subject"), ("关键词", "keywords")]
 
     def __init__(self, current: dict, parent=None):
-        super().__init__("文档属性", parent)
+        super().__init__(tr("文档属性", "Document info"), parent)
         self._entries = {}
         for label, key in self.FIELDS:
             ed = LineEdit()
@@ -203,7 +203,7 @@ class PdfEditorPanelPage(BaseQtPanel):
     def build(self):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("PDF编辑", "PDF editor")))
-        lay.addWidget(CaptionLabel("缩略图网格：选中页面 → 点击工具栏操作 → 完成后保存"))
+        lay.addWidget(CaptionLabel(tr("缩略图网格：选中页面 → 点击工具栏操作 → 完成后保存", "Thumbnail grid: select pages → toolbar actions → save when done")))
 
         self.editor = PdfEditor()
         self._render_gen = 0
@@ -219,7 +219,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         gl = QVBoxLayout(grid_card)
         gl.setContentsMargins(18, 16, 18, 16)
         gl.setSpacing(8)
-        gl.addWidget(self.make_section_header("页面预览", FluentIcon.PHOTO))
+        gl.addWidget(self.make_section_header(tr("页面预览", "Page preview"), FluentIcon.PHOTO))
         self.grid = _PageGrid()
         self.grid.setFixedHeight(460)
         gl.addWidget(self.grid)
@@ -233,7 +233,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         gl2 = QVBoxLayout(guide_card)
         gl2.setContentsMargins(16, 10, 16, 10)
         self.lb_guide = CaptionLabel(
-            "💡 操作即时生效 — Ctrl/Shift 多选页面，拖拽缩略图可调整顺序")
+            tr("💡 操作即时生效 — Ctrl/Shift 多选页面，拖拽缩略图可调整顺序", "💡 Changes apply instantly — Ctrl/Shift multi-select, drag to reorder"))
         gl2.addWidget(self.lb_guide)
         self.lb_status = CaptionLabel(tr("就绪", "Ready"))
         gl2.addWidget(self.lb_status)
@@ -252,18 +252,18 @@ class PdfEditorPanelPage(BaseQtPanel):
         hl.setContentsMargins(18, 16, 18, 16)
         hl.setSpacing(8)
 
-        btn_open = PushButton("📂 打开文件")
+        btn_open = PushButton(tr("📂 打开文件", "📂 Open file"))
         btn_open.clicked.connect(self._open_file)
         hl.addWidget(btn_open)
-        btn_save = PrimaryPushButton("💾 保存")
+        btn_save = PrimaryPushButton(tr("💾 保存", "💾 Save"))
         btn_save.clicked.connect(self._save_file)
         hl.addWidget(btn_save)
-        btn_save_as = PushButton("另存为")
+        btn_save_as = PushButton(tr("另存为", "Save as"))
         btn_save_as.clicked.connect(self._save_as)
         hl.addWidget(btn_save_as)
 
         hl.addStretch(1)
-        self.lb_info = CaptionLabel("未打开文件")
+        self.lb_info = CaptionLabel(tr("未打开文件", "No file opened"))
         hl.addWidget(self.lb_info)
         return card
 
@@ -274,16 +274,16 @@ class PdfEditorPanelPage(BaseQtPanel):
         hl.setSpacing(8)
 
         groups = [
-            [("🔀 旋转", self._rotate_90),
-             ("🗑 删除", self._delete_selected),
-             ("📋 复制", self._duplicate_selected)],
-            [("📄 插入PDF", self._insert_pdf),
-             ("🖼 插入图片", self._insert_image),
-             ("⬜ 空白页", self._insert_blank)],
-            [("🏷 水印", self._add_watermark),
-             ("🔢 页码", self._add_page_numbers),
-             ("📝 元数据", self._edit_metadata)],
-            [("↩ 撤销", self._undo)],
+            [(tr("🔀 旋转", "🔀 Rotate"), self._rotate_90),
+             (tr("🗑 删除", "🗑 Delete"), self._delete_selected),
+             (tr("📋 复制", "📋 Copy"), self._duplicate_selected)],
+            [(tr("📄 插入PDF", "📄 Insert PDF"), self._insert_pdf),
+             (tr("🖼 插入图片", "🖼 Insert image"), self._insert_image),
+             (tr("⬜ 空白页", "⬜ Blank page"), self._insert_blank)],
+            [(tr("🏷 水印", "🏷 Watermark"), self._add_watermark),
+             (tr("🔢 页码", "🔢 Page numbers"), self._add_page_numbers),
+             (tr("📝 元数据", "📝 Metadata"), self._edit_metadata)],
+            [(tr("↩ 撤销", "↩ Undo"), self._undo)],
         ]
         for gi, group in enumerate(groups):
             if gi > 0:
@@ -297,7 +297,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         btn_all = PushButton(tr("全选", "Select all"))
         btn_all.clicked.connect(self._toggle_select_all)
         hl.addWidget(btn_all)
-        btn_inv = PushButton("反选")
+        btn_inv = PushButton(tr("反选", "Invert selection"))
         btn_inv.clicked.connect(self._invert_selection)
         hl.addWidget(btn_inv)
         return card
@@ -320,8 +320,8 @@ class PdfEditorPanelPage(BaseQtPanel):
     # ── 文件操作 ────────────────────────────────
     def _open_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "打开 PDF 文件", self._last_dirs["open"],
-            "PDF 文件 (*.pdf);;所有文件 (*.*)")
+            self, tr("打开 PDF 文件", "Open PDF file"), self._last_dirs["open"],
+            tr("PDF 文件 (*.pdf);;所有文件 (*.*)", "PDF files (*.pdf);;All files (*.*)"))
         if not path:
             return
         self._last_dirs["open"] = os.path.dirname(path) or path
@@ -350,8 +350,8 @@ class PdfEditorPanelPage(BaseQtPanel):
         if not self.editor.page_count:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "另存为", self._last_dirs["save"],
-            "PDF 文件 (*.pdf);;所有文件 (*.*)")
+            self, tr("另存为", "Save as"), self._last_dirs["save"],
+            tr("PDF 文件 (*.pdf);;所有文件 (*.*)", "PDF files (*.pdf);;All files (*.*)"))
         if not path:
             return
         if not path.lower().endswith(".pdf"):
@@ -369,7 +369,7 @@ class PdfEditorPanelPage(BaseQtPanel):
             return
         self.lb_info.setText(os.path.basename(path))
         self._refresh()
-        toast.show_success(self, f"已保存：{path}")
+        toast.show_success(self, tr("已保存：{}", "Saved: {}").format(path))
 
     # ── 缩略图渲染 ──────────────────────────────
     def _refresh(self):
@@ -380,10 +380,10 @@ class PdfEditorPanelPage(BaseQtPanel):
         self.grid.clear()
         n = self.editor.page_count
         for i in range(n):
-            it = QListWidgetItem(f"第 {i + 1} 页")
+            it = QListWidgetItem(tr("第 {} 页", "Page {}").format(i + 1))
             it.setData(Qt.UserRole, i)
             it.setIcon(QIcon(self._blank_pm))
-            it.setToolTip(f"第 {i + 1} 页")
+            it.setToolTip(tr("第 {} 页", "Page {}").format(i + 1))
             self.grid.addItem(it)
         self.grid.blockSignals(False)
         self._update_status()
@@ -410,7 +410,7 @@ class PdfEditorPanelPage(BaseQtPanel):
 
     def _require_doc(self) -> bool:
         if not self.editor.page_count:
-            toast.show_warning(self, "请先打开 PDF 文件")
+            toast.show_warning(self, tr("请先打开 PDF 文件", "Open a PDF file first"))
             return False
         return True
 
@@ -420,7 +420,7 @@ class PdfEditorPanelPage(BaseQtPanel):
             return None
         indices = self._selected_indices()
         if not indices:
-            toast.show_info(self, "请先选择要操作的页面")
+            toast.show_info(self, tr("请先选择要操作的页面", "Select pages to operate on first"))
             return None
         return indices
 
@@ -458,7 +458,7 @@ class PdfEditorPanelPage(BaseQtPanel):
             return  # 顺序未变
         if self.editor.reorder_pages(order):
             self._refresh()
-            toast.show_success(self, "页面顺序已调整")
+            toast.show_success(self, tr("页面顺序已调整", "Page order updated"))
 
     # ── 工具栏动作 ──────────────────────────────
     def _rotate_90(self):
@@ -469,19 +469,19 @@ class PdfEditorPanelPage(BaseQtPanel):
             keep = list(indices)
             self._refresh()
             self._select_indices(keep)
-            toast.show_success(self, f"已旋转 {len(indices)} 页")
+            toast.show_success(self, tr("已旋转 {} 页", "Rotated {} pages").format(len(indices)))
 
     def _delete_selected(self):
         indices = self._require_selection()
         if indices is None:
             return
-        dlg = MessageBox("确认删除", f"确定要删除选中的 {len(indices)} 页吗？", self)
+        dlg = MessageBox("确认删除", tr("确定要删除选中的 {} 页吗？", "Delete the selected {} pages?").format(len(indices)), self)
         dlg.yesButton.setText(tr("删除", "Delete"))
         if not dlg.exec():
             return
         if self.editor.delete_pages(indices):
             self._refresh()
-            toast.show_success(self, f"已删除 {len(indices)} 页")
+            toast.show_success(self, tr("已删除 {} 页", "Deleted {} pages").format(len(indices)))
 
     def _duplicate_selected(self):
         indices = self._require_selection()
@@ -491,39 +491,39 @@ class PdfEditorPanelPage(BaseQtPanel):
         if self.editor.duplicate_pages(indices, at):
             self._refresh()
             self._select_indices(list(range(at, at + len(indices))))
-            toast.show_success(self, f"已复制 {len(indices)} 页")
+            toast.show_success(self, tr("已复制 {} 页", "Copied {} pages").format(len(indices)))
 
     def _insert_pdf(self):
         if not self._require_doc():
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "插入 PDF 文件", self._last_dirs["insert"],
-            "PDF 文件 (*.pdf);;所有文件 (*.*)")
+            self, tr("插入 PDF 文件", "Insert PDF file"), self._last_dirs["insert"],
+            tr("PDF 文件 (*.pdf);;所有文件 (*.*)", "PDF files (*.pdf);;All files (*.*)"))
         if not path:
             return
         self._last_dirs["insert"] = os.path.dirname(path) or path
         at = self._insert_at()
         if self.editor.insert_pdf(at, path):
             self._refresh()
-            toast.show_success(self, f"已在位置 {at + 1} 插入 PDF")
+            toast.show_success(self, tr("已在位置 {} 插入 PDF", "Inserted PDF at position {}").format(at + 1))
         else:
-            toast.show_error(self, "插入失败：文件无法打开或已加密")
+            toast.show_error(self, tr("插入失败：文件无法打开或已加密", "Insert failed: file cannot be opened or is encrypted"))
 
     def _insert_image(self):
         if not self._require_doc():
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "插入图片", self._last_dirs["insert"],
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff *.webp);;所有文件 (*.*)")
+            self, tr("插入图片", "Insert image"), self._last_dirs["insert"],
+            tr("图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff *.webp);;所有文件 (*.*)", "Image files (*.png *.jpg *.jpeg *.bmp *.tiff *.webp);;All files (*.*)"))
         if not path:
             return
         self._last_dirs["insert"] = os.path.dirname(path) or path
         at = self._insert_at()
         if self.editor.insert_image(at, path):
             self._refresh()
-            toast.show_success(self, f"已在位置 {at + 1} 插入图片")
+            toast.show_success(self, tr("已在位置 {} 插入图片", "Inserted image at position {}").format(at + 1))
         else:
-            toast.show_error(self, "插入失败：图片无法解析")
+            toast.show_error(self, tr("插入失败：图片无法解析", "Insert failed: image cannot be parsed"))
 
     def _insert_blank(self):
         if not self._require_doc():
@@ -531,7 +531,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         at = self._insert_at()
         if self.editor.insert_blank(at):
             self._refresh()
-            toast.show_success(self, f"已在位置 {at + 1} 插入空白页")
+            toast.show_success(self, tr("已在位置 {} 插入空白页", "Inserted blank page at position {}").format(at + 1))
 
     def _insert_at(self):
         sel = self._selected_indices()
@@ -548,7 +548,7 @@ class PdfEditorPanelPage(BaseQtPanel):
             # core 的注释类操作不清缩略图缓存，此处手动清理保证预览同步
             self.editor._clear_thumb_cache()
             self._refresh()
-            toast.show_success(self, "已添加水印")
+            toast.show_success(self, tr("已添加水印", "Watermark added"))
 
     def _add_page_numbers(self):
         if not self._require_doc():
@@ -560,7 +560,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         if self.editor.add_page_numbers(start, pos, fmt):
             self.editor._clear_thumb_cache()
             self._refresh()
-            toast.show_success(self, "已添加页码")
+            toast.show_success(self, tr("已添加页码", "Page numbers added"))
 
     def _edit_metadata(self):
         if not self._require_doc():
@@ -570,16 +570,16 @@ class PdfEditorPanelPage(BaseQtPanel):
             return
         if self.editor.set_metadata(dlg.result):
             self._update_status()
-            toast.show_success(self, "元数据已更新")
+            toast.show_success(self, tr("元数据已更新", "Metadata updated"))
 
     def _undo(self):
         if not self._require_doc():
             return
         if self.editor.undo():
             self._refresh()
-            toast.show_success(self, "已撤销")
+            toast.show_success(self, tr("已撤销", "Undone"))
         else:
-            toast.show_info(self, "没有可撤销的操作")
+            toast.show_info(self, tr("没有可撤销的操作", "Nothing to undo"))
 
     # ── 状态栏 ──────────────────────────────────
     def _update_status(self):
@@ -587,12 +587,12 @@ class PdfEditorPanelPage(BaseQtPanel):
         if not n:
             self.lb_status.setText(tr("就绪", "Ready"))
             return
-        parts = [f"共 {n} 页"]
+        parts = [tr("共 {} 页", "{} pages").format(n)]
         sel = len(self._selected_indices())
         if sel:
-            parts.append(f"选中 {sel} 页")
+            parts.append(tr("选中 {} 页", "{} pages selected").format(sel))
         if self.editor.modified:
-            parts.append("● 未保存")
+            parts.append(tr("● 未保存", "● Unsaved"))
         self.lb_status.setText("  |  ".join(parts))
 
     # ── 公共 API ────────────────────────────────

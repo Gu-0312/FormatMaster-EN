@@ -162,14 +162,14 @@ class DetectPanelPage(BaseQtPanel):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("格式检测", "Format detect")))
         lay.addWidget(CaptionLabel(
-            "批量检测文件夹中所有文件的格式，支持按内容识别、文件详情预览和选择性批量转换"))
+            tr("批量检测文件夹中所有文件的格式，支持按内容识别、文件详情预览和选择性批量转换", "Detect formats of all files in a folder, with content sniffing, details and batch convert")))
 
-        card = FormSection("检测设置", FluentIcon.SEARCH)
+        card = FormSection(tr("检测设置", "Detect settings"), FluentIcon.SEARCH)
         row = QHBoxLayout()
         row.setSpacing(8)
-        row.addWidget(CaptionLabel("目标文件夹"))
+        row.addWidget(CaptionLabel(tr("目标文件夹", "Target folder")))
         self.ed_path = LineEdit()
-        self.ed_path.setPlaceholderText("选择要扫描的文件夹…")
+        self.ed_path.setPlaceholderText(tr("选择要扫描的文件夹…", "Pick a folder to scan…"))
         row.addWidget(self.ed_path, 1)
         btn_browse = PushButton(tr("浏览", "Browse"))
         btn_browse.clicked.connect(self._browse)
@@ -177,7 +177,7 @@ class DetectPanelPage(BaseQtPanel):
         row_wrap = QWidget()
         row_wrap.setLayout(row)
         card.add_widget(row_wrap)
-        self.cb_auto_add = CheckBox("自动添加到对应面板")
+        self.cb_auto_add = CheckBox(tr("自动添加到对应面板", "Auto-add to matching panel"))
         self.cb_auto_add.setChecked(True)
         card.add_widget(self.cb_auto_add)
         lay.addWidget(card)
@@ -214,7 +214,7 @@ class DetectPanelPage(BaseQtPanel):
         self.btn_sel_all.clicked.connect(lambda: self._set_all(True))
         self.btn_unsel = PushButton(tr("取消全选", "Deselect all"))
         self.btn_unsel.clicked.connect(lambda: self._set_all(False))
-        self.btn_reset = PushButton("重新检测")
+        self.btn_reset = PushButton(tr("重新检测", "Re-scan"))
         self.btn_reset.clicked.connect(self._reset)
         for b in (self.btn_sel_all, self.btn_unsel, self.btn_reset):
             b.setEnabled(False)
@@ -224,7 +224,7 @@ class DetectPanelPage(BaseQtPanel):
         card.add_widget(head_wrap)
 
         self.table = QTableWidget(0, 5, card)
-        self.table.setHorizontalHeaderLabels(["✓", "文件名", "大小", "扩展名", "类型"])
+        self.table.setHorizontalHeaderLabels(["✓", tr("文件名", "Name"), tr("大小", "Size"), tr("扩展名", "Ext"), tr("类型", "Type")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -242,7 +242,7 @@ class DetectPanelPage(BaseQtPanel):
 
     # ── 交互 ─────────────────────────────────────
     def _browse(self):
-        d = QFileDialog.getExistingDirectory(self, "选择文件夹",
+        d = QFileDialog.getExistingDirectory(self, tr("选择文件夹", "Pick folder"),
                                              self.ed_path.text() or "")
         if d:
             self.ed_path.setText(d)
@@ -256,7 +256,7 @@ class DetectPanelPage(BaseQtPanel):
     def _start_scan(self):
         path = self.ed_path.text().strip()
         if not path or not os.path.isdir(path):
-            toast.show_warning(self, "请选择有效的文件夹")
+            toast.show_warning(self, tr("请选择有效的文件夹", "Pick a valid folder"))
             return
         self.save_prefs()
         self._clear_table()
@@ -264,7 +264,7 @@ class DetectPanelPage(BaseQtPanel):
         self._phase = "scanning"
         self.btn_go.setEnabled(False)
         self.btn_cancel.setEnabled(True)
-        self.lb_status.setText("正在扫描文件夹...")
+        self.lb_status.setText(tr("正在扫描文件夹...", "Scanning folder…"))
         self._worker = _ScanWorker(path, self._stop_flag, self)
         self._worker.sig_progress.connect(self._on_scan_progress)
         self._worker.sig_done.connect(self._on_scan_done)
@@ -272,19 +272,19 @@ class DetectPanelPage(BaseQtPanel):
 
     def _stop_scan(self):
         self._stop_flag[0] = True
-        self.lb_status.setText("正在取消…")
+        self.lb_status.setText(tr("正在取消…", "Cancelling…"))
 
     def _on_scan_progress(self, cur, total):
-        self.lb_status.setText(f"正在检测 {cur}/{total} 个文件")
+        self.lb_status.setText(tr("正在检测 {}/{} 个文件", "Detecting {}/{} files").format(cur, total))
 
     def _on_scan_done(self, detected, file_info):
         self.btn_cancel.setEnabled(False)
         self.btn_go.setEnabled(True)
         if not detected:
             if self._stop_flag[0]:
-                self.lb_status.setText("检测已取消")
+                self.lb_status.setText(tr("检测已取消", "Scan cancelled"))
             else:
-                self.lb_status.setText("文件夹为空，未检测到文件")
+                self.lb_status.setText(tr("文件夹为空，未检测到文件", "Folder is empty, no files found"))
             self._phase = "idle"
             return
         self._show_results(detected, file_info)
@@ -310,7 +310,7 @@ class DetectPanelPage(BaseQtPanel):
             r = self.table.rowCount()
             self.table.insertRow(r)
             hdr = QTableWidgetItem(
-                f"{TYPE_ICONS[cat]} {TYPE_NAMES[cat]} ({len(files)}个)")
+                f"{TYPE_ICONS[cat]} {TYPE_NAMES[cat]} ({tr('{} 个文件', '{} files').format(len(files))})")
             f = hdr.font()
             f.setBold(True)
             hdr.setFont(f)
@@ -322,7 +322,7 @@ class DetectPanelPage(BaseQtPanel):
                 content_type = info[3] if info else None
                 fn = os.path.basename(fp)
                 if content_type and content_type != cat:
-                    fn += f"  ⚠️ (内容检测: {TYPE_NAMES.get(content_type, content_type)})"
+                    fn += f"  ⚠️ ({tr('内容检测', 'content check')}: {TYPE_NAMES.get(content_type, content_type)})"
                 r = self.table.rowCount()
                 self.table.insertRow(r)
                 chk = QTableWidgetItem()
@@ -337,10 +337,10 @@ class DetectPanelPage(BaseQtPanel):
                 self._rows.append((fp, cat, chk))
 
         self._phase = "result"
-        self.btn_go.setText(f"批量转换选中 ({total_found})")
+        self.btn_go.setText(tr("批量转换选中 ({})", "Convert selected ({})").format(total_found))
         for b in (self.btn_sel_all, self.btn_unsel, self.btn_reset):
             b.setEnabled(True)
-        self.lb_status.setText(f"检测完成，共 {total_found} 个可处理文件")
+        self.lb_status.setText(tr("检测完成，共 {} 个可处理文件", "Scan done, {} processable files").format(total_found))
 
         if self.cb_auto_add.isChecked():
             self._add_to_panels({k: list(v) for k, v in processable.items()},
@@ -352,7 +352,7 @@ class DetectPanelPage(BaseQtPanel):
         n = sum(1 for _f, _c, chk in self._rows
                 if chk.checkState() == Qt.Checked)
         if self._phase == "result":
-            self.btn_go.setText(f"批量转换选中 ({n})")
+            self.btn_go.setText(tr("批量转换选中 ({})", "Convert selected ({})").format(n))
 
     def _set_all(self, checked):
         state = Qt.Checked if checked else Qt.Unchecked
@@ -390,16 +390,16 @@ class DetectPanelPage(BaseQtPanel):
                 try:
                     page._start()
                 except Exception as ex:  # noqa: BLE001
-                    toast.show_error(self, f"{TYPE_NAMES[cat]}转换提交失败：{ex}")
+                    toast.show_error(self, f"{TYPE_NAMES[cat]} {tr('转换提交失败', 'submit failed')}: {ex}")
         return added
 
     def _batch_convert(self):
         grouped = self._selected_by_cat()
         if not grouped:
-            toast.show_warning(self, "请先勾选需要转换的文件")
+            toast.show_warning(self, tr("请先勾选需要转换的文件", "Check files to convert first"))
             return
         n = self._add_to_panels(grouped, submit=True)
-        toast.show_success(self, f"已提交 {n} 个文件的转换任务，请在对应面板查看")
+        toast.show_success(self, tr("已提交 {} 个文件的转换任务，请在对应面板查看", "Submitted {} tasks, check the panels").format(n))
         self._reset()
 
     # ── 参数/偏好 ────────────────────────────────

@@ -22,30 +22,30 @@ from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 
 MODE_VALUES = [
-    "合并（多个→一个）",
-    "拆分（一个→多个）",
-    "按页提取",
-    "加密（设置密码）",
-    "解密（移除密码）",
-    "压缩",
-    "添加水印",
-    "添加页码",
-    "转为图片",
-    "填写表单",
+    tr("合并（多个→一个）", "Merge (many→one)"),
+    tr("拆分（一个→多个）", "Split (one→many)"),
+    tr("按页提取", "Extract pages"),
+    tr("加密（设置密码）", "Encrypt (set password)"),
+    tr("解密（移除密码）", "Decrypt (remove password)"),
+    tr("压缩", "Compress"),
+    tr("添加水印", "Add watermark"),
+    tr("添加页码", "Add page numbers"),
+    tr("转为图片", "To image"),
+    tr("填写表单", "Fill form"),
 ]
 
 # 模式分段选择器：routeKey(完整模式名) → 短标签（SegmentedWidget 展示）
 MODE_SHORT_LABELS = [
-    ("合并（多个→一个）", "合并"),
-    ("拆分（一个→多个）", "拆分"),
-    ("按页提取", "按页提取"),
-    ("压缩", "压缩"),
-    ("转为图片", "转图片"),
-    ("加密（设置密码）", "加密"),
-    ("解密（移除密码）", "解密"),
-    ("添加水印", "水印"),
-    ("添加页码", "页码"),
-    ("填写表单", "填写表单"),
+    (tr("合并（多个→一个）", "Merge (many→one)"), tr("合并", "Merge")),
+    (tr("拆分（一个→多个）", "Split (one→many)"), tr("拆分", "Split")),
+    (tr("按页提取", "Extract pages"), tr("按页提取", "Extract pages")),
+    (tr("压缩", "Compress"), tr("压缩", "Compress")),
+    (tr("转为图片", "To image"), tr("转图片", "To image")),
+    (tr("加密（设置密码）", "Encrypt (set password)"), tr("加密", "Encrypt")),
+    (tr("解密（移除密码）", "Decrypt (remove password)"), tr("解密", "Decrypt")),
+    (tr("添加水印", "Add watermark"), tr("水印", "Watermark")),
+    (tr("添加页码", "Add page numbers"), tr("页码", "Page numbers")),
+    (tr("填写表单", "Fill form"), tr("填写表单", "Fill form")),
 ]
 
 
@@ -73,18 +73,18 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
     def build(self):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("PDF处理", "PDF tools")))
-        lay.addWidget(CaptionLabel("合并、拆分、提取、加密、解密、压缩、水印、页码、转图片"))
+        lay.addWidget(CaptionLabel(tr("合并、拆分、提取、加密、解密、压缩、水印、页码、转图片", "Merge · Split · Extract · Encrypt · Decrypt · Compress · Watermark · Page numbers · To image")))
 
         # 编辑器入口：跳转 PDF编辑 导航页（对应 tkinter 版「编辑器」按钮）
         entry_row = QHBoxLayout()
         entry_row.setSpacing(8)
-        self.btn_editor = PushButton("📝 PDF可视化编辑")
+        self.btn_editor = PushButton(tr("📝 PDF可视化编辑", "📝 PDF visual editor"))
         self.btn_editor.clicked.connect(self._open_editor_page)
         entry_row.addWidget(self.btn_editor)
         entry_row.addStretch(1)
         lay.addLayout(entry_row)
 
-        self.file_card = FileListCard("文件列表", file_exts={".pdf"})
+        self.file_card = FileListCard(tr("文件列表", "File list"), file_exts={".pdf"})
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("PDF")
 
@@ -111,11 +111,11 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         # 模式行：分段选择器（10 个短标签，routeKey 为完整模式名）
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
-        mode_row.addWidget(CaptionLabel("操作模式"))
+        mode_row.addWidget(CaptionLabel(tr("操作模式", "Mode")))
         self.cb_mode = SegmentedWidget()
         for full, label in MODE_SHORT_LABELS:
             self.cb_mode.addItem(full, label)
-        self.cb_mode.setCurrentItem("合并（多个→一个）")
+        self.cb_mode.setCurrentItem(tr("合并（多个→一个）", "Merge (many→one)"))
         self.cb_mode.currentItemChanged.connect(
             lambda _key: self._mode_changed())
         mode_row.addWidget(self.cb_mode, 1)
@@ -135,7 +135,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             sec.add_widget(w)
 
         # 高级选项折叠区
-        self.adv_toggle = CheckBox("高级选项（加密 / 解密 / 水印 / 页码 / 填写表单）")
+        self.adv_toggle = CheckBox(tr("高级选项（加密 / 解密 / 水印 / 页码 / 填写表单）", "Advanced (Encrypt / Decrypt / Watermark / Page numbers / Forms)"))
         self.adv_toggle.toggled.connect(self._toggle_advanced)
         sec.add_widget(self.adv_toggle)
         self.adv_box = QWidget()
@@ -177,9 +177,9 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.ed_range.setText("1-3,5,7-10")
             self.ed_range.setFixedWidth(180)
             h.addWidget(self.ed_range)
-            h.addWidget(CaptionLabel("示例: 1-3,5,7-10"))
+            h.addWidget(CaptionLabel(tr("示例: 1-3,5,7-10", "e.g. 1-3,5,7-10")))
             self.cb_extract_mode = ComboBox()
-            self.cb_extract_mode.addItems(["按范围提取", "每页一个文件", "指定页码"])
+            self.cb_extract_mode.addItems([tr("按范围提取", "By range"), tr("每页一个文件", "One file per page"), tr("指定页码", "Specific pages")])
             self.cb_extract_mode.setCurrentIndex(0)
             h.addWidget(self.cb_extract_mode)
         return self._row_widget(build)
@@ -211,12 +211,12 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_compress_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("目标分辨率"))
+            h.addWidget(CaptionLabel(tr("目标分辨率", "Target resolution")))
             self.cb_compress_dpi = ComboBox()
             self.cb_compress_dpi.addItems(["72dpi", "100dpi", "150dpi", "200dpi"])
             self.cb_compress_dpi.setCurrentText("150dpi")
             h.addWidget(self.cb_compress_dpi)
-            h.addWidget(CaptionLabel("图片质量"))
+            h.addWidget(CaptionLabel(tr("图片质量", "Image quality")))
             self.cb_compress_quality = ComboBox()
             self.cb_compress_quality.addItems(["60", "70", "80", "90"])
             self.cb_compress_quality.setCurrentText("80")
@@ -227,15 +227,15 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         def build(h):
             h.addWidget(CaptionLabel(tr("水印文字", "Watermark text")))
             self.ed_wm_text = LineEdit()
-            self.ed_wm_text.setText("机密")
+            self.ed_wm_text.setText(tr("机密", "Confidential"))
             self.ed_wm_text.setFixedWidth(140)
             h.addWidget(self.ed_wm_text)
-            h.addWidget(CaptionLabel("位置"))
+            h.addWidget(CaptionLabel(tr("位置", "Position")))
             self.cb_wm_pos = ComboBox()
-            self.cb_wm_pos.addItems(["左上角", "右上角", "左下角", "右下角", "居中"])
-            self.cb_wm_pos.setCurrentText("居中")
+            self.cb_wm_pos.addItems([tr("左上角", "Top left"), tr("右上角", "Top right"), tr("左下角", "Bottom left"), tr("右下角", "Bottom right"), tr("居中", "Center")])
+            self.cb_wm_pos.setCurrentText(tr("居中", "Center"))
             h.addWidget(self.cb_wm_pos)
-            h.addWidget(CaptionLabel("透明度"))
+            h.addWidget(CaptionLabel(tr("透明度", "Opacity")))
             self.cb_wm_opacity = ComboBox()
             self.cb_wm_opacity.addItems(["0.1", "0.2", "0.3", "0.5", "0.7", "0.9"])
             self.cb_wm_opacity.setCurrentText("0.3")
@@ -254,34 +254,34 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.ed_pn_start.setText("1")
             self.ed_pn_start.setFixedWidth(60)
             h.addWidget(self.ed_pn_start)
-            h.addWidget(CaptionLabel("位置"))
+            h.addWidget(CaptionLabel(tr("位置", "Position")))
             self.cb_pn_pos = ComboBox()
-            self.cb_pn_pos.addItems(["底部居中", "底部左对齐", "底部右对齐", "顶部居中"])
+            self.cb_pn_pos.addItems([tr("底部居中", "Bottom center"), tr("底部左对齐", "Bottom left"), tr("底部右对齐", "Bottom right"), tr("顶部居中", "Top center")])
             self.cb_pn_pos.setCurrentIndex(0)
             h.addWidget(self.cb_pn_pos)
             h.addWidget(CaptionLabel(tr("格式", "Format")))
             self.ed_pn_fmt = LineEdit()
-            self.ed_pn_fmt.setText("第{n}页")
+            self.ed_pn_fmt.setText(tr("第{n}页", "Page {n}"))
             self.ed_pn_fmt.setFixedWidth(110)
             h.addWidget(self.ed_pn_fmt)
-            h.addWidget(CaptionLabel("{n}=页码"))
+            h.addWidget(CaptionLabel(tr("{n}=页码", "{n}=page")))
         return self._row_widget(build)
 
     def _build_to_image_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("图片格式"))
+            h.addWidget(CaptionLabel(tr("图片格式", "Image format")))
             self.cb_img_fmt = ComboBox()
             self.cb_img_fmt.addItems(["PNG", "JPG"])
             self.cb_img_fmt.setCurrentIndex(0)
             h.addWidget(self.cb_img_fmt)
-            h.addWidget(CaptionLabel("输出 DPI"))
+            h.addWidget(CaptionLabel(tr("输出 DPI", "Output DPI")))
             self.cb_img_dpi = ComboBox()
             self.cb_img_dpi.addItems(["72", "100", "150", "200", "300", "400", "600"])
             self.cb_img_dpi.setCurrentText("200")
             h.addWidget(self.cb_img_dpi)
             h.addWidget(CaptionLabel(tr("页码范围", "Page range")))
             self.ed_img_pages = LineEdit()
-            self.ed_img_pages.setPlaceholderText("留空=全部  示例: 1-3,5,7")
+            self.ed_img_pages.setPlaceholderText(tr("留空=全部  示例: 1-3,5,7", "blank=all   e.g. 1-3,5,7"))
             self.ed_img_pages.setFixedWidth(160)
             h.addWidget(self.ed_img_pages)
         return self._row_widget(build)
@@ -296,10 +296,10 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         v.setContentsMargins(0, 4, 0, 0)
         v.setSpacing(4)
 
-        self._lbl_form = CaptionLabel("点击「检测表单」读取 PDF 中的可填写字段")
+        self._lbl_form = CaptionLabel(tr("点击「检测表单」读取 PDF 中的可填写字段", "Click \"Detect form\" to read fillable fields"))
         v.addWidget(self._lbl_form)
 
-        self.btn_detect_form = PushButton(FluentIcon.SEARCH, "检测表单")
+        self.btn_detect_form = PushButton(FluentIcon.SEARCH, tr("检测表单", "Detect form"))
         self.btn_detect_form.clicked.connect(self._detect_form_fields)
         v.addWidget(self.btn_detect_form)
 
@@ -322,11 +322,11 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         """检测当前文件的 PDF 表单字段。"""
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加 PDF 文件")
+            toast.show_warning(self, tr("请先添加 PDF 文件", "Add PDF files first"))
             return
         from core import pdf_form
         if not pdf_form.is_available():
-            toast.show_error(self, "PyMuPDF 未安装，无法检测表单")
+            toast.show_error(self, tr("PyMuPDF 未安装，无法检测表单", "PyMuPDF not installed, cannot detect forms"))
             return
 
         # 清空旧字段
@@ -344,17 +344,17 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                 all_fields.append(fd)
 
         if not all_fields:
-            self._lbl_form.setText("未检测到可填写的表单字段")
+            self._lbl_form.setText(tr("未检测到可填写的表单字段", "No fillable form fields found"))
             return
 
-        self._lbl_form.setText(f"检测到 {len(all_fields)} 个字段：")
+        self._lbl_form.setText(tr("检测到 {} 个字段：", "Found {} fields:").format(len(all_fields)))
         for fd in all_fields:
             key = f"{fd['_file']}::{fd['name']}"
             row = QHBoxLayout()
             row.setSpacing(6)
             lbl = CaptionLabel(fd["name"])
             lbl.setFixedWidth(120)
-            lbl.setToolTip(f"类型: {fd['type']}  页: {fd['page']}")
+            lbl.setToolTip(tr("类型: {}  页: {}", "Type: {}  Page: {}").format(fd['type'], fd['page']))
             row.addWidget(lbl)
 
             if fd["type"] == "checkbox":
@@ -388,7 +388,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                                      if any(fd["_file"] == f for fd in all_fields)]
 
     # ── 模式切换 ─────────────────────────────────
-    _ADV_MODES = ("加密", "解密", "水印", "页码", "表单")
+    _ADV_MODES = (tr("加密", "Encrypt"), tr("解密", "Decrypt"), tr("水印", "Watermark"), tr("页码", "Page numbers"), tr("表单", "Form"))
 
     def _mode_changed(self):
         mode = self.cb_mode.currentRouteKey()
@@ -410,21 +410,21 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                 self.sec_form)
         for w in secs:
             w.setVisible(False)
-        if "拆分" in mode or "提取" in mode:
+        if tr("拆分", "Split") in mode or tr("提取", "Extract") in mode:
             self.sec_split.setVisible(True)
-        elif "加密" in mode:
+        elif tr("加密", "Encrypt") in mode:
             self.sec_encrypt.setVisible(True)
-        elif "解密" in mode:
+        elif tr("解密", "Decrypt") in mode:
             self.sec_decrypt.setVisible(True)
-        elif "压缩" in mode:
+        elif tr("压缩", "Compress") in mode:
             self.sec_compress.setVisible(True)
-        elif "水印" in mode:
+        elif tr("水印", "Watermark") in mode:
             self.sec_wm.setVisible(True)
-        elif "页码" in mode:
+        elif tr("页码", "Page numbers") in mode:
             self.sec_pn.setVisible(True)
-        elif "转为图片" in mode:
+        elif tr("转为图片", "To image") in mode:
             self.sec_img.setVisible(True)
-        elif "表单" in mode:
+        elif tr("表单", "Form") in mode:
             self.sec_form.setVisible(True)
 
     # ── 参数/偏好 ────────────────────────────────
@@ -479,51 +479,51 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         mode = p.get("mode", "")
         files_list = p.get("files") or [task.file_path]
 
-        if "合并" in mode:
+        if tr("合并", "Merge") in mode:
             return pdf_merge(files_list, task.output_path, prog)
-        if "拆分" in mode:
+        if tr("拆分", "Split") in mode:
             ranges = _parse_ranges(p.get("range", ""))
             if not ranges:
-                task.error = "页码范围无效"
+                task.error = tr("页码范围无效", "Invalid page range")
                 return False
             return pdf_split(task.file_path, task.output_path, ranges, prog)
-        if "提取" in mode:
+        if tr("提取", "Extract") in mode:
             from core.pdf_extract import pdf_extract_pages
-            em = p.get("extract_mode", "按范围提取")
-            ex_mode = "each" if "每页" in em else ("selected" if "指定" in em else "range")
+            em = p.get("extract_mode", tr("按范围提取", "By range"))
+            ex_mode = "each" if tr("每页", "Per page") in em else ("selected" if tr("指定", "Custom") in em else "range")
             return pdf_extract_pages(task.file_path, task.output_path, ex_mode,
                                      p.get("range", ""), prog)
-        if "加密" in mode:
+        if tr("加密", "Encrypt") in mode:
             if not p.get("open_pwd") and not p.get("owner_pwd"):
-                task.error = "请至少设置一个密码"
+                task.error = tr("请至少设置一个密码", "Set at least one password")
                 return False
             return pdf_encrypt(task.file_path, task.output_path,
                                p.get("open_pwd", ""), p.get("owner_pwd", ""),
                                p.get("encrypt_method", "AES-256"), prog)
-        if "解密" in mode:
+        if tr("解密", "Decrypt") in mode:
             return pdf_decrypt(task.file_path, task.output_path,
                                p.get("decrypt_pwd", ""), prog)
-        if "压缩" in mode:
+        if tr("压缩", "Compress") in mode:
             dpi = int(p.get("compress_dpi", "150dpi").replace("dpi", ""))
             quality = int(p.get("compress_quality", "80"))
             return pdf_compress(task.file_path, task.output_path, dpi, quality, prog)
-        if "水印" in mode:
+        if tr("水印", "Watermark") in mode:
             if not p.get("wm_text"):
-                task.error = "水印文字不能为空"
+                task.error = tr("水印文字不能为空", "Watermark text cannot be empty")
                 return False
             return pdf_add_watermark(task.file_path, task.output_path,
                                      text=p["wm_text"],
-                                     pos=p.get("wm_pos", "居中"),
+                                     pos=p.get("wm_pos", tr("居中", "Center")),
                                      opacity=p.get("wm_opacity", 0.3),
                                      rotation=p.get("wm_rotate", 0),
                                      progress_cb=prog)
-        if "页码" in mode:
+        if tr("页码", "Page numbers") in mode:
             return pdf_add_page_numbers(task.file_path, task.output_path,
                                         start=p.get("pn_start", 1),
-                                        pos=p.get("pn_pos", "底部居中"),
+                                        pos=p.get("pn_pos", tr("底部居中", "Bottom center")),
                                         fmt=p.get("pn_fmt", "{n}"),
                                         progress_cb=prog)
-        if "转为图片" in mode:
+        if tr("转为图片", "To image") in mode:
             from core.pdf_to_image import pdf_to_images
             ok, _saved = pdf_to_images(task.file_path, task.output_path,
                                        fmt=p.get("to_image_fmt", "PNG"),
@@ -531,24 +531,24 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                                        pages=p.get("to_image_pages", ""),
                                        progress_cb=prog)
             return ok
-        if "表单" in mode:
+        if tr("表单", "Form") in mode:
             from core.pdf_form import fill_form
             field_values = p.get("form_values", {})
-            prog(10, "正在填写表单…")
+            prog(10, tr("正在填写表单…", "Filling form…"))
             ok, msg = fill_form(task.file_path, task.output_path, field_values)
             if ok:
                 prog(100, msg)
             else:
                 task.error = msg
             return ok
-        task.error = "未知操作模式"
+        task.error = tr("未知操作模式", "Unknown mode")
         return False
 
     # ── 任务提交（合并为整批单任务）────────────────
     def _start(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加 PDF 文件")
+            toast.show_warning(self, tr("请先添加 PDF 文件", "Add PDF files first"))
             return
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
             toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
@@ -556,26 +556,26 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
         mode = self.cb_mode.currentText()
         params = self.collect_params()
-        if "水印" in mode and not params["wm_text"]:
-            toast.show_warning(self, "水印文字不能为空")
+        if tr("水印", "Watermark") in mode and not params["wm_text"]:
+            toast.show_warning(self, tr("水印文字不能为空", "Watermark text cannot be empty"))
             return
         self.save_prefs()
         mgr = self.services.task_manager
 
-        if "合并" in mode:
+        if tr("合并", "Merge") in mode:
             out_dir = self.out_row.resolve_dir(files[0])
             out_path = self._unique_path(os.path.join(out_dir, "merged.pdf"))
             params["files"] = list(files)
             tid = mgr.add_task(
-                name=f"PDF合并 - {len(files)}个文件",
+                name=tr("PDF合并 - {}个文件", "PDF Merge - {} files").format(len(files)),
                 task_type="pdf", file_path=files[0], output_path=out_path,
                 params=params, runner=self._runner,
-                history_type="PDF 处理", history_target="合并",
+                history_type=tr("PDF 处理", "PDF Tools"), history_target=tr("合并", "Merge"),
                 need_ffmpeg=False)
             if tid is not None:
                 self._task_rows[tid] = (files[0], -1)
                 self.action_bar.set_running(True)
-                self.action_bar.set_status("已提交合并任务")
+                self.action_bar.set_status(tr("已提交合并任务", "Merge task submitted"))
             return
 
         # 其余模式：逐文件入队
@@ -590,9 +590,9 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                 added += 1
         if added:
             self.action_bar.set_running(True)
-            self.action_bar.set_status(f"已提交 {added} 个任务")
+            self.action_bar.set_status(tr("已提交 {} 个任务", "Submitted {} tasks").format(added))
         else:
-            toast.show_error(self, "任务提交失败")
+            toast.show_error(self, tr("任务提交失败", "Submit failed"))
 
     def _unique_path(self, path):
         """已存在时追加 _N 计数（与 make_output_path 行为一致）。"""
@@ -609,44 +609,44 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         mode = params["mode"]
         nm = os.path.splitext(os.path.basename(f))[0]
         out_dir = self.out_row.resolve_dir(f)
-        if "拆分" in mode:
+        if tr("拆分", "Split") in mode:
             out_path = os.path.join(out_dir, nm + "_split")
             try:
                 os.makedirs(out_path, exist_ok=True)
             except OSError:
                 toast.show_error(self, f"无法创建输出目录：{out_path}")
                 return None
-        elif "提取" in mode:
+        elif tr("提取", "Extract") in mode:
             out_path = os.path.join(out_dir, nm + "_extract")
             try:
                 os.makedirs(out_path, exist_ok=True)
             except OSError:
                 toast.show_error(self, f"无法创建输出目录：{out_path}")
                 return None
-        elif "转为图片" in mode:
+        elif tr("转为图片", "To image") in mode:
             out_path = os.path.join(out_dir, nm + "_images")
             try:
                 os.makedirs(out_path, exist_ok=True)
             except OSError:
                 toast.show_error(self, f"无法创建输出目录：{out_path}")
                 return None
-        elif "加密" in mode:
+        elif tr("加密", "Encrypt") in mode:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_encrypted.pdf"))
-        elif "解密" in mode:
+        elif tr("解密", "Decrypt") in mode:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_decrypted.pdf"))
-        elif "压缩" in mode:
+        elif tr("压缩", "Compress") in mode:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_compressed.pdf"))
-        elif "表单" in mode:
+        elif tr("表单", "Form") in mode:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_filled.pdf"))
         else:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_numbered.pdf"
-                                                      if "页码" in mode
+                                                      if tr("页码", "Page numbers") in mode
                                                       else nm + "_watermarked.pdf"))
         return dict(
-            name=f"PDF处理 - {os.path.basename(f)}",
+            name=f"{tr('PDF处理', 'PDF Tools')} - {os.path.basename(f)}",
             task_type="pdf", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
-            history_type="PDF 处理", history_target=mode.split("（")[0],
+            history_type=tr("PDF 处理", "PDF Tools"), history_target=mode.split("（")[0],
             need_ffmpeg=False)
 
     def _open_editor_page(self):
@@ -662,7 +662,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.window.switchTo(page)
 
     def _empty_hint(self):
-        return "请先添加 PDF 文件"
+        return tr("请先添加 PDF 文件", "Add PDF files first")
 
     def _collect_form_values(self):
         """从 UI 控件中收集表单字段值。"""

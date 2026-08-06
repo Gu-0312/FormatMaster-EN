@@ -16,11 +16,11 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 from utils.config import SUPPORTED_IMAGE
 
 # 预置值（与 tkinter 版 image_panel 一致）
-QUALITY_VALUES = ["100（无损）", "95（高质量）", "85（中等）", "70（低质量）", "50（压缩）"]
-SIZE_VALUES = ["原始大小", "50%", "25%", "200%"]
+QUALITY_VALUES = [tr("100（无损）", "100 (lossless)"), tr("95（高质量）", "95 (high)"), tr("85（中等）", "85 (medium)"), tr("70（低质量）", "70 (low)"), tr("50（压缩）", "50 (small)")]
+SIZE_VALUES = [tr("原始大小", "Original size"), "50%", "25%", "200%"]
 ROTATE_VALUES = ["0°", "90°", "180°", "270°"]
-CROP_VALUES = ["原始比例", "裁剪为正方形"]
-WATERMARK_POS_VALUES = ["右下角", "左下角", "右上角", "左上角", "居中"]
+CROP_VALUES = [tr("原始比例", "Original ratio"), tr("裁剪为正方形", "Crop to square")]
+WATERMARK_POS_VALUES = [tr("右下角", "Bottom right"), tr("左下角", "Bottom left"), tr("右上角", "Top right"), tr("左上角", "Top left"), tr("居中", "Center")]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff",
               ".webp", ".ico", ".tga"}
@@ -36,7 +36,7 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("图片转换", "Image convert")))
         lay.addWidget(CaptionLabel(
-            "JPG · PNG · BMP · GIF · TIFF · WEBP · ICO 格式互转"))
+            tr("JPG · PNG · BMP · GIF · TIFF · WEBP · ICO 格式互转", "JPG · PNG · BMP · GIF · TIFF · WEBP · ICO interconvert")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
@@ -70,26 +70,26 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             return cb
 
         self.cb_fmt = grid.add_field(
-            "目标格式", _combo(list(SUPPORTED_IMAGE), "PNG"),
-            hint="输出图片格式")
+            tr("目标格式", "Target format"), _combo(list(SUPPORTED_IMAGE), "PNG"),
+            hint=tr("输出图片格式", "Output image format"))
         self.cb_q = grid.add_field(
-            "质量", _combo(QUALITY_VALUES, "95（高质量）"),
-            hint="压缩质量，数值越低文件越小")
+            tr("质量", "Quality"), _combo(QUALITY_VALUES, tr("95（高质量）", "95 (high)")),
+            hint=tr("压缩质量，数值越低文件越小", "Compress quality, lower = smaller file"))
         self.cb_sz = grid.add_field(
-            "缩放", _combo(SIZE_VALUES, "原始大小"))
+            tr("缩放", "Scale"), _combo(SIZE_VALUES, tr("原始大小", "Original size")))
         self.cb_rotate = grid.add_field(
-            "旋转", _combo(ROTATE_VALUES, "0°"))
+            tr("旋转", "Rotate"), _combo(ROTATE_VALUES, "0°"))
         self.cb_crop = grid.add_field(
-            "裁剪", _combo(CROP_VALUES, "原始比例"))
+            tr("裁剪", "Crop"), _combo(CROP_VALUES, tr("原始比例", "Original ratio")))
         self.cb_wm_pos = grid.add_field(
-            "水印位置", _combo(WATERMARK_POS_VALUES, "右下角"))
+            tr("水印位置", "Watermark position"), _combo(WATERMARK_POS_VALUES, tr("右下角", "Bottom right")))
 
         self.wm_edit = grid.add_field(
-            "水印文字", LineEdit(), colspan=1,
-            hint="留空则不添加水印")
-        self.wm_edit.setPlaceholderText("留空则不添加水印")
+            tr("水印文字", "Watermark text"), LineEdit(), colspan=1,
+            hint=tr("留空则不添加水印", "blank = no watermark"))
+        self.wm_edit.setPlaceholderText(tr("留空则不添加水印", "blank = no watermark"))
 
-        self.cb_gray = CheckBox("转为黑白（灰度）")
+        self.cb_gray = CheckBox(tr("转为黑白（灰度）", "Convert to grayscale"))
         sec.add_widget(self.cb_gray)
         sec.add_form(grid)
         return sec
@@ -143,14 +143,14 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
         p = task.params
-        quality = int(p.get("quality", "95（高质量）").split("（")[0])
+        quality = int(p.get("quality", tr("95（高质量）", "95 (high)")).split("（")[0])
         resize_factor = {"50%": 0.5, "25%": 0.25, "200%": 2.0}.get(
-            p.get("size", "原始大小"), 1.0)
+            p.get("size", tr("原始大小", "Original size")), 1.0)
         rotate_val = int(p.get("rotate", "0°").replace("°", ""))
         return self.services.image_conv.convert(
             task.file_path, task.output_path, quality, None,
-            p.get("watermark", ""), p.get("watermark_pos", "右下角"),
-            rotate=rotate_val, crop_mode=p.get("crop", "原始比例"),
+            p.get("watermark", ""), p.get("watermark_pos", tr("右下角", "Bottom right")),
+            rotate=rotate_val, crop_mode=p.get("crop", tr("原始比例", "Original ratio")),
             grayscale=p.get("grayscale", False),
             resize_factor=resize_factor, progress_callback=prog)
 
@@ -160,15 +160,15 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
         out_dir = self.out_row.resolve_dir(f)
         out_path = tm.make_output_path(f, out_dir, fmt_ext)
         return dict(
-            name=f"图片转换 - {os.path.basename(f)}",
+            name=f"{tr('图片转换', 'Image Convert')} - {os.path.basename(f)}",
             task_type="image", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
             canceller=self.services.image_conv.cancel,
-            history_type="图片转换", history_target=params["fmt"],
+            history_type=tr("图片转换", "Image Convert"), history_target=params["fmt"],
             need_ffmpeg=False)
 
     def _start(self):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要转换的图片文件"
+        return tr("请先添加要转换的图片文件", "Add images to convert first")

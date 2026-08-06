@@ -8,7 +8,7 @@ _LANG = "zh"
 
 
 def set_language(lang):
-    """设置当前语言（"zh" 或 "en"）。"""
+    """设置当前语言（"zhtr(" 或 ", " or ")en"）。"""
     global _LANG
     _LANG = "en" if str(lang or "").lower().startswith("en") else "zh"
 

@@ -40,7 +40,7 @@ class FileListCard(Card):
     files_changed = Signal()
     file_double_clicked = Signal(str)  # 双击文件时发射，参数为文件路径
 
-    def __init__(self, title="文件列表", file_exts=None, parent=None):
+    def __init__(self, title=tr("文件列表", "File list"), file_exts=None, parent=None):
         """file_exts: 允许添加的扩展名集合（小写，含点），None 表示不限。"""
         super().__init__(parent)
         self._exts = file_exts
@@ -57,7 +57,7 @@ class FileListCard(Card):
         title_label.setStyleSheet(
             f"font-size: 15px; font-weight: 600; color: {ds.ink()};")
         head.addWidget(title_label)
-        self.count_label = CaptionLabel("0 个文件")
+        self.count_label = CaptionLabel(tr("0 个文件", "0 files"))
         self.count_label.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_sec()};")
         head.addWidget(self.count_label)
@@ -79,7 +79,7 @@ class FileListCard(Card):
 
         # ── 表格 ─────────────────────────────────
         self.table = QTableWidget(0, 4, self)
-        self.table.setHorizontalHeaderLabels(["文件名", "大小", "转换方向", "状态"])
+        self.table.setHorizontalHeaderLabels([tr("文件名", "Name"), tr("大小", "Size"), tr("转换方向", "Direction"), tr("状态", "Status")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -125,14 +125,14 @@ class FileListCard(Card):
 
     # ── 文件增删 ─────────────────────────────────
     def _pick_files(self):
-        ft = "媒体文件 (*)" if not self._exts else \
-            "支持的文件 (" + " ".join("*" + e for e in sorted(self._exts)) + ")"
-        paths, _ = QFileDialog.getOpenFileNames(self, "选择文件", "", ft)
+        ft = tr("媒体文件 (*)", "Media files (*)") if not self._exts else \
+            tr("支持的文件 (", "Supported files (") + " ".join("*" + e for e in sorted(self._exts)) + ")"
+        paths, _ = QFileDialog.getOpenFileNames(self, tr("选择文件", "Pick file"), "", ft)
         if paths:
             self.add_files(paths)
 
     def _pick_folder(self):
-        d = QFileDialog.getExistingDirectory(self, "选择文件夹")
+        d = QFileDialog.getExistingDirectory(self, tr("选择文件夹", "Pick folder"))
         if not d:
             return
         found = []
@@ -175,7 +175,7 @@ class FileListCard(Card):
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         direct = f"{ext.upper()} → {self._fmt_text}" if self._fmt_text else ext.upper()
         self.table.setItem(r, 2, QTableWidgetItem(direct))
-        self.table.setItem(r, 3, QTableWidgetItem("等待中"))
+        self.table.setItem(r, 3, QTableWidgetItem(tr("等待中", "Waiting")))
         self.table.item(r, 0).setForeground(QColor(ds.ink()))
         self.table.item(r, 3).setForeground(QColor(ds.ink_sec()))
 
@@ -223,7 +223,7 @@ class FileListCard(Card):
         menu = QMenu(self)
         if item is not None:
             row = item.row()
-            act_rm = menu.addAction("移除此文件")
+            act_rm = menu.addAction(tr("移除此文件", "Remove file"))
             act_rm.triggered.connect(lambda: self.remove_row(row))
             menu.addSeparator()
         act_clear = menu.addAction(tr("清空全部", "Clear all"))
@@ -256,7 +256,7 @@ class FileListCard(Card):
 
     # ── 任务进度联动 ─────────────────────────────
     def _refresh_count(self):
-        self.count_label.setText(f"{self.table.rowCount()} 个文件")
+        self.count_label.setText(tr("{} 个文件", "{} files").format(self.table.rowCount()))
         # 无文件时显示空态提示，有文件时显示表格
         self.stack.setCurrentIndex(0 if self.table.rowCount() else 1)
 
@@ -299,9 +299,9 @@ class FileListCard(Card):
                 self.table.setItem(row, 3, item)
             item.setText(state_text)
             t = ds.tokens()
-            if "成功" in state_text:
+            if tr("成功", "Success") in state_text:
                 item.setForeground(QColor(t["success"]))
-            elif "失败" in state_text or "取消" in state_text:
+            elif tr("失败", "Failed") in state_text or "取消" in state_text:
                 item.setForeground(QColor(t["error"]))
             else:
                 item.setForeground(QColor(t["ink_sec"]))
@@ -315,9 +315,9 @@ class FileListCard(Card):
             if item is not None:
                 item.setText(state_text)
                 t = ds.tokens()
-                if "成功" in state_text:
+                if tr("成功", "Success") in state_text:
                     item.setForeground(QColor(t["success"]))
-                elif "失败" in state_text or "取消" in state_text:
+                elif tr("失败", "Failed") in state_text or "取消" in state_text:
                     item.setForeground(QColor(t["error"]))
                 else:
                     item.setForeground(QColor(t["ink_sec"]))
@@ -328,8 +328,8 @@ class OutputDirRow(QWidget):
 
     changed = Signal()
 
-    MODE_SAME = "与源文件同目录"
-    MODE_CUSTOM = "自定义目录"
+    MODE_SAME = tr("与源文件同目录", "Same folder as source")
+    MODE_CUSTOM = tr("自定义目录", "Custom folder")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -345,12 +345,12 @@ class OutputDirRow(QWidget):
         h.addWidget(self.mode_combo)
 
         self.path_edit = LineEdit(self)
-        self.path_edit.setPlaceholderText("选择输出目录…")
+        self.path_edit.setPlaceholderText(tr("选择输出目录…", "Pick output folder…"))
         self.path_edit.setEnabled(False)
         h.addWidget(self.path_edit, 1)
 
         self.btn_browse = ToolButton(FluentIcon.FOLDER, self)
-        self.btn_browse.setToolTip("浏览…")
+        self.btn_browse.setToolTip(tr("浏览…", "Browse…"))
         self.btn_browse.setEnabled(False)
         h.addWidget(self.btn_browse)
 
@@ -389,7 +389,7 @@ class OutputDirRow(QWidget):
         self.changed.emit()
 
     def _browse(self):
-        d = QFileDialog.getExistingDirectory(self, "选择输出目录",
+        d = QFileDialog.getExistingDirectory(self, tr("选择输出目录", "Pick output folder"),
                                              self.path_edit.text() or "")
         if d:
             self.path_edit.setText(d)
@@ -434,7 +434,7 @@ class ActionBar(QWidget):
     按钮间距统一 8px（与全站规范一致）。
     """
 
-    def __init__(self, go_text="开始转换", parent=None):
+    def __init__(self, go_text=tr("开始转换", "Convert"), parent=None):
         super().__init__(parent)
         self.setObjectName("actionBar")
         self.setAttribute(Qt.WA_StyledBackground, True)

@@ -3,6 +3,7 @@
 所有页面/面板通过 show_* 发出轻提示，避免直接散落 InfoBar 调用。
 页面切换时会自动清理当前窗口的 InfoBar，避免长时间滞留。
 """
+from gui_qt.i18n import tr
 from qfluentwidgets import InfoBar, InfoBarPosition
 
 # 活跃 InfoBar 实例池
@@ -36,13 +37,13 @@ def _show(parent, level, content, duration=3000):
     kw = dict(parent=parent, content=content,
               position=InfoBarPosition.TOP, duration=duration)
     if level == "success":
-        ib = InfoBar.success(title="成功", **kw)
+        ib = InfoBar.success(title=tr("成功", "Success"), **kw)
     elif level == "warning":
-        ib = InfoBar.warning(title="注意", **kw)
+        ib = InfoBar.warning(title=tr("注意", "Notice"), **kw)
     elif level == "error":
-        ib = InfoBar.error(title="错误", **kw)
+        ib = InfoBar.error(title=tr("错误", "Error"), **kw)
     else:
-        ib = InfoBar.info(title="提示", **kw)
+        ib = InfoBar.info(title=tr("提示", "Info"), **kw)
     _track(ib)
 
 

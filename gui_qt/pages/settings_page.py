@@ -115,14 +115,14 @@ class SettingsPage(ScrollArea):
         g = self._group(tr("常规", "General"))
 
         self.card_autostart = SwitchSettingCard(
-            FluentIcon.POWER_BUTTON, "开机启动", "登录 Windows 后自动运行格式大师",
+            FluentIcon.POWER_BUTTON, tr("开机启动", "Auto start"), tr("登录 Windows 后自动运行格式大师", "Run FormatMaster after logging into Windows"),
             parent=g)
         self.card_autostart.setValue(_autostart_enabled())
         self.card_autostart.checkedChanged.connect(self._on_autostart)
         g.addSettingCard(self.card_autostart)
 
         self.card_tray = SwitchSettingCard(
-            FluentIcon.BACKGROUND_FILL, "系统托盘", "关闭时最小化到托盘而不是退出",
+            FluentIcon.BACKGROUND_FILL, tr("系统托盘", "System tray"), tr("关闭时最小化到托盘而不是退出", "Minimize to tray on close instead of quitting"),
             parent=g)
         self.card_tray.setValue(bool(self.services.get_pref("tray", False)))
         self.card_tray.checkedChanged.connect(
@@ -130,17 +130,17 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_tray)
 
         self.card_outdir = PushSettingCard(
-            self.services.get_pref("default_out_dir", "") or "未设置",
-            FluentIcon.FOLDER, "默认输出目录",
-            "自定义目录不存在时会自动创建", g)
+            self.services.get_pref("default_out_dir", "") or tr("未设置", "Not set"),
+            FluentIcon.FOLDER, tr("默认输出目录", "Default output folder"),
+            tr("自定义目录不存在时会自动创建", "Auto-created if the folder does not exist"), g)
         self.card_outdir.clicked.connect(self._pick_outdir)
         g.addSettingCard(self.card_outdir)
 
         from gui_qt import i18n
         self.card_lang = _ComboSettingCard(
-            FluentIcon.LANGUAGE, "界面语言",
-            "简体中文 / English，切换后重启应用生效",
-            ["简体中文", "English"], g)
+            FluentIcon.LANGUAGE, tr("界面语言", "Interface language"),
+            tr("简体中文 / English，切换后重启应用生效", "Chinese / English, restart to apply"),
+            [tr("简体中文", "简体中文"), "English"], g)
         self.card_lang.comboBox.setCurrentIndex(
             1 if i18n.current() == "en" else 0)
         self.card_lang.comboBox.currentIndexChanged.connect(
@@ -156,7 +156,7 @@ class SettingsPage(ScrollArea):
         self.services.set_pref("language", lang)
         from gui_qt.components import toast
         toast.show_info(
-            self, "语言已切换，重启应用后生效"
+            self, tr("语言已切换，重启应用后生效", "Language switched, restart to apply")
             if lang == "en" else
             "Language switched, restart to apply")
 
@@ -165,20 +165,20 @@ class SettingsPage(ScrollArea):
         if _set_autostart(bool(on)):
             toast.show_success(self, tr("开机启动", "Launch at startup") + ("已开启" if on else "已关闭"))
         else:
-            toast.show_error(self, "设置开机启动失败（注册表写入被拒绝）")
+            toast.show_error(self, tr("设置开机启动失败（注册表写入被拒绝）", "Failed to enable auto-start (registry write denied)"))
             self.card_autostart.setValue(_autostart_enabled())
 
     def _pick_outdir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择默认输出目录")
+        d = QFileDialog.getExistingDirectory(self, tr("选择默认输出目录", "Pick default output folder"))
         if d:
             self.services.set_pref("default_out_dir", d)
             self.card_outdir.setContent(d)
 
     # ── 主题 ─────────────────────────────────────
     def _build_theme(self):
-        g = self._group("主题")
+        g = self._group(tr("主题", "Theme"))
         self.card_theme = _ComboSettingCard(
-            FluentIcon.BRIGHTNESS, "应用主题", "浅色 / 深色 / 跟随系统",
+            FluentIcon.BRIGHTNESS, tr("应用主题", "Apply theme"), tr("浅色 / 深色 / 跟随系统", "Light / Dark / System"),
             MODES, g)
         cur = self.theme_mgr.current_mode()
         self.card_theme.comboBox.setCurrentText(
@@ -189,10 +189,10 @@ class SettingsPage(ScrollArea):
 
     # ── 转换 ─────────────────────────────────────
     def _build_convert(self):
-        g = self._group("转换")
+        g = self._group(tr("转换", "Convert"))
 
         self.card_fmt = _ComboSettingCard(
-            FluentIcon.VIDEO, "默认视频格式", "新会话的默认目标格式",
+            FluentIcon.VIDEO, tr("默认视频格式", "Default video format"), tr("新会话的默认目标格式", "Default format for new sessions"),
             list(SUPPORTED_VIDEO), g)
         self.card_fmt.comboBox.setCurrentText(
             self.services.get_pref("default_fmt", "MP4"))
@@ -201,16 +201,16 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_fmt)
 
         self.card_codec = _ComboSettingCard(
-            FluentIcon.CODE, "默认编码器", "「默认」表示按容器自动选择",
+            FluentIcon.CODE, tr("默认编码器", "Default encoder"), tr("「默认」表示按容器自动选择", "\"Default\" = auto by container"),
             list(VIDEO_CODECS), g)
         self.card_codec.comboBox.setCurrentText(
-            self.services.get_pref("default_codec", "默认"))
+            self.services.get_pref("default_codec", tr("默认", "Default")))
         self.card_codec.comboBox.currentTextChanged.connect(
             lambda t: self.services.set_pref("default_codec", t))
         g.addSettingCard(self.card_codec)
 
         self.card_gpu = SwitchSettingCard(
-            FluentIcon.SPEED_HIGH, "GPU 加速", "默认启用硬件加速（失败自动降级 CPU）",
+            FluentIcon.SPEED_HIGH, tr("GPU 加速", "GPU acceleration"), tr("默认启用硬件加速（失败自动降级 CPU）", "Hardware acceleration on by default (falls back to CPU)"),
             parent=g)
         self.card_gpu.setValue(bool(self.services.get_pref("gpu_accel", True)))
         self.card_gpu.checkedChanged.connect(
@@ -218,7 +218,7 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_gpu)
 
         self.card_parallel = _ComboSettingCard(
-            FluentIcon.SYNC, "并行转换", "同时执行的任务数（建议 1~4）",
+            FluentIcon.SYNC, tr("并行转换", "Parallel convert"), tr("同时执行的任务数（建议 1~4）", "Concurrent tasks (1~4 recommended)"),
             ["1", "2", "3", "4", "6", "8"], g)
         self.card_parallel.comboBox.setCurrentText(
             str(self.services.get_pref("parallel", 1)))
@@ -227,7 +227,7 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_parallel)
 
         self.card_retry = _ComboSettingCard(
-            FluentIcon.RETURN, "失败重试", "转换失败后自动重试的次数",
+            FluentIcon.RETURN, tr("失败重试", "Retry"), tr("转换失败后自动重试的次数", "Auto-retry count after failure"),
             ["0", "1", "2", "3"], g)
         self.card_retry.comboBox.setCurrentText(
             str(self.services.get_pref("max_retries", 0)))
@@ -236,8 +236,8 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_retry)
 
         self.card_open_dir = SwitchSettingCard(
-            FluentIcon.FOLDER, "转换后打开输出目录",
-            "所有任务完成后自动打开输出文件夹",
+            FluentIcon.FOLDER, tr("转换后打开输出目录", "Open output folder after converting"),
+            tr("所有任务完成后自动打开输出文件夹", "Open output folder when all tasks finish"),
             parent=g)
         self.card_open_dir.setValue(bool(self.services.get_pref("open_dir_on_done", False)))
         self.card_open_dir.checkedChanged.connect(
@@ -245,8 +245,8 @@ class SettingsPage(ScrollArea):
         g.addSettingCard(self.card_open_dir)
 
         self.card_notify_sound = SwitchSettingCard(
-            FluentIcon.PLAY, "完成提示音",
-            "转换成功后播放系统提示音",
+            FluentIcon.PLAY, tr("完成提示音", "Completion sound"),
+            tr("转换成功后播放系统提示音", "Play system sound on success"),
             parent=g)
         self.card_notify_sound.setValue(bool(self.services.get_pref("notify_sound", True)))
         self.card_notify_sound.checkedChanged.connect(
@@ -267,21 +267,21 @@ class SettingsPage(ScrollArea):
 
         from gui_qt import context_menu as _cm
         self.card_menu = PushSettingCard(
-            "已安装" if _cm.installed() else "未安装", FluentIcon.MENU,
-            "文件右键菜单",
-            "右键任意文件 →「用格式大师转换」直接打开；点击切换安装状态", g)
+            tr("已安装", "Installed") if _cm.installed() else tr("未安装", "Not installed"), FluentIcon.MENU,
+            tr("文件右键菜单", "Context menu"),
+            tr("右键任意文件 →「用格式大师转换」直接打开；点击切换安装状态", "Right-click any file → \"Convert with FormatMaster\"; click to toggle install"), g)
         self.card_menu.clicked.connect(self._toggle_context_menu)
         g.addSettingCard(self.card_menu)
 
-        ffmpeg_path = get_ffmpeg_path() or "未找到"
+        ffmpeg_path = get_ffmpeg_path() or tr("未找到", "Not found")
         self.card_ffmpeg = PushSettingCard(
-            ffmpeg_path, FluentIcon.COMMAND_PROMPT, "FFmpeg 路径",
-            "点击重新检测；缺失时自动下载", g)
+            ffmpeg_path, FluentIcon.COMMAND_PROMPT, tr("FFmpeg 路径", "FFmpeg path"),
+            tr("点击重新检测；缺失时自动下载", "Click to re-detect; auto-downloads if missing"), g)
         self.card_ffmpeg.clicked.connect(self._redetect_ffmpeg)
         g.addSettingCard(self.card_ffmpeg)
 
         self.card_debug = SwitchSettingCard(
-            FluentIcon.DEVELOPER_TOOLS, "调试模式", "输出更详细的调试日志",
+            FluentIcon.DEVELOPER_TOOLS, tr("调试模式", "Debug mode"), tr("输出更详细的调试日志", "Output more detailed debug logs"),
             parent=g)
         self.card_debug.setValue(bool(self.services.get_pref("debug", False)))
         self.card_debug.checkedChanged.connect(
@@ -294,25 +294,25 @@ class SettingsPage(ScrollArea):
         if cm.installed():
             err = cm.uninstall()
             if err:
-                toast.show_error(self, f"卸载失败：{err}")
+                toast.show_error(self, tr("卸载失败：{}", "Uninstall failed: {}").format(err))
                 return
-            self.card_menu.setContent("未安装")
-            toast.show_info(self, "已卸载右键菜单")
+            self.card_menu.setContent(tr("未安装", "Not installed"))
+            toast.show_info(self, tr("已卸载右键菜单", "Context menu uninstalled"))
         else:
             err = cm.install()
             if err:
-                toast.show_error(self, f"安装失败：{err}")
+                toast.show_error(self, tr("安装失败：{}", "Install failed: {}").format(err))
                 return
-            self.card_menu.setContent("已安装")
-            toast.show_success(self, "已安装右键菜单")
+            self.card_menu.setContent(tr("已安装", "Installed"))
+            toast.show_success(self, tr("已安装右键菜单", "Context menu installed"))
 
     def _redetect_ffmpeg(self):
         from gui_qt.components import toast
         if self.services.ffmpeg_ready():
-            self.card_ffmpeg.setContent(get_ffmpeg_path() or "未找到")
-            toast.show_success(self, "FFmpeg 已就绪")
+            self.card_ffmpeg.setContent(get_ffmpeg_path() or tr("未找到", "Not found"))
+            toast.show_success(self, tr("FFmpeg 已就绪", "FFmpeg ready"))
             return
-        toast.show_info(self, "FFmpeg 缺失，正在后台下载…")
+        toast.show_info(self, tr("FFmpeg 缺失，正在后台下载…", "FFmpeg missing, downloading in background…"))
 
         def _done(ok):
             # 下载线程回调：通过 QTimer 切回主线程刷新 UI
@@ -320,9 +320,9 @@ class SettingsPage(ScrollArea):
 
             def _update():
                 if ok:
-                    self.card_ffmpeg.setContent(get_ffmpeg_path() or "未找到")
-                    toast.show_success(self, "FFmpeg 下载完成")
+                    self.card_ffmpeg.setContent(get_ffmpeg_path() or tr("未找到", "Not found"))
+                    toast.show_success(self, tr("FFmpeg 下载完成", "FFmpeg downloaded"))
                 else:
-                    toast.show_error(self, "FFmpeg 下载失败，请检查网络")
+                    toast.show_error(self, tr("FFmpeg 下载失败，请检查网络", "FFmpeg download failed, check network"))
             QTimer.singleShot(0, _update)
         self.services.ffmpeg_mgr.download_async(callback=_done)

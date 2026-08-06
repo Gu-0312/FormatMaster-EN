@@ -10,6 +10,21 @@ import sys
 # 确保项目根目录在 sys.path（支持任意工作目录启动）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 提前加载语言偏好（必须在 import gui_qt.app / utils.config 之前执行——
+# config 等模块的模块级 tr() 需要正确的语言；延迟到 MainWindow 构造会拿到中文）
+try:
+    import json as _json
+    from gui_qt.i18n import set_language
+    from utils.config import get_user_data_dir
+    _prefs_path = os.path.join(get_user_data_dir(), "user_prefs.json")
+    _lang = "zh"
+    if os.path.isfile(_prefs_path):
+        with open(_prefs_path, encoding="utf-8") as _f:
+            _lang = _json.load(_f).get("language", "zh")
+    set_language(_lang)
+except Exception:  # noqa: BLE001 - 语言加载失败不影响启动（默认中文）
+    pass
+
 
 def _setup_high_dpi():
     """在 QApplication 创建前配置高 DPI 行为。

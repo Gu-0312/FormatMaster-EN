@@ -18,8 +18,8 @@ from gui_qt.components.empty_state import EmptyState
 from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
 
-_COLS = ["时间", "类型", "源文件", "目标格式", "结果"]
-_RESULTS = ["全部", "成功", "失败"]
+_COLS = ["时间", tr("类型", "Type"), "源文件", tr("目标格式", "Target format"), "结果"]
+_RESULTS = [tr("全部", "All"), tr("成功", "Success"), tr("失败", "Failed")]
 
 
 class _StatChip(Card):
@@ -74,10 +74,10 @@ class HistoryPage(ScrollArea):
         # ── 统计概览 ───────────────────────────────
         stats_row = QHBoxLayout()
         stats_row.setSpacing(12)
-        self.stat_total = _StatChip("累计转换", ds.accent())
-        self.stat_ok = _StatChip("成功", ds.tokens()["success"])
-        self.stat_fail = _StatChip("失败", ds.tokens()["error"])
-        self.stat_today = _StatChip("今日转换", ds.tokens()["warn"])
+        self.stat_total = _StatChip(tr("累计转换", "Total conversions"), ds.accent())
+        self.stat_ok = _StatChip(tr("成功", "Success"), ds.tokens()["success"])
+        self.stat_fail = _StatChip(tr("失败", "Failed"), ds.tokens()["error"])
+        self.stat_today = _StatChip(tr("今日转换", "Today"), ds.tokens()["warn"])
         for c in (self.stat_total, self.stat_ok, self.stat_fail,
                   self.stat_today):
             stats_row.addWidget(c, 1)
@@ -87,13 +87,13 @@ class HistoryPage(ScrollArea):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         self.search_edit = LineEdit(self)
-        self.search_edit.setPlaceholderText("搜索文件名 / 类型…")
+        self.search_edit.setPlaceholderText(tr("搜索文件名 / 类型…", "Search name / type…"))
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self._refresh)
         toolbar.addWidget(self.search_edit, 1)
 
         self.type_combo = ComboBox(self)
-        self.type_combo.addItem("全部类型")
+        self.type_combo.addItem(tr("全部类型", "All types"))
         self.type_combo.currentTextChanged.connect(self._refresh)
         toolbar.addWidget(self.type_combo)
 
@@ -107,7 +107,7 @@ class HistoryPage(ScrollArea):
             f"font-size: 12px; color: {ds.ink_sec()};")
         toolbar.addWidget(self.count_label)
 
-        self.btn_clear = PushButton(FluentIcon.DELETE, "清空历史")
+        self.btn_clear = PushButton(FluentIcon.DELETE, tr("清空历史", "Clear history"))
         self.btn_clear.clicked.connect(self._clear)
         toolbar.addWidget(self.btn_clear)
         v.addLayout(toolbar)
@@ -115,9 +115,9 @@ class HistoryPage(ScrollArea):
         # ── 空态 ───────────────────────────────────
         self.empty_widget = QWidget()
         self.empty_widget.setLayout(EmptyState(
-            icon=FluentIcon.HISTORY, title="暂无转换记录",
-            desc="完成一次转换后，记录将在此显示",
-            btn_text="前往视频转换",
+            icon=FluentIcon.HISTORY, title=tr("暂无转换记录", "No conversion records"),
+            desc=tr("完成一次转换后，记录将在此显示", "Records will appear here after a conversion"),
+            btn_text=tr("前往视频转换", "Go to Video Convert"),
             btn_clicked=lambda: self._goto("video")))
         v.addWidget(self.empty_widget, 1)
 
@@ -151,7 +151,7 @@ class HistoryPage(ScrollArea):
                 seen.append(t)
         self.type_combo.blockSignals(True)
         self.type_combo.clear()
-        self.type_combo.addItem("全部类型")
+        self.type_combo.addItem(tr("全部类型", "All types"))
         self.type_combo.addItems(seen)
         self.type_combo.blockSignals(False)
 
@@ -168,11 +168,11 @@ class HistoryPage(ScrollArea):
                 tgt = str(r.get("target", "")).lower()
                 if kw not in src and kw not in typ and kw not in tgt:
                     continue
-            if type_f != "全部类型" and r.get("type") != type_f:
+            if type_f != tr("全部类型", "All types") and r.get("type") != type_f:
                 continue
-            if result_f == "成功" and r.get("status") != "success":
+            if result_f == tr("成功", "Success") and r.get("status") != "success":
                 continue
-            if result_f == "失败" and r.get("status") == "success":
+            if result_f == tr("失败", "Failed") and r.get("status") == "success":
                 continue
             out.append(r)
         return out
@@ -187,14 +187,14 @@ class HistoryPage(ScrollArea):
         for r in filtered:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            status = "成功" if r.get("status") == "success" else "失败"
+            status = tr("成功", "Success") if r.get("status") == "success" else tr("失败", "Failed")
             values = [r.get("time", ""), r.get("type", ""),
                       r.get("source", ""), r.get("target", ""), status]
             for c, val in enumerate(values):
                 item = QTableWidgetItem(str(val))
                 if c == 4:
                     t = ds.tokens()
-                    fg = t["success"] if status == "成功" else t["error"]
+                    fg = t["success"] if status == tr("成功", "Success") else t["error"]
                     item.setForeground(QColor(fg))
                     font = item.font()
                     font.setBold(True)
@@ -206,7 +206,7 @@ class HistoryPage(ScrollArea):
         shown = len(filtered)
         total = len(records)
         self.count_label.setText(
-            f"共 {total} 条" + (f"（筛选 {shown}）" if shown != total else ""))
+            tr("共 {} 条", "{} records").format(total) + (tr("（筛选 {}）", " (filtered {})").format(shown) if shown != total else ""))
         has = total > 0
         self.empty_widget.setVisible(not has)
         self.table.setVisible(has)
@@ -228,7 +228,7 @@ class HistoryPage(ScrollArea):
         self.services.history.clear()
         self._load_types()
         self._refresh()
-        toast.show_success(self, "历史记录已清空")
+        toast.show_success(self, tr("历史记录已清空", "History cleared"))
 
     def _goto(self, nav_key):
         pages = getattr(self.window, "pages", {})

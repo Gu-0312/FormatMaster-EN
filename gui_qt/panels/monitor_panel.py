@@ -20,9 +20,9 @@ AUDIO_EXTS = {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a", ".wma"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".webp"}
 
 TARGETS = [
-    ("视频 → MP4", "video", VIDEO_EXTS),
-    ("音频 → MP3", "audio", AUDIO_EXTS),
-    ("图片 → PNG", "image", IMAGE_EXTS),
+    (tr("视频 → MP4", "Video → MP4"), "video", VIDEO_EXTS),
+    (tr("音频 → MP3", "Audio → MP3"), "audio", AUDIO_EXTS),
+    (tr("图片 → PNG", "Image → PNG"), "image", IMAGE_EXTS),
 ]
 
 
@@ -42,7 +42,7 @@ class MonitorPanelPage(BaseQtPanel):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("文件夹监视", "Folder Watch")))
         lay.addWidget(CaptionLabel(
-            "监视指定文件夹，新放入的文件自动转换为目标格式"))
+            tr("监视指定文件夹，新放入的文件自动转换为目标格式", "Watch a folder and auto-convert new files")))
 
         # 监视目录 + 目标格式
         sec = FormSection(tr("监视设置", "Watch Settings"), FluentIcon.FOLDER_ADD)
@@ -50,7 +50,7 @@ class MonitorPanelPage(BaseQtPanel):
         row.setSpacing(8)
         row.addWidget(CaptionLabel(tr("监视目录", "Watch folder")))
         self.ed_dir = LineEdit()
-        self.ed_dir.setPlaceholderText("选择要监视的文件夹…")
+        self.ed_dir.setPlaceholderText(tr("选择要监视的文件夹…", "Pick a folder to watch…"))
         self.ed_dir.setReadOnly(True)
         self.btn_browse = PushButton(FluentIcon.FOLDER, tr("浏览", "Browse"))
         self.btn_browse.clicked.connect(self._pick_dir)
@@ -74,7 +74,7 @@ class MonitorPanelPage(BaseQtPanel):
         self.btn_toggle = PrimaryPushButton(FluentIcon.PLAY, tr("开始监视", "Start"))
         self.btn_toggle.clicked.connect(self._toggle)
         ctrl.addWidget(self.btn_toggle)
-        self.status_label = CaptionLabel("未监视")
+        self.status_label = CaptionLabel(tr("未监视", "Not watching"))
         self.status_label.setStyleSheet(
             f"color: {self._ink_sec()};")
         ctrl.addWidget(self.status_label)
@@ -89,7 +89,7 @@ class MonitorPanelPage(BaseQtPanel):
         return ds.ink_sec()
 
     def _pick_dir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择监视目录")
+        d = QFileDialog.getExistingDirectory(self, tr("选择监视目录", "Pick watch folder"))
         if d:
             self.ed_dir.setText(d)
 
@@ -112,15 +112,15 @@ class MonitorPanelPage(BaseQtPanel):
         self._timer.start()
         self.btn_toggle.setText(tr("停止监视", "Stop watch"))
         self.btn_toggle.setIcon(FluentIcon.CANCEL)
-        self.status_label.setText(f"监视中：{os.path.basename(d)}")
-        toast.show_success(self, "开始监视文件夹")
+        self.status_label.setText(tr("监视中：{}", "Watching: {}").format(os.path.basename(d)))
+        toast.show_success(self, tr("开始监视文件夹", "Now watching folder"))
 
     def _stop(self):
         self._running = False
         self._timer.stop()
         self.btn_toggle.setText(tr("开始监视", "Start watch"))
         self.btn_toggle.setIcon(FluentIcon.PLAY)
-        self.status_label.setText(f"已停止（本次转换 {self._converted} 个文件）")
+        self.status_label.setText(tr("已停止（本次转换 {} 个文件）", "Stopped (converted {} files)").format(self._converted))
 
     def _target(self):
         idx = self.cb_target.currentIndex()
@@ -154,28 +154,28 @@ class MonitorPanelPage(BaseQtPanel):
             def runner(task, prog):
                 return self.services.video_conv.convert(
                     task.file_path, task.output_path, "mp4", progress_callback=prog)
-            mgr.add_task(name="监视转换", task_type="monitor",
+            mgr.add_task(name=tr("监视转换", "Watch & convert"), task_type="monitor",
                          file_path=path, output_path=out, params={},
                          runner=runner, need_ffmpeg=True,
-                         history_type="文件夹监视", history_target="MP4")
+                         history_type=tr("文件夹监视", "Folder Watch"), history_target="MP4")
         elif kind == "audio":
             out = os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".mp3")
 
             def runner(task, prog):
                 return self.services.audio_conv.convert(
                     task.file_path, task.output_path, "mp3", progress_callback=prog)
-            mgr.add_task(name="监视转换", task_type="monitor",
+            mgr.add_task(name=tr("监视转换", "Watch & convert"), task_type="monitor",
                          file_path=path, output_path=out, params={},
                          runner=runner, need_ffmpeg=True,
-                         history_type="文件夹监视", history_target="MP3")
+                         history_type=tr("文件夹监视", "Folder Watch"), history_target="MP3")
         else:
             out = os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".png")
 
             def runner(task, prog):
                 return self.services.image_conv.convert(
                     task.file_path, task.output_path, progress_callback=prog)
-            mgr.add_task(name="监视转换", task_type="monitor",
+            mgr.add_task(name=tr("监视转换", "Watch & convert"), task_type="monitor",
                          file_path=path, output_path=out, params={},
                          runner=runner, need_ffmpeg=False,
-                         history_type="文件夹监视", history_target="PNG")
+                         history_type=tr("文件夹监视", "Folder Watch"), history_target="PNG")
         self._converted += 1

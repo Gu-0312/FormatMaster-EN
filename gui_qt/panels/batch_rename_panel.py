@@ -24,8 +24,8 @@ class BatchRenamePanelPage(BaseQtPanel):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("批量重命名", "Batch Rename")))
         lay.addWidget(CaptionLabel(
-            "占位符：{n} 序号 · {name} 原名 · {ext} 扩展名 · "
-            "{date} 日期 · {time} 时间 · {folder} 文件夹"))
+            tr("占位符：{n} 序号 · {name} 原名 · {ext} 扩展名 · ", "Placeholders: {n} number · {name} original · {ext} ext · ")
+            + tr("{date} 日期 · {time} 时间 · {folder} 文件夹", "{date} date · {time} time · {folder} folder")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=None)
         lay.addWidget(self.file_card)
@@ -43,17 +43,17 @@ class BatchRenamePanelPage(BaseQtPanel):
         sec = FormSection(tr("重命名规则", "Rename Rule"), FluentIcon.EDIT)
         g = FormGrid(columns=2)
         self.ed_pattern = LineEdit()
-        self.ed_pattern.setText("文件_{n:03d}")
+        self.ed_pattern.setText(tr("文件_{n:03d}", "File_{n:03d}"))
         g.add_field(tr("命名模板", "Name template"), self.ed_pattern,
-                    hint="示例：照片_{n:03d} → 照片_001")
+                    hint=tr("示例：照片_{n:03d} → 照片_001", "Example: Photo_{n:03d} → Photo_001"))
         self.ed_start = LineEdit()
         self.ed_start.setText("1")
         g.add_field(tr("开始序号", "Start number"), self.ed_start, hint="{n}")
         self.ed_search = LineEdit()
-        self.ed_search.setPlaceholderText("留空跳过")
+        self.ed_search.setPlaceholderText(tr("留空跳过", "blank to skip"))
         g.add_field(tr("查找文本", "Find text"), self.ed_search)
         self.ed_replace = LineEdit()
-        self.ed_replace.setPlaceholderText("留空表示删除")
+        self.ed_replace.setPlaceholderText(tr("留空表示删除", "blank = delete"))
         g.add_field(tr("替换为", "Replace with"), self.ed_replace)
         sec.add_form(g)
         return sec
@@ -65,7 +65,7 @@ class BatchRenamePanelPage(BaseQtPanel):
             return
         pattern = self.ed_pattern.text().strip()
         if not pattern:
-            toast.show_warning(self, "请填写命名模板")
+            toast.show_warning(self, tr("请填写命名模板", "Fill in the name template"))
             return
         try:
             start = int(self.ed_start.text() or "1")
@@ -78,8 +78,8 @@ class BatchRenamePanelPage(BaseQtPanel):
         ok = batch_rename(files, pattern, start_num=start,
                           search_text=search, replace_text=replace)
         if ok:
-            toast.show_success(self, f"已重命名 {len(files)} 个文件")
+            toast.show_success(self, tr("已重命名 {} 个文件", "Renamed {} files").format(len(files)))
         else:
-            toast.show_error(self, "重命名失败：请检查模板与文件名冲突")
+            toast.show_error(self, tr("重命名失败：请检查模板与文件名冲突", "Rename failed: check template or filename conflicts"))
         # 刷新列表（重命名后路径已变）
         self.file_card.clear_files()

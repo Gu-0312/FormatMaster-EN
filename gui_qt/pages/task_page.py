@@ -58,9 +58,9 @@ class TaskPage(ScrollArea):
         # ── 空态 ───────────────────────────────────
         self.empty_widget = QWidget()
         empty_layout = EmptyState(
-            icon=FluentIcon.PLAY, title="暂无任务",
-            desc="去「视频转换」或「音频转换」面板添加一个转换任务吧",
-            btn_text="前往视频转换",
+            icon=FluentIcon.PLAY, title=tr("暂无任务", "No tasks"),
+            desc=tr("去「视频转换」或「音频转换」面板添加一个转换任务吧", "Add a task in the Video or Audio panel"),
+            btn_text=tr("前往视频转换", "Go to Video Convert"),
             btn_clicked=lambda: self._goto("video"))
         self.empty_widget.setLayout(empty_layout)
         v.addWidget(self.empty_widget, 1)
@@ -75,7 +75,7 @@ class TaskPage(ScrollArea):
         lc = QVBoxLayout(log_card)
         lc.setContentsMargins(18, 14, 18, 14)
         lc.setSpacing(10)
-        log_title = CaptionLabel("运行日志")
+        log_title = CaptionLabel(tr("运行日志", "Run log"))
         log_title.setStyleSheet(
             f"font-size: 13px; font-weight: 600; color: {ds.ink_sec()};")
         lc.addWidget(log_title)
@@ -83,7 +83,7 @@ class TaskPage(ScrollArea):
         self.log_view.setObjectName("logView")
         self.log_view.setReadOnly(True)
         self.log_view.setFixedHeight(190)
-        self.log_view.setPlaceholderText("任务日志将在此显示…")
+        self.log_view.setPlaceholderText(tr("任务日志将在此显示…", "Task log will appear here…"))
         lc.addWidget(self.log_view)
         v.addWidget(log_card)
 

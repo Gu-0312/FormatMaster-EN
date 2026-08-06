@@ -26,11 +26,11 @@ class TableOcrPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("表格识别", "Table OCR")))
         lay.addWidget(CaptionLabel(
-            "识别图片中的表格结构并输出为 CSV / Excel（本地 RapidOCR）"))
+            tr("识别图片中的表格结构并输出为 CSV / Excel（本地 RapidOCR）", "Recognize tables in images and export CSV / Excel (local RapidOCR)")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
-        self.file_card.set_target_fmt("表格识别")
+        self.file_card.set_target_fmt(tr("表格识别", "Table OCR"))
 
         lay.addWidget(self._build_params_card())
 
@@ -60,15 +60,15 @@ class TableOcrPanelPage(BaseQtPanel, TaskPanelMixin):
         self._submit_files()
 
     def _empty_hint(self) -> str:
-        return "请先添加要识别的图片"
+        return tr("请先添加要识别的图片", "Add images to recognize first")
 
     def _make_task(self, f: str) -> dict:
         ext = ".xlsx" if self.cb_fmt.currentText().startswith("Excel") else ".csv"
         out = tm.make_output_path(f, self.out_row.path(), ext)
-        return dict(name="表格识别", task_type="table_ocr",
+        return dict(name=tr("表格识别", "Table OCR"), task_type="table_ocr",
                     file_path=f, output_path=out, params={},
                     runner=self._runner,
-                    history_type="表格识别", history_target=ext[1:].upper(),
+                    history_type=tr("表格识别", "Table OCR"), history_target=ext[1:].upper(),
                     need_ffmpeg=False)
 
     def _runner(self, task, prog):

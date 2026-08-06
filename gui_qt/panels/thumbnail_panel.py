@@ -31,12 +31,12 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(self.make_title(tr("视频缩略图", "Thumbnails")))
         lay.addWidget(CaptionLabel(tr("从视频中提取多帧画面，生成网格缩略图墙", "Extract frames to a thumbnail grid")))
 
-        self.file_card = FileListCard("视频列表", file_exts=VIDEO_EXTS)
+        self.file_card = FileListCard(tr("视频列表", "Video list"), file_exts=VIDEO_EXTS)
         lay.addWidget(self.file_card)
 
         # 布局设置
         from gui_qt.components.form_widgets import FormSection, FormGrid
-        card = FormSection("布局设置", FluentIcon.LAYOUT)
+        card = FormSection(tr("布局设置", "Layout settings"), FluentIcon.LAYOUT)
         grid = FormGrid(columns=3)
 
         def _combo(items, default):
@@ -46,14 +46,14 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
             return cb
 
         self.cb_cols = grid.add_field(
-            "列数", _combo(COLS_VALUES, "4"),
-            hint="缩略图网格的列数")
+            tr("列数", "Columns"), _combo(COLS_VALUES, "4"),
+            hint=tr("缩略图网格的列数", "Thumbnail grid columns"))
         self.cb_rows = grid.add_field(
-            "行数", _combo(ROWS_VALUES, "4"),
-            hint="缩略图网格的行数")
+            tr("行数", "Rows"), _combo(ROWS_VALUES, "4"),
+            hint=tr("缩略图网格的行数", "Thumbnail grid rows"))
         self.cb_width = grid.add_field(
-            "输出宽度", _combo(WIDTH_VALUES, "1600"),
-            hint="输出图片的宽度（像素）")
+            tr("输出宽度", "Output width"), _combo(WIDTH_VALUES, "1600"),
+            hint=tr("输出图片的宽度（像素）", "Output image width (px)"))
         card.add_form(grid)
         lay.addWidget(card)
 
@@ -61,7 +61,7 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         self.out_row.bind_file_list(self.file_card)
         lay.addWidget(self.out_row)
 
-        self.action_bar = ActionBar("开始生成")
+        self.action_bar = ActionBar(tr("开始生成", "Generate"))
         lay.addWidget(self.action_bar)
 
         self._wire_tasks()
@@ -107,10 +107,10 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         out_dir = self.out_row.resolve_dir(f)
         out_path = os.path.join(out_dir, nm + "_thumbnails.png")
         return dict(
-            name=f"缩略图墙 - {os.path.basename(f)}",
+            name=f"{tr('缩略图墙', 'Thumbnail wall')} - {os.path.basename(f)}",
             task_type="thumbnail", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
-            history_type="视频缩略图",
+            history_type=tr("视频缩略图", "Video Thumbnails"),
             history_target=f"{params['cols']}x{params['rows']}",
             need_ffmpeg=True)
 
@@ -118,4 +118,4 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要生成缩略图墙的视频"
+        return tr("请先添加要生成缩略图墙的视频", "Add videos to generate thumbnails first")

@@ -3,6 +3,7 @@
 形态：色条 + 图标 + 数值 + 标题 + 「较昨日 ±x%」副标签。
 与旧版 StatCard 的差异：多了 delta 副标签、更紧凑的高度。
 """
+from gui_qt.i18n import tr
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,

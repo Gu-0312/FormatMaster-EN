@@ -5,14 +5,15 @@
 性能：qfluentwidgets 的 setTheme 支持 lazy 模式——对不可见控件
 延迟刷样式（标记 dirty-qss，显示时再应用），主题切换从 ~1s 降到 ~250ms。
 """
+from gui_qt.i18n import tr
 from qfluentwidgets import Theme, qconfig, setTheme
 
 from gui_qt.components import design_system as ds
 
 # 模式标识（持久化到 USER_PREFS 的 qt_app.theme）
-MODE_LIGHT = "浅色"
-MODE_DARK = "深色"
-MODE_AUTO = "跟随系统"
+MODE_LIGHT = tr("浅色", "Light")
+MODE_DARK = tr("深色", "Dark")
+MODE_AUTO = tr("跟随系统", "System")
 MODES = [MODE_LIGHT, MODE_DARK, MODE_AUTO]
 
 _MODE_THEME = {MODE_LIGHT: Theme.LIGHT, MODE_DARK: Theme.DARK, MODE_AUTO: Theme.AUTO}

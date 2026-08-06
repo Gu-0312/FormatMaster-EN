@@ -19,7 +19,7 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 from utils.config import DOC_CONVERSION_MAP, DOC_READ_FORMATS
 
 DOC_EXTS = set(DOC_READ_FORMATS.keys())
-PLACEHOLDER = "请先添加文件"
+PLACEHOLDER = tr("请先添加文件", "Add files first")
 
 
 class DocPanelPage(BaseQtPanel, TaskPanelMixin):
@@ -32,15 +32,15 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("文档转换", "Document convert")))
         lay.addWidget(CaptionLabel(
-            "PDF · Word · Excel · PPT · WPS · TXT · 图片 · Markdown · EPUB · RTF · ODT"))
+            tr("PDF · Word · Excel · PPT · WPS · TXT · 图片 · Markdown · EPUB · RTF · ODT", "PDF · Word · Excel · PPT · WPS · TXT · Image · Markdown · EPUB · RTF · ODT")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=DOC_EXTS)
         lay.addWidget(self.file_card)
 
         # 转换设置
-        sec = FormSection("转换设置", FluentIcon.SETTING)
+        sec = FormSection(tr("转换设置", "Convert settings"), FluentIcon.SETTING)
         sec.add_widget(CaptionLabel(
-            "添加文件后点击「检测格式」，系统将自动列出可转换的目标格式"))
+            tr("添加文件后点击「检测格式」，系统将自动列出可转换的目标格式", "Click \"Detect format\" after adding files to list convertible targets")))
 
         grid = FormGrid(columns=1)
         self.cb_tgt = ComboBox()
@@ -48,12 +48,12 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_tgt.setCurrentIndex(0)
         self.cb_tgt.setMinimumWidth(220)
         self.cb_tgt = grid.add_field(
-            "目标格式", self.cb_tgt,
-            hint="点击「检测格式」后自动列出可转换的目标格式")
+            tr("目标格式", "Target format"), self.cb_tgt,
+            hint=tr("点击「检测格式」后自动列出可转换的目标格式", "Click \"Detect format\" to list convertible targets"))
         sec.add_form(grid)
 
         # 检测按钮 + 状态提示
-        self.btn_detect = PushButton("检测格式")
+        self.btn_detect = PushButton(tr("检测格式", "Detect format"))
         self.detect_label = CaptionLabel("")
         act_row = QHBoxLayout()
         act_row.setSpacing(8)
@@ -81,12 +81,12 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
     def _detect(self):
         files = self.file_card.files()
         if not files:
-            toast.show_info(self, "请先添加文档文件")
+            toast.show_info(self, tr("请先添加文档文件", "Add document files first"))
             return
         ext = os.path.splitext(files[0])[1].lower()
         src = DOC_READ_FORMATS.get(ext)
         if not src:
-            toast.show_warning(self, f"不支持的格式：{ext}")
+            toast.show_warning(self, tr("不支持的格式：{}", "Unsupported format: {}").format(ext))
             return
         tgts = DOC_CONVERSION_MAP.get(src, [])
         if not tgts:
@@ -97,7 +97,7 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_tgt.addItems(names)
         self.cb_tgt.setCurrentIndex(0)
         self.file_card.set_target_fmt(names[0].split("（")[0].lstrip(".").upper())
-        self.detect_label.setText(f"已识别 {src} · {len(files)} 个文件")
+        self.detect_label.setText(tr("已识别 {} · {} 个文件", "Detected {} · {} files").format(src, len(files)))
 
     def _on_files_changed(self):
         # 文件变化后目标格式需重新检测（与 tkinter 版语义一致）
@@ -137,22 +137,22 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
     def _make_task(self, f):
         target = self.cb_tgt.currentText()
         if target == PLACEHOLDER:
-            toast.show_warning(self, "请先点击「检测格式」选择目标格式")
+            toast.show_warning(self, tr("请先点击「检测格式」选择目标格式", "Click \"Detect format\" to choose target format first"))
             return None
         ext = target.split("（")[0].strip()
         params = self.collect_params()
         out_dir = self.out_row.resolve_dir(f)
         out_path = tm.make_output_path(f, out_dir, ext)
         return dict(
-            name=f"文档转换 - {os.path.basename(f)}",
+            name=f"{tr('文档转换', 'Doc Convert')} - {os.path.basename(f)}",
             task_type="doc", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
             canceller=self.services.doc_conv.cancel,
-            history_type="文档转换", history_target=ext.lstrip(".").upper(),
+            history_type=tr("文档转换", "Document Convert"), history_target=ext.lstrip(".").upper(),
             need_ffmpeg=False)
 
     def _start(self):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要转换的文档文件"
+        return tr("请先添加要转换的文档文件", "Add documents to convert first")

@@ -21,10 +21,10 @@ VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm",
               ".m4v", ".mpg", ".mpeg", ".ts"}
 
 MODES = [
-    ("clip", "剪辑片段"),
-    ("merge", "合并视频"),
-    ("subtitle", "字幕烧录"),
-    ("speed", "变速处理"),
+    ("clip", tr("剪辑片段", "Clip")),
+    ("merge", tr("合并视频", "Merge videos")),
+    ("subtitle", tr("字幕烧录", "Burn subtitle")),
+    ("speed", tr("变速处理", "Change Speed")),
 ]
 
 SUB_EXTS = {".srt", ".ass", ".ssa", ".vtt"}
@@ -58,11 +58,11 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("视频处理", "Video Tools")))
         lay.addWidget(CaptionLabel(
-            "剪辑 · 合并 · 字幕烧录 · 变速，一站式视频处理"))
+            tr("剪辑 · 合并 · 字幕烧录 · 变速，一站式视频处理", "Clip · Merge · Subtitles · Speed — all-in-one")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=VIDEO_EXTS)
         lay.addWidget(self.file_card)
-        self.file_card.set_target_fmt("视频处理")
+        self.file_card.set_target_fmt(tr("视频处理", "Video Tools"))
 
         lay.addWidget(self._build_params_card())
 
@@ -98,9 +98,9 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.w_clip = QWidget()
         g1 = FormGrid(columns=2)
         self.ed_start = LineEdit()
-        self.ed_start.setPlaceholderText("如 00:30 或 30")
+        self.ed_start.setPlaceholderText(tr("如 00:30 或 30", "e.g. 00:30 or 30"))
         self.ed_end = LineEdit()
-        self.ed_end.setPlaceholderText("留空表示到结尾")
+        self.ed_end.setPlaceholderText(tr("留空表示到结尾", "blank = to end"))
         g1.add_field(tr("开始时间", "Start time"), self.ed_start, hint="HH:MM:SS")
         g1.add_field(tr("结束时间", "End time"), self.ed_end, hint="HH:MM:SS")
         v1 = QVBoxLayout(self.w_clip)
@@ -114,7 +114,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         srow.setContentsMargins(0, 0, 0, 0)
         srow.setSpacing(8)
         self.ed_sub = LineEdit()
-        self.ed_sub.setPlaceholderText("选择 SRT / ASS 字幕文件…")
+        self.ed_sub.setPlaceholderText(tr("选择 SRT / ASS 字幕文件…", "Pick SRT / ASS subtitle…"))
         self.ed_sub.setReadOnly(True)
         self.btn_sub = PushButton(FluentIcon.DOCUMENT, tr("选择字幕", "Pick"))
         self.btn_sub.clicked.connect(self._pick_subtitle)
@@ -141,8 +141,8 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _pick_subtitle(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择字幕文件", "",
-            "字幕文件 (*.srt *.ass *.ssa *.vtt)")
+            self, tr("选择字幕文件", "Pick subtitle file"), "",
+            tr("字幕文件 (*.srt *.ass *.ssa *.vtt)", "Subtitle files (*.srt *.ass *.ssa *.vtt)"))
         if path:
             self.ed_sub.setText(path)
 
@@ -153,13 +153,13 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.w_speed.setVisible(mode == "speed")
         # 提示文案随模式变化
         if mode == "merge":
-            self.file_card.set_target_fmt("合并为 1 个文件")
+            self.file_card.set_target_fmt(tr("合并为 1 个文件", "Merge into 1 file"))
         elif mode == "subtitle":
-            self.file_card.set_target_fmt("烧录字幕")
+            self.file_card.set_target_fmt(tr("烧录字幕", "Burn subtitles"))
         elif mode == "speed":
-            self.file_card.set_target_fmt("变速处理")
+            self.file_card.set_target_fmt(tr("变速处理", "Change Speed"))
         else:
-            self.file_card.set_target_fmt("剪辑片段")
+            self.file_card.set_target_fmt(tr("剪辑片段", "Clip"))
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:
@@ -197,7 +197,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self._submit_files()
 
     def _empty_hint(self) -> str:
-        return "请先添加要处理的视频文件"
+        return tr("请先添加要处理的视频文件", "Add videos to process first")
 
     def _make_task(self, f: str) -> dict:
         mode = self.sg_mode.currentRouteKey()
@@ -207,19 +207,19 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         if mode == "clip":
             if params["start"] is None:
                 from gui_qt.components import toast
-                toast.show_warning(self, "请填写开始时间")
+                toast.show_warning(self, tr("请填写开始时间", "Enter a start time"))
                 return None
             ext = os.path.splitext(f)[1] or ".mp4"
             out = tm.make_output_path(f, self.out_row.path(), ext)
             return dict(name=tr("视频剪辑", "Video Clip"), task_type="video_tools",
                         file_path=f, output_path=out, params=params,
                         runner=self._runner,
-                        history_type="视频处理", history_target="剪辑",
+                        history_type=tr("视频处理", "Video Tools"), history_target=tr("剪辑", "Clip"),
                         need_ffmpeg=True)
         if mode == "merge":
             if len(files) < 2:
                 from gui_qt.components import toast
-                toast.show_warning(self, "合并至少需要 2 个视频文件")
+                toast.show_warning(self, tr("合并至少需要 2 个视频文件", "Merge needs at least 2 video files"))
                 return None
             if f != files[0]:
                 return None  # 合并只提交一个任务（携带全部文件）
@@ -229,18 +229,18 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
             return dict(name=tr("视频合并", "Video Merge"), task_type="video_tools",
                         file_path=f, output_path=out, params=params,
                         runner=self._runner,
-                        history_type="视频处理", history_target="合并",
+                        history_type=tr("视频处理", "Video Tools"), history_target=tr("合并", "Merge"),
                         need_ffmpeg=True)
         if mode == "subtitle":
             if not params["subtitle_path"]:
                 from gui_qt.components import toast
-                toast.show_warning(self, "请先选择字幕文件")
+                toast.show_warning(self, tr("请先选择字幕文件", "Pick a subtitle file first"))
                 return None
             out = tm.make_output_path(f, self.out_row.path(), ".mp4")
             return dict(name=tr("字幕烧录", "Burn Subtitle"), task_type="video_tools",
                         file_path=f, output_path=out, params=params,
                         runner=self._runner,
-                        history_type="视频处理", history_target="字幕",
+                        history_type=tr("视频处理", "Video Tools"), history_target=tr("字幕", "Subtitles"),
                         need_ffmpeg=True)
         # speed
         out = tm.make_output_path(f, self.out_row.path(),
@@ -248,7 +248,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         return dict(name=tr("视频变速", "Change Speed"), task_type="video_tools",
                     file_path=f, output_path=out, params=params,
                     runner=self._runner,
-                    history_type="视频处理", history_target="变速",
+                    history_type=tr("视频处理", "Video Tools"), history_target=tr("变速", "Speed"),
                     need_ffmpeg=True)
 
     def _runner(self, task, prog):

@@ -4,6 +4,7 @@
 所有探测带 try/except 与超时兜底，任何一项失败都不影响整体。
 不依赖三方库（显卡/内存探测用 ctypes 调 Win32 API，超时降级）。
 """
+from gui_qt.i18n import tr
 import ctypes
 import os
 import platform
@@ -38,7 +39,7 @@ def os_info():
             "arch": platform.machine(),
         }
     except Exception:
-        return {"system": "未知", "release": "", "build": "", "arch": ""}
+        return {"system": tr("未知", "Unknown"), "release": "", "build": "", "arch": ""}
 
 
 _cpu_cache = None
@@ -63,14 +64,14 @@ def cpu_info():
             threads = details.get("threads", "")
             ghz = details.get("ghz", "")
             if cores and threads and cores != threads:
-                parts.append(f"{cores}核{threads}线程")
+                parts.append(tr("{}核{}线程", "{} cores / {} threads").format(cores, threads))
             elif cores:
-                parts.append(f"{cores}核")
+                parts.append(tr("{}核", "{} cores").format(cores))
             if ghz:
                 parts.append(ghz)
         _cpu_cache = " · ".join(parts)
     except Exception:
-        _cpu_cache = "未知 CPU"
+        _cpu_cache = tr("未知 CPU", "Unknown CPU")
     return _cpu_cache
 
 
@@ -88,9 +89,9 @@ def _cpu_name():
     except Exception:
         pass
     try:
-        return platform.processor() or "未知 CPU"
+        return platform.processor() or tr("未知 CPU", "Unknown CPU")
     except Exception:
-        return "未知 CPU"
+        return tr("未知 CPU", "Unknown CPU")
 
 
 def _cpu_details():
@@ -140,7 +141,7 @@ def gpu_info():
     global _gpu_cache
     if _gpu_cache is not None:
         return _gpu_cache
-    result = "未知显卡"
+    result = tr("未知显卡", "Unknown GPU")
     try:
         out = _powershell(
             "Get-CimInstance Win32_VideoController"
@@ -177,16 +178,16 @@ def gpu_info():
                 if gpu["vram_gb"] > 0:
                     parts.append(f"{gpu['vram_gb']:.0f}GB")
                 if gpu["driver"]:
-                    parts.append(f"驱动 {gpu['driver']}")
+                    parts.append(tr("驱动 {}", "Driver {}").format(gpu['driver']))
                 result = " · ".join(parts)
     except Exception:
         pass
-    if result == "未知显卡":
+    if result == tr("未知显卡", "Unknown GPU"):
         # 兜底：直接取第一个显卡名称
         name = _powershell(
             "Get-CimInstance Win32_VideoController | Select-Object -First 1"
             " -ExpandProperty Name")
-        result = name or "未知显卡"
+        result = name or tr("未知显卡", "Unknown GPU")
     _gpu_cache = result
     return result
 

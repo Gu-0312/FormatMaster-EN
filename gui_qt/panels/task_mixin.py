@@ -32,7 +32,7 @@ class TaskPanelMixin:
         raise NotImplementedError
 
     def _empty_hint(self) -> str:
-        return "请先添加要处理的文件"
+        return tr("请先添加要处理的文件", "Add files to process first")
 
     # ── 提交 ─────────────────────────────────────
     def _submit_files(self):
@@ -64,9 +64,9 @@ class TaskPanelMixin:
                 added += 1
         if added:
             self.action_bar.set_running(True)
-            self.action_bar.set_status(f"已提交 {added} 个任务")
+            self.action_bar.set_status(tr("已提交 {} 个任务", "Submitted {} tasks").format(added))
             return True
-        toast.show_error(self, "任务提交失败：FFmpeg 未就绪")
+        toast.show_error(self, tr("任务提交失败：FFmpeg 未就绪", "Submit failed: FFmpeg not ready"))
         return False
 
     def _cancel_all(self):
@@ -100,11 +100,11 @@ class TaskPanelMixin:
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
         if state == tm.SUCCESS and task:
-            toast.show_success(self, f"处理完成：{os.path.basename(task.file_path)}")
+            toast.show_success(self, tr("处理完成：{}", "Done: {}").format(os.path.basename(task.file_path)))
         elif state == tm.FAILED and task:
             toast.show_error(self,
-                             f"处理失败：{os.path.basename(task.file_path)}"
-                             f"（{task.error or '未知错误'}）")
+                             tr("处理失败：{}", "Failed: {}").format(os.path.basename(task.file_path)) +
+                             tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))
         if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
             self._task_rows.pop(task_id, None)
             self._update_total()

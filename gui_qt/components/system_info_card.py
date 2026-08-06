@@ -83,11 +83,11 @@ class SystemInfoCard(Card):
         header.addStretch(1)
         v.addLayout(header)
 
-        self.row_os = _InfoRow("操作系统", "读取中…")
-        self.row_cpu = _InfoRow("CPU", "读取中…")
-        self.row_mem = _InfoRow("内存", "读取中…")
-        self.row_gpu = _InfoRow("显卡", "读取中…")
-        self.row_ver = _InfoRow("软件版本", "读取中…")
+        self.row_os = _InfoRow(tr("操作系统", "OS"), tr("读取中…", "Loading…"))
+        self.row_cpu = _InfoRow("CPU", tr("读取中…", "Loading…"))
+        self.row_mem = _InfoRow(tr("内存", "Memory"), tr("读取中…", "Loading…"))
+        self.row_gpu = _InfoRow(tr("显卡", "GPU"), tr("读取中…", "Loading…"))
+        self.row_ver = _InfoRow(tr("软件版本", "Version"), tr("读取中…", "Loading…"))
         for row in (self.row_os, self.row_cpu, self.row_mem,
                     self.row_gpu, self.row_ver):
             v.addWidget(row)
@@ -108,10 +108,10 @@ class SystemInfoCard(Card):
             build = f" (Build {os_info['build']})" if os_info.get("build") else ""
             self.row_os.set_value(
                 f"{os_info['system']} {os_info['release']}{build}"
-                f" · {os_info['arch']}位")
+                + tr(" · {}位", " · {}bit").format(os_info['arch']))
         else:
-            self.row_os.set_value(os_info.get("system") or "未知")
-        self.row_cpu.set_value(d.get("cpu") or "读取中…")
+            self.row_os.set_value(os_info.get("system") or tr("未知", "Unknown"))
+        self.row_cpu.set_value(d.get("cpu") or tr("读取中…", "Loading…"))
         if d.get("version"):
             self.row_ver.set_value(d["version"])
         total = d.get("mem_total")
@@ -119,9 +119,9 @@ class SystemInfoCard(Card):
         used_pct = d.get("mem_used_pct")
         if total is not None:
             used = total - (avail or 0)
-            pct_str = f"（使用 {used_pct}%）" if used_pct is not None else ""
+            pct_str = tr("（使用 {}%）", " ({}% used)").format(used_pct) if used_pct is not None else ""
             self.row_mem.set_value(
-                f"{total:.0f} GB（已用 {used:.1f} GB{pct_str}）")
+                tr("{:.0f} GB（已用 {:.1f} GB{}）", "{:.0f} GB ({:.1f} GB used {})").format(total, used, pct_str))
         else:
-            self.row_mem.set_value("未知")
-        self.row_gpu.set_value(d.get("gpu") or "未知显卡")
+            self.row_mem.set_value(tr("未知", "Unknown"))
+        self.row_gpu.set_value(d.get("gpu") or tr("未知显卡", "Unknown GPU"))

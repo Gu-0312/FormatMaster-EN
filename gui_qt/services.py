@@ -4,6 +4,7 @@
 集中持有转换器、FFmpeg 管理器、偏好与历史记录，供面板/页面注入使用。
 依赖方向：gui_qt -> core/ + utils/，严格单向。
 """
+from gui_qt.i18n import tr
 import time
 
 from core.audio_converter import AudioConverter
@@ -72,7 +73,7 @@ class QtServices:
         h, rem = divmod(secs, 3600)
         m, s = divmod(rem, 60)
         if h > 0:
-            return f"{h} 小时 {m} 分"
+            return tr("{} 小时 {} 分", "{}h {}m").format(h, m)
         if m > 0:
-            return f"{m} 分 {s} 秒"
-        return f"{s} 秒"
+            return tr("{} 分 {} 秒", "{}m {}s").format(m, s)
+        return tr("{} 秒", "{}s").format(s)

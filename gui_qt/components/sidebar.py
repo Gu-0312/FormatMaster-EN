@@ -26,7 +26,7 @@ def build_navigation(window, services, theme_mgr):
     prev_pos = None  # 用于判断是否需要加分隔线
 
     for idx, (group, items) in enumerate(nav_registry.NAV_GROUPS):
-        is_bottom = (group == "管理中心")
+        is_bottom = (group == tr("管理中心", "Manage"))
         pos = (NavigationItemPosition.BOTTOM if is_bottom
                else (NavigationItemPosition.TOP if idx == 0
                      else NavigationItemPosition.SCROLL))
@@ -55,22 +55,22 @@ def build_navigation(window, services, theme_mgr):
     # ── 主题切换入口（导航底部）──────────────────────
     theme_btn = TransparentToolButton(FluentIcon.BRIGHTNESS, nav)
     theme_btn.isSelectable = False
-    theme_btn.setToolTip(f"主题：{theme_mgr.current_mode()}")
+    theme_btn.setToolTip(tr("主题", "Theme") + f": {theme_mgr.current_mode()}")
     theme_btn.setFixedSize(40, 40)
 
     def _cycle_theme():
         # 立即切换，不延迟：此前 QTimer 150ms 延迟导致连点时
-        # current_mode() 仍是旧值、模式被跳过（"点两次才切换"），
+        # current_mode() 仍是旧值、模式被跳过（tr("点两次才切换", "Click twice to switch")），
         # 且切换体感迟缓。
         cur = theme_mgr.current_mode()
         nxt = MODES[(MODES.index(cur) + 1) % len(MODES)] \
             if cur in MODES else MODES[0]
-        theme_btn.setToolTip(f"主题：{nxt}")
+        theme_btn.setToolTip(tr("主题", "Theme") + f": {nxt}")
         _do_theme_switch(theme_mgr, nxt, theme_btn)
 
     def _do_theme_switch(theme_mgr, mode, btn):
         theme_mgr.set_mode(mode)
-        btn.setToolTip(f"主题：{theme_mgr.current_mode()}")
+        btn.setToolTip(tr("主题", "Theme") + f": {theme_mgr.current_mode()}")
 
     theme_btn.clicked.connect(_cycle_theme)
     nav.addWidget(routeKey="theme_toggle", widget=theme_btn,
@@ -123,8 +123,8 @@ def _setup_context_menu(window, pages):
         if route_key not in pages:
             return
         menu = QMenu(window)
-        fav_act = menu.addAction(FluentIcon.HEART, "收藏")
-        pin_act = menu.addAction(FluentIcon.PIN, "固定到顶部")
+        fav_act = menu.addAction(FluentIcon.HEART, tr("收藏", "Favorite"))
+        pin_act = menu.addAction(FluentIcon.PIN, tr("固定到顶部", "Pin to top"))
         close_act = menu.addAction(FluentIcon.CLOSE, tr("关闭", "Close"))
         act = menu.exec(nav.mapToGlobal(pos))
         if act == fav_act:

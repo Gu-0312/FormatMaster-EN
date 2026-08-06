@@ -16,14 +16,14 @@ from gui_qt.components.card import Card
 
 # 状态 → 颜色 / 文字
 _STATE_STYLE = {
-    "success":   ("#2FC99A", "成功"),
-    "failed":    ("#F26D6D", "失败"),
-    "running":   ("#38BDF8", "处理中"),
-    "waiting":   ("#F0A63A", "等待中"),
-    "paused":    ("#F0A63A", "已暂停"),
-    "cancelled": ("#9BA1B4", "已取消"),
+    "success":   ("#2FC99A", tr("成功", "Success")),
+    "failed":    ("#F26D6D", tr("失败", "Failed")),
+    "running":   ("#38BDF8", tr("处理中", "Processing")),
+    "waiting":   ("#F0A63A", tr("等待中", "Waiting")),
+    "paused":    ("#F0A63A", tr("已暂停", "Paused")),
+    "cancelled": ("#9BA1B4", tr("已取消", "Cancelled")),
 }
-_DEFAULT = ("#9BA1B4", "未知")
+_DEFAULT = ("#9BA1B4", tr("未知", "Unknown"))
 
 
 def _fmt_ext(task):
@@ -45,7 +45,7 @@ def _time_str(ts):
     today = datetime.date.today()
     hhmm = dt.strftime("%H:%M")
     if dt.date() == today:
-        return f"今天 {hhmm}"
+        return tr("今天 {}", "Today {}").format(hhmm)
     return dt.strftime("%m-%d %H:%M")
 
 
@@ -112,7 +112,7 @@ class RecentTasksTable(Card):
         h = QHBoxLayout()
         h.setContentsMargins(12, 0, 12, 0)
         h.setSpacing(10)
-        for text, stretch in (("文件", 1), ("格式", 0), ("状态", 0), ("时间", 0)):
+        for text, stretch in ((tr("文件", "File"), 1), (tr("格式", "Format"), 0), (tr("状态", "Status"), 0), (tr("时间", "Time"), 0)):
             lbl = CaptionLabel(text, self)
             lbl.setStyleSheet(
                 f"font-size: 11px; color: {ds.ink_dis()}; font-weight: 600;"
@@ -148,7 +148,7 @@ class RecentTasksTable(Card):
         icon = IconWidget(FluentIcon.ACCEPT, box)
         icon.setFixedSize(16, 16)
         icon.setStyleSheet(f"color: {ds.ink_dis()};")
-        lbl = CaptionLabel("暂无任务记录，完成一次转换后会自动显示在这里", box)
+        lbl = CaptionLabel(tr("暂无任务记录，完成一次转换后会自动显示在这里", "No tasks yet — completed conversions will appear here"), box)
         lbl.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_dis()};"
             "border: none; background: transparent;")
@@ -193,7 +193,7 @@ class _TaskTableRow(QWidget):
         self.status_label.setFixedWidth(56)
         self.status_label.setFixedHeight(22)
         self.status_label.setStyleSheet(
-            f"font-size: 11px; font-weight: 700; color: {color};"
+            f"font-size: 11px; font-weight: 700; color: {color};" +
             f"background: {ds.with_alpha(color, 14)};"
             "border-radius: 11px; padding: 2px 4px;")
         h.addWidget(self.status_label)

@@ -27,9 +27,9 @@ AUDIO_CODEC_MAP = {
 }
 
 BR_VALUES = ["128k", "192k", "256k", "320k"]
-SR_VALUES = ["原始", "22050", "44100", "48000", "96000"]
-CH_VALUES = ["原始", "单声道", "立体声"]
-CH_MAP = {"原始": None, "单声道": 1, "立体声": 2}
+SR_VALUES = [tr("原始", "Original"), "22050", "44100", "48000", "96000"]
+CH_VALUES = [tr("原始", "Original"), "单声道", "立体声"]
+CH_MAP = {tr("原始", "Original"): None, "单声道": 1, "立体声": 2}
 
 
 class AudioPanelPage(BaseQtPanel):
@@ -42,7 +42,7 @@ class AudioPanelPage(BaseQtPanel):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("音频转换", "Audio convert")))
         lay.addWidget(CaptionLabel(
-            "MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转"))
+            tr("MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转", "MP3 · WAV · WMA · AAC · FLAC · OGG · M4A interconvert")))
 
         exts = set(SUPPORTED_AUDIO.values())
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=exts)
@@ -88,15 +88,15 @@ class AudioPanelPage(BaseQtPanel):
             return cb
 
         self.cb_fmt = grid.add_field(
-            "目标格式", _combo(list(SUPPORTED_AUDIO), "MP3"),
-            hint="输出音频格式")
+            tr("目标格式", "Target format"), _combo(list(SUPPORTED_AUDIO), "MP3"),
+            hint=tr("输出音频格式", "Output audio format"))
         self.cb_br = grid.add_field(
-            "比特率", _combo(BR_VALUES, "192k"),
-            hint="码率越高音质越好，文件也越大")
+            tr("比特率", "Bitrate"), _combo(BR_VALUES, "192k"),
+            hint=tr("码率越高音质越好，文件也越大", "Higher bitrate = better audio, larger file"))
         self.cb_sr = grid.add_field(
-            "采样率", _combo(SR_VALUES, "原始"))
+            tr("采样率", "Sample rate"), _combo(SR_VALUES, tr("原始", "Original")))
         self.cb_ch = grid.add_field(
-            "声道", _combo(CH_VALUES, "原始"))
+            tr("声道", "Channels"), _combo(CH_VALUES, tr("原始", "Original")))
         sec.add_form(grid)
 
         # 音量滑块（20%~200%，默认 100%）
@@ -162,9 +162,9 @@ class AudioPanelPage(BaseQtPanel):
     # ── 任务执行器（TaskManager 通用链路）────────
     def _runner(self, task, prog):
         p = task.params
-        sr = None if p.get("sample_rate", "原始") == "原始" \
+        sr = None if p.get("sample_rate", tr("原始", "Original")) == tr("原始", "Original") \
             else int(p["sample_rate"])
-        ch = CH_MAP.get(p.get("channels", "原始"))
+        ch = CH_MAP.get(p.get("channels", tr("原始", "Original")))
         return self.services.audio_conv.convert(
             task.file_path, task.output_path,
             codec=p.get("codec"), bitrate=p.get("bitrate", "192k"),
@@ -175,7 +175,7 @@ class AudioPanelPage(BaseQtPanel):
     def _start(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加要转换的音频文件")
+            toast.show_warning(self, tr("请先添加要转换的音频文件", "Add audio files to convert first"))
             return
         if not self.services.ffmpeg_ready():
             toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
@@ -194,10 +194,10 @@ class AudioPanelPage(BaseQtPanel):
             out_dir = self.out_row.resolve_dir(f)
             out_path = tm.make_output_path(f, out_dir, fmt_ext)
             tid = mgr.add_task(
-                name=f"音频转换 - {os.path.basename(f)}",
+                name=f"{tr('音频转换', 'Audio Convert')} - {os.path.basename(f)}",
                 task_type="audio", file_path=f, output_path=out_path,
                 params=params, runner=self._runner, canceller=conv.cancel,
-                history_type="音频转换", history_target=params["fmt"])
+                history_type=tr("音频转换", "Audio Convert"), history_target=params["fmt"])
             if tid is not None:
                 self._task_rows[tid] = (f, self.file_card.row_of_file(f))
                 added += 1
@@ -205,9 +205,9 @@ class AudioPanelPage(BaseQtPanel):
             self.btn_go.setEnabled(False)
             self.btn_cancel.setEnabled(True)
             self.bar_total.setValue(0)
-            self.status_label.setText(f"已提交 {added} 个任务")
+            self.status_label.setText(tr("已提交 {} 个任务", "Submitted {} tasks").format(added))
         else:
-            toast.show_error(self, "任务提交失败：FFmpeg 未就绪")
+            toast.show_error(self, tr("任务提交失败：FFmpeg 未就绪", "Submit failed: FFmpeg not ready"))
 
     def _cancel_all(self):
         mgr = self.services.task_manager
@@ -239,11 +239,11 @@ class AudioPanelPage(BaseQtPanel):
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
         if state == tm.SUCCESS and task:
-            toast.show_success(self, f"转换完成：{os.path.basename(task.file_path)}")
+            toast.show_success(self, tr("转换完成：{}", "Converted: {}").format(os.path.basename(task.file_path)))
         elif state == tm.FAILED and task:
             toast.show_error(self,
-                             f"转换失败：{os.path.basename(task.file_path)}"
-                             f"（{task.error or '未知错误'}）")
+                             tr("转换失败：{}", "Failed: {}").format(os.path.basename(task.file_path))
+                             + tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))
         if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
             self._task_rows.pop(task_id, None)
             self._update_total()

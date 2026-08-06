@@ -4,6 +4,7 @@
 无需管理员权限）。命令调用应用入口并带 --convert <file> 参数，
 由 gui_qt/app.run(convert_path=...) 在启动后自动打开对应面板并添加文件。
 """
+from gui_qt.i18n import tr
 import os
 import sys
 
@@ -28,7 +29,7 @@ def install():
     try:
         import winreg
         shell = winreg.CreateKey(winreg.HKEY_CURRENT_USER, _SHELL_KEY)
-        winreg.SetValueEx(shell, None, 0, winreg.REG_SZ, "用格式大师转换")
+        winreg.SetValueEx(shell, None, 0, winreg.REG_SZ, tr("用格式大师转换", "Convert with FormatMaster"))
         winreg.SetValueEx(shell, "Icon", 0, winreg.REG_SZ,
                           f'"{sys.executable}",0')
         cmd_key = winreg.CreateKey(shell, "command")

@@ -39,7 +39,7 @@ class UrlListDialog(FluentDialogBase):
                 text += f"  [{note}]"
             self.list_w.addItem(text)
         if not self._items:
-            self.list_w.addItem("暂无记录")
+            self.list_w.addItem(tr("暂无记录", "No records"))
         lay.addWidget(self.list_w, 1)
 
         brow = QHBoxLayout()

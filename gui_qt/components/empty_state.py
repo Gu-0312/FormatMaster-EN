@@ -3,6 +3,7 @@
 图标使用棱镜色调柔和背景圆角方块，文字层次更精致，
 支持可选的动作按钮。用于未迁移功能的占位页与空列表。
 """
+from gui_qt.i18n import tr
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -41,8 +42,8 @@ class EmptyState(QVBoxLayout):
     btn_text / btn_clicked: 可选的动作按钮。
     """
 
-    def __init__(self, icon=FluentIcon.INFO, title="即将上线",
-                 desc="该功能正在迁移中，敬请期待",
+    def __init__(self, icon=FluentIcon.INFO, title=tr("即将上线", "Coming soon"),
+                 desc=tr("该功能正在迁移中，敬请期待", "This feature is being migrated, coming soon"),
                  btn_text=None, btn_clicked=None, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)

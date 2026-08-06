@@ -3,6 +3,7 @@
 一排小图标入口：图标方块 + 名称，点击跳转到对应页面。第 8 项为
 「更多工具」，点击跳转「格式检测」或占位提示。hover 高亮。
 """
+from gui_qt.i18n import tr
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QHBoxLayout, QVBoxLayout, QWidget)
@@ -74,14 +75,14 @@ class QuickFunctionRow(QWidget):
 
     # 顺序与参考截图一致
     _ITEMS = [
-        (FluentIcon.VIDEO,     "视频转换", "#38BDF8", "video"),
-        (FluentIcon.MUSIC,     "音频转换", "#A78BFA", "audio"),
-        (FluentIcon.PHOTO,     "图片转换", "#2FC99A", "image"),
-        (FluentIcon.DOCUMENT,  "文档转换", "#F0A63A", "document"),
-        (FluentIcon.ZIP_FOLDER, "视频压缩", "#EA7A23", "video_edit"),
-        (FluentIcon.MOVIE,     "视频转GIF", "#EC4899", "gif"),
-        (FluentIcon.DOWNLOAD,  "视频下载", "#F59E4C", "download"),
-        (FluentIcon.ADD,       "更多工具", "#5F6472", "format_detect"),
+        (FluentIcon.VIDEO,     tr("视频转换", "Video Convert"), "#38BDF8", "video"),
+        (FluentIcon.MUSIC,     tr("音频转换", "Audio Convert"), "#A78BFA", "audio"),
+        (FluentIcon.PHOTO,     tr("图片转换", "Image Convert"), "#2FC99A", "image"),
+        (FluentIcon.DOCUMENT,  tr("文档转换", "Document Convert"), "#F0A63A", "document"),
+        (FluentIcon.ZIP_FOLDER, tr("视频压缩", "Video Compress"), "#EA7A23", "video_edit"),
+        (FluentIcon.MOVIE,     tr("视频转GIF", "Video to GIF"), "#EC4899", "gif"),
+        (FluentIcon.DOWNLOAD,  tr("视频下载", "Video Download"), "#F59E4C", "download"),
+        (FluentIcon.ADD,       tr("更多工具", "More tools"), "#5F6472", "format_detect"),
     ]
 
     def __init__(self, parent=None):

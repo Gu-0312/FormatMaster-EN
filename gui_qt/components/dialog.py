@@ -31,7 +31,7 @@ class FluentDialogBase(QDialog):
         """按当前主题刷新对话框样式（亮暗切换后重新调用可即时生效）。"""
         t = ds.tokens()
         self.setStyleSheet(
-            f"QDialog {{ background: {t['card_bg']};"
-            f" border-radius: 12px; }}"
-            f"QDialog QLabel {{ color: {t['ink']};"
+            f"QDialog {{ background: {t['card_bg']};" +
+            f" border-radius: 12px; }}" +
+            f"QDialog QLabel {{ color: {t['ink']};" +
             f" background: transparent; }}")

@@ -19,8 +19,8 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 from utils.config import (RESOLUTIONS, SUPPORTED_VIDEO, VIDEO_CODECS,
                           VIDEO_CONVERT_PRESETS, VIDEO_PRESETS)
 
-FPS_VALUES = ["原始帧率", "24", "25", "30", "60"]
-BR_VALUES = ["自动", "1M", "2M", "5M", "8M", "10M", "20M"]
+FPS_VALUES = [tr("原始帧率", "Original FPS"), "24", "25", "30", "60"]
+BR_VALUES = [tr("自动", "Auto"), "1M", "2M", "5M", "8M", "10M", "20M"]
 
 
 class VideoPanelPage(BaseQtPanel):
@@ -79,42 +79,42 @@ class VideoPanelPage(BaseQtPanel):
         preset_row = FormGrid(columns=1)
         self.cb_preset_tpl = Cb()
         self.cb_preset_tpl.addItems(list(VIDEO_CONVERT_PRESETS.keys()))
-        self.cb_preset_tpl.setCurrentText("自定义")
+        self.cb_preset_tpl.setCurrentText(tr("自定义", "Custom"))
         self.cb_preset_tpl.currentTextChanged.connect(self._apply_preset)
-        preset_row.add_field("快速预设", self.cb_preset_tpl,
-                             hint="选择预设自动填充下方参数")
+        preset_row.add_field(tr("快速预设", "Quick preset"), self.cb_preset_tpl,
+                             hint=tr("选择预设自动填充下方参数", "Pick a preset to fill parameters"))
         sec.add_form(preset_row)
 
         grid = FormGrid(columns=2)
 
         self.cb_fmt = grid.add_field(
-            "目标格式", self._combo(list(SUPPORTED_VIDEO), "MP4"),
-            hint="输出容器格式（如 MP4 / AVI / MKV）")
+            tr("目标格式", "Target format"), self._combo(list(SUPPORTED_VIDEO), "MP4"),
+            hint=tr("输出容器格式（如 MP4 / AVI / MKV）", "Output container (e.g. MP4 / AVI / MKV)"))
         self.cb_codec = grid.add_field(
-            "编码器", self._combo(list(VIDEO_CODECS), "默认"),
-            hint="视频编码标准，H.265 压缩率更高")
+            tr("编码器", "Encoder"), self._combo(list(VIDEO_CODECS), tr("默认", "Default")),
+            hint=tr("视频编码标准，H.265 压缩率更高", "Video codec, H.265 compresses better"))
         self.cb_preset = grid.add_field(
-            "质量预设", self._combo(list(VIDEO_PRESETS), "原始质量"))
+            tr("质量预设", "Quality preset"), self._combo(list(VIDEO_PRESETS), tr("原始质量", "Original quality")))
         self.cb_res = grid.add_field(
-            "分辨率", self._combo(list(RESOLUTIONS), "原始分辨率"))
+            tr("分辨率", "Resolution"), self._combo(list(RESOLUTIONS), tr("原始分辨率", "Original resolution")))
         self.cb_fps = grid.add_field(
-            "帧率", self._combo(FPS_VALUES, "原始帧率"))
+            tr("帧率", "Frame rate"), self._combo(FPS_VALUES, tr("原始帧率", "Original FPS")))
         self.cb_br = grid.add_field(
-            "码率", self._combo(BR_VALUES, "自动"),
-            hint="自动由编码器决定，或手动指定")
+            tr("码率", "Bitrate"), self._combo(BR_VALUES, tr("自动", "Auto")),
+            hint=tr("自动由编码器决定，或手动指定", "Auto (encoder default) or manual"))
         self.cb_hw = grid.add_field(
-            "硬件加速", self._combo(self._hw_options(), "自动"),
-            hint="NVIDIA / AMD / Intel 显卡加速编码")
+            tr("硬件加速", "HW acceleration"), self._combo(self._hw_options(), tr("自动", "Auto")),
+            hint=tr("NVIDIA / AMD / Intel 显卡加速编码", "NVIDIA / AMD / Intel GPU accelerated encoding"))
         sec.add_form(grid)
 
-        self.cb_copy = CheckBox("直接复制流（不重新编码，速度最快）")
+        self.cb_copy = CheckBox(tr("直接复制流（不重新编码，速度最快）", "Copy stream directly (no re-encode, fastest)"))
         sec.add_widget(self.cb_copy)
 
         # 字幕烧录
-        self.btn_sub = PushButton(FluentIcon.DOCUMENT, "选择字幕文件")
+        self.btn_sub = PushButton(FluentIcon.DOCUMENT, tr("选择字幕文件", "Pick subtitle file"))
         self.btn_sub.clicked.connect(self._pick_subtitle)
         self._subtitle_path = ""
-        self._lbl_sub = CaptionLabel("未选择字幕", self)
+        self._lbl_sub = CaptionLabel(tr("未选择字幕", "No subtitle"), self)
         self._lbl_sub.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_sec()};")
         from PySide6.QtWidgets import QHBoxLayout as HLAY
@@ -143,7 +143,7 @@ class VideoPanelPage(BaseQtPanel):
             available = detect_hardware_acceleration()
         except Exception:  # noqa: BLE001 - 检测失败不应阻断 UI
             available = []
-        return ["自动"] + [a["name"] for a in available] + ["关闭硬件加速"]
+        return [tr("自动", "Auto")] + [a["name"] for a in available] + [tr("关闭硬件加速", "Disable HW accel")]
 
     def _apply_preset(self, name):
         """应用预设模板：自动填充各参数控件。"""
@@ -167,22 +167,22 @@ class VideoPanelPage(BaseQtPanel):
         """选择字幕文件（SRT/ASS/SSA）。"""
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择字幕文件", "",
-            "字幕文件 (*.srt *.ass *.ssa *.vtt);;所有文件 (*)")
+            self, tr("选择字幕文件", "Pick subtitle file"), "",
+            tr("字幕文件 (*.srt *.ass *.ssa *.vtt);;所有文件 (*)", "Subtitle files (*.srt *.ass *.ssa *.vtt);;All files (*)"))
         if path:
             self._subtitle_path = path
             name = os.path.basename(path)
             self._lbl_sub.setText(name)
         else:
             self._subtitle_path = ""
-            self._lbl_sub.setText("未选择字幕")
+            self._lbl_sub.setText(tr("未选择字幕", "No subtitle"))
 
     def _resolve_hw_accel(self):
         """显示名 → 内部 key（与 tkinter 版 _resolve_hw_accel 一致）。"""
         display = self.cb_hw.currentText()
-        if display == "自动":
+        if display == tr("自动", "Auto"):
             return "auto"
-        if display == "关闭硬件加速":
+        if display == tr("关闭硬件加速", "Disable HW accel"):
             return None
         from utils.hardware_accel import HW_ACCEL_ENCODERS
         for key, info in HW_ACCEL_ENCODERS.items():
@@ -241,7 +241,7 @@ class VideoPanelPage(BaseQtPanel):
     def _start(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加要转换的视频文件")
+            toast.show_warning(self, tr("请先添加要转换的视频文件", "Add video files to convert first"))
             return
         if not self.services.ffmpeg_ready():
             toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
@@ -267,9 +267,9 @@ class VideoPanelPage(BaseQtPanel):
             self.btn_go.setEnabled(False)
             self.btn_cancel.setEnabled(True)
             self.bar_total.setValue(0)
-            self.status_label.setText(f"已提交 {added} 个任务")
+            self.status_label.setText(tr("已提交 {} 个任务", "Submitted {} tasks").format(added))
         else:
-            toast.show_error(self, "任务提交失败：FFmpeg 未就绪")
+            toast.show_error(self, tr("任务提交失败：FFmpeg 未就绪", "Submit failed: FFmpeg not ready"))
 
     def _cancel_all(self):
         mgr = self.services.task_manager
@@ -301,11 +301,11 @@ class VideoPanelPage(BaseQtPanel):
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
         if state == tm.SUCCESS:
-            toast.show_success(self, f"转换完成：{os.path.basename(task.file_path)}")
+            toast.show_success(self, tr("转换完成：{}", "Converted: {}").format(os.path.basename(task.file_path)))
         elif state == tm.FAILED:
             toast.show_error(self,
-                             f"转换失败：{os.path.basename(task.file_path)}"
-                             f"（{task.error or '未知错误'}）")
+                             tr("转换失败：{}", "Failed: {}").format(os.path.basename(task.file_path)) +
+                             tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))
         if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
             self._task_rows.pop(task_id, None)
             self._update_total()

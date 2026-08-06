@@ -8,6 +8,7 @@
     左栏（约 7/10）：最近任务表格 + 公告通知
     右栏（约 3/10）：系统信息 + 新手指南
 """
+from gui_qt.i18n import tr
 import datetime
 
 from PySide6.QtCore import Qt
@@ -60,12 +61,11 @@ class HomePage(QWidget):
         from gui_qt.components.design_system import HeroBanner
         self.hero = HeroBanner(
             self._greeting(),
-            "专业、强大、易用的格式转换工具 —— 视频 / 音频 / 图片 / 文档一站式处理",
+            tr("专业、强大、易用的格式转换工具 —— 视频 / 音频 / 图片 / 文档一站式处理", "Professional format converter — Video / Audio / Image / Document"),
             self)
         v.addWidget(self.hero)
 
     def _greeting(self):
-        from gui_qt.i18n import tr
         hour = datetime.datetime.now().hour
         if hour < 6:
             return tr("你好，夜深了也别忘了保存工作",
@@ -91,16 +91,16 @@ class HomePage(QWidget):
         grid.setHorizontalSpacing(16)
 
         self.stat_today = StatCard(
-            "今日转换文件", "0 个", "较昨日 +0%",
+            tr("今日转换文件", "Files converted today"), tr("0 个", "0 items"), tr("较昨日 +0%", "vs yesterday +0%"),
             "#5B5BD6", FluentIcon.PLAY)
         self.stat_saved = StatCard(
-            "节省空间", "--", "较昨日 +0%",
+            tr("节省空间", "Space saved"), "--", tr("较昨日 +0%", "vs yesterday +0%"),
             "#2FC99A", FluentIcon.LIBRARY)
         self.stat_rate = StatCard(
-            "成功率", "--", "较昨日 +0%",
+            tr("成功率", "Success rate"), "--", tr("较昨日 +0%", "vs yesterday +0%"),
             "#F0A63A", FluentIcon.ACCEPT)
         self.stat_uptime = StatCard(
-            "累计运行", "0 秒", "较昨日 +0分钟",
+            tr("累计运行", "Total uptime"), tr("0 秒", "0 sec"), tr("较昨日 +0分钟", "vs yesterday +0 min"),
             "#EC4899", FluentIcon.STOP_WATCH)
 
         for i, c in enumerate([self.stat_today, self.stat_saved,
@@ -188,7 +188,7 @@ class HomePage(QWidget):
                         ok += 1
                     else:
                         fail += 1
-        self.stat_today.set_value(f"{total} 个")
+        self.stat_today.set_value(tr("{} 个", "{} items").format(total))
         self.stat_saved.set_value("--")  # 需要磁盘节省统计，暂不展示
         self.stat_rate.set_value(
             f"{ok / total * 100:.1f} %" if total else "--")

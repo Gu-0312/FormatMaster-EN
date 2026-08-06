@@ -16,8 +16,8 @@ from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 
 # 预置值（与 tkinter 版 crop_panel 一致）
-MODE_VALUES = ["cover（裁剪填充）", "fit（等比适应）"]
-DEFAULT_PRESET = "1:1 正方形 (1080×1080)"
+MODE_VALUES = [tr("cover（裁剪填充）", "cover (crop fill)"), "fit（等比适应）"]
+DEFAULT_PRESET = tr("1:1 正方形 (1080×1080)", "1:1 Square (1080×1080)")
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -31,17 +31,17 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
     def build(self):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("封面裁剪", "Crop cover")))
-        lay.addWidget(CaptionLabel("按社交媒体尺寸批量裁剪图片"))
+        lay.addWidget(CaptionLabel(tr("按社交媒体尺寸批量裁剪图片", "Batch crop images to social media sizes")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
 
         from gui_qt.components.form_widgets import FormSection
-        card = FormSection("裁剪设置", FluentIcon.CUT)
+        card = FormSection(tr("裁剪设置", "Crop settings"), FluentIcon.CUT)
 
         row1 = QHBoxLayout()
         row1.setSpacing(8)
-        row1.addWidget(CaptionLabel("预设尺寸"))
+        row1.addWidget(CaptionLabel(tr("预设尺寸", "Preset size")))
         self.cb_preset = ComboBox()
         self.cb_preset.addItems(list(ic.PRESETS.keys()))
         self.cb_preset.setCurrentText(DEFAULT_PRESET)
@@ -107,7 +107,7 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
         p = task.params
         sz = ic.PRESETS.get(p.get("preset", ""))
         if not sz:
-            task.error = f"未知预设：{p.get('preset', '')}"
+            task.error = tr("未知预设：{}", "Unknown preset: {}").format(p.get('preset', ''))
             return False
         files_all = p.get("files") or [task.file_path]
         cnt = ic.batch_crop(files_all, task.output_path, sz,
@@ -118,7 +118,7 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
     def _start(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加要裁剪的图片")
+            toast.show_warning(self, tr("请先添加要裁剪的图片", "Add images to crop first"))
             return
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
             toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
@@ -129,24 +129,24 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
         try:
             os.makedirs(out_dir, exist_ok=True)
         except OSError:
-            toast.show_error(self, f"无法创建输出目录：{out_dir}")
+            toast.show_error(self, tr("无法创建输出目录：{}", "Cannot create output folder: {}").format(out_dir))
             return
 
         self.save_prefs()
         params["files"] = list(files)
         mgr = self.services.task_manager
         tid = mgr.add_task(
-            name=f"图像裁剪 - {len(files)}个文件",
+            name=tr("图像裁剪 - {}个文件", "Image Crop - {} files").format(len(files)),
             task_type="crop", file_path=files[0], output_path=out_dir,
             params=params, runner=self._runner,
-            history_type="图像裁剪", history_target=params["preset"],
+            history_type=tr("图像裁剪", "Image Crop"), history_target=params["preset"],
             need_ffmpeg=False)
         if tid is not None:
             self._task_rows[tid] = (files[0], -1)
             self.action_bar.set_running(True)
-            self.action_bar.set_status("已提交裁剪任务")
+            self.action_bar.set_status(tr("已提交裁剪任务", "Crop task submitted"))
         else:
-            toast.show_error(self, "任务提交失败")
+            toast.show_error(self, tr("任务提交失败", "Submit failed"))
 
     def _empty_hint(self):
-        return "请先添加要裁剪的图片"
+        return tr("请先添加要裁剪的图片", "Add images to crop first")

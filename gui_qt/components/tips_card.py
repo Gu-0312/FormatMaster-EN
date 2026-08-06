@@ -15,24 +15,24 @@ from gui_qt.i18n import tr
 
 # (中文, English)
 _TIPS = [
-    ("快捷键 Ctrl+1~9 可快速切换页面", "Press Ctrl+1~9 to switch pages"),
-    ("把文件直接拖进面板即可批量添加", "Drag files into the panel to batch add"),
-    ("视频处理「剪辑」默认无损流复制，速度快",
+    (tr("快捷键 Ctrl+1~9 可快速切换页面", "Ctrl+1~9 switch pages quickly"), "Press Ctrl+1~9 to switch pages"),
+    (tr("把文件直接拖进面板即可批量添加", "Drag files into the panel to add them"), "Drag files into the panel to batch add"),
+    (tr("视频处理「剪辑」默认无损流复制，速度快", "Clip uses lossless stream copy by default for speed"),
      "Video 'Clip' uses lossless stream copy, fast"),
-    ("文件右键 →「用格式大师转换」一键打开",
+    (tr("文件右键 →「用格式大师转换」一键打开", "Right-click a file → \"Convert with FormatMaster\""),
      "Right-click a file → open with FormatMaster"),
-    ("界面语言可在设置中切换中英", "Switch UI language in Settings"),
-    ("文件夹监视：新文件放入目录自动转换",
+    (tr("界面语言可在设置中切换中英", "Switch between Chinese and English in Settings"), "Switch UI language in Settings"),
+    (tr("文件夹监视：新文件放入目录自动转换", "Watch a folder and auto-convert new files"),
      "Folder Watch auto-converts new files"),
-    ("批量重命名支持 {n}/{name}/{date} 占位符",
+    (tr("批量重命名支持 {n}/{name}/{date} 占位符", "Batch rename supports {n}/{name}/{date} placeholders"),
      "Batch rename supports {n}/{name}/{date}"),
-    ("表格识别可输出 CSV / Excel", "Table OCR exports CSV / Excel"),
-    ("侧边栏底部按钮切换亮/暗/跟随系统",
+    (tr("表格识别可输出 CSV / Excel", "Table OCR exports CSV / Excel"), "Table OCR exports CSV / Excel"),
+    (tr("侧边栏底部按钮切换亮/暗/跟随系统", "Sidebar bottom button switches light/dark/system"),
      "Toggle theme at the sidebar bottom"),
-    ("转换完成后可自动打开输出目录（设置开启）",
+    (tr("转换完成后可自动打开输出目录（设置开启）", "Auto-open output folder when done (in Settings)"),
      "Auto-open output folder when done (Settings)"),
-    ("视频变速支持 0.5x - 2.0x", "Video speed: 0.5x - 2.0x"),
-    ("图片支持 AVIF / WebP 等现代格式", "Images support AVIF / WebP"),
+    (tr("视频变速支持 0.5x - 2.0x", "Speed supports 0.5x - 2.0x"), "Video speed: 0.5x - 2.0x"),
+    (tr("图片支持 AVIF / WebP 等现代格式", "Supports AVIF / WebP and other modern formats"), "Images support AVIF / WebP"),
 ]
 
 

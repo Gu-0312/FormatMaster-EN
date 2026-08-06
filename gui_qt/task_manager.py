@@ -9,6 +9,7 @@
 - 取消：调用 VideoConverter.cancel()
 - 速度：按进度增量与源文件大小估算 MB/s
 """
+from gui_qt.i18n import tr
 import os
 import threading
 import time
@@ -29,8 +30,8 @@ FAILED = "failed"
 CANCELLED = "cancelled"
 
 _STATE_TEXT = {
-    WAITING: "等待中", RUNNING: "转换中", PAUSED: "已暂停",
-    SUCCESS: "已完成", FAILED: "失败", CANCELLED: "已取消",
+    WAITING: tr("等待中", "Waiting"), RUNNING: tr("转换中", "Converting"), PAUSED: tr("已暂停", "Paused"),
+    SUCCESS: "已完成", FAILED: tr("失败", "Failed"), CANCELLED: tr("已取消", "Cancelled"),
 }
 
 
@@ -133,7 +134,7 @@ class TaskManager(QObject):
         max_retries：失败后自动重试次数（默认不重试）。
         """
         if need_ffmpeg and not self.services.ffmpeg_ready():
-            self.sig_log.emit("FFmpeg 未就绪，无法添加任务", "error")
+            self.sig_log.emit(tr("FFmpeg 未就绪，无法添加任务", "FFmpeg not ready, cannot add task"), "error")
             return None
         try:
             size = os.path.getsize(file_path) if file_path else 0
@@ -152,7 +153,7 @@ class TaskManager(QObject):
                         max_retries=max(0, int(max_retries)))
             self._tasks[task_id] = task
             self._queue.append(task_id)
-        self.sig_log.emit(f"任务已添加到队列：{task.name}", "info")
+        self.sig_log.emit(tr("任务已添加到队列：{}", "Task queued: {}").format(task.name), "info")
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
         return task_id
@@ -161,7 +162,7 @@ class TaskManager(QObject):
                        max_retries=0):
         """添加一个视频转换任务，返回 task_id；FFmpeg 未就绪返回 None。"""
         if not self.services.ffmpeg_ready():
-            self.sig_log.emit("FFmpeg 未就绪，无法添加任务", "error")
+            self.sig_log.emit(tr("FFmpeg 未就绪，无法添加任务", "FFmpeg not ready, cannot add task"), "error")
             return None
         try:
             size = os.path.getsize(file_path)
@@ -171,16 +172,16 @@ class TaskManager(QObject):
             task_id = self._next_id
             self._next_id += 1
             task = Task(task_id=task_id,
-                        name=f"视频转换 - {os.path.basename(file_path)}",
+                        name=f"{tr('视频转换', 'Video Convert')} - {os.path.basename(file_path)}",
                         task_type="video", file_path=file_path,
                         output_path=output_path, params=dict(params),
                         priority=priority, input_size=size,
-                        history_type="视频转换",
+                        history_type=tr("视频转换", "Video Convert"),
                         history_target=params.get("fmt", "MP4"),
                         max_retries=max(0, int(max_retries)))
             self._tasks[task_id] = task
             self._queue.append(task_id)
-        self.sig_log.emit(f"任务已添加到队列：{task.name}", "info")
+        self.sig_log.emit(tr("任务已添加到队列：{}", "Task queued: {}").format(task.name), "info")
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
         return task_id
@@ -237,12 +238,12 @@ class TaskManager(QObject):
             elif task.runner is not None:
                 self._run_generic(task)
             else:
-                task.error = "暂不支持的任务类型"
+                task.error = tr("暂不支持的任务类型", "Unsupported task type")
                 self._set_state(task, FAILED)
         except Exception as ex:  # noqa: BLE001 - 任务线程必须兜底
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(f"{os.path.basename(task.file_path)} 处理失败：{hint}", "error")
+            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(os.path.basename(task.file_path), hint), "error")
             self._set_state(task, FAILED)
             self._record_history(task, False)
         finally:
@@ -270,7 +271,7 @@ class TaskManager(QObject):
             if task.task_id not in self._queue:
                 self._queue.append(task.task_id)
         self.sig_log.emit(
-            f"{os.path.basename(task.file_path)} 失败，正在重试 "
+            tr("{} 失败，正在重试 ", "{} failed, retrying ").format(os.path.basename(task.file_path)) +
             f"({task.retry_count}/{task.max_retries})…", "warning")
         self.sig_state.emit(task.task_id, WAITING)
         self._schedule_next()
@@ -284,7 +285,7 @@ class TaskManager(QObject):
             try:
                 os.makedirs(out_dir, exist_ok=True)
             except OSError as e:
-                task.error = f"无法创建输出目录：{out_dir}"
+                task.error = tr("无法创建输出目录：{}", "Cannot create output folder: {}").format(out_dir)
                 self.sig_log.emit(task.error, "error")
                 self._set_state(task, FAILED)
                 self._record_history(task, False)
@@ -292,8 +293,8 @@ class TaskManager(QObject):
 
         fn = os.path.basename(task.file_path)
         fmt_ext = SUPPORTED_VIDEO.get(params.get("fmt", "MP4"), ".mp4")
-        br = params.get("br", "自动")
-        fps = params.get("fps", "原始帧率")
+        br = params.get("br", tr("自动", "Auto"))
+        fps = params.get("fps", tr("原始帧率", "Original FPS"))
         last = {"pct": 0, "ts": time.time()}
 
         def prog(pct, msg):
@@ -301,7 +302,7 @@ class TaskManager(QObject):
             while task.state == PAUSED:
                 time.sleep(0.5)
             if task.state == CANCELLED:
-                raise InterruptedError("已取消")
+                raise InterruptedError(tr("已取消", "Cancelled"))
             speed = ""
             if pct >= 0:
                 now = time.time()
@@ -318,28 +319,28 @@ class TaskManager(QObject):
         try:
             ok = self.services.video_conv.convert(
                 task.file_path, task.output_path, fmt_ext,
-                VIDEO_CODECS.get(params.get("codec", "默认")),
-                VIDEO_PRESETS.get(params.get("preset", "原始质量")),
-                RESOLUTIONS.get(params.get("res", "原始分辨率")),
-                None if br == "自动" else br,
-                None if fps == "原始帧率" else int(fps),
+                VIDEO_CODECS.get(params.get("codec", tr("默认", "Default"))),
+                VIDEO_PRESETS.get(params.get("preset", tr("原始质量", "Original quality"))),
+                RESOLUTIONS.get(params.get("res", tr("原始分辨率", "Original resolution"))),
+                None if br == tr("自动", "Auto") else br,
+                None if fps == tr("原始帧率", "Original FPS") else int(fps),
                 prog,
                 copy_mode=bool(params.get("copy_mode", False)),
                 selected_streams=params.get("selected_streams"),
                 hw_accel=params.get("hw_accel"),
                 subtitle_path=params.get("subtitle_path"))
         except InterruptedError:
-            self.sig_log.emit(f"文件 {fn} 已取消", "info")
+            self.sig_log.emit(tr("文件 {} 已取消", "File {} cancelled").format(fn), "info")
             self._set_state(task, CANCELLED)
             return
         except Exception as ex:  # noqa: BLE001
             if str(ex) == "已取消":
-                self.sig_log.emit(f"文件 {fn} 已取消", "info")
+                self.sig_log.emit(tr("文件 {} 已取消", "File {} cancelled").format(fn), "info")
                 self._set_state(task, CANCELLED)
                 return
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(f"文件 {fn} 处理失败：{hint}", "error")
+            self.sig_log.emit(tr("文件 {} 处理失败：{}", "File {} failed: {}").format(fn, hint), "error")
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -348,12 +349,12 @@ class TaskManager(QObject):
 
         if ok:
             task.progress = 100
-            self.sig_progress.emit(task.task_id, 100, f"{fn}  转换完成", "")
-            self.sig_log.emit(f"{fn} 转换完成", "success")
+            self.sig_progress.emit(task.task_id, 100, tr("{} 转换完成", "{} converted").format(fn), "")
+            self.sig_log.emit(tr("{} 转换完成", "{} converted").format(fn), "success")
             self._set_state(task, SUCCESS)
         else:
-            task.error = task.error or "转换失败"
-            self.sig_log.emit(f"文件 {fn} 转换失败：{task.error}", "error")
+            task.error = task.error or tr("转换失败", "Failed")
+            self.sig_log.emit(tr("文件 {} 转换失败：{}", "File {} failed: {}").format(fn, task.error), "error")
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -368,7 +369,7 @@ class TaskManager(QObject):
             try:
                 os.makedirs(out_dir, exist_ok=True)
             except OSError:
-                task.error = f"无法创建输出目录：{out_dir}"
+                task.error = tr("无法创建输出目录：{}", "Cannot create output folder: {}").format(out_dir)
                 self.sig_log.emit(task.error, "error")
                 self._set_state(task, FAILED)
                 self._record_history(task, False)
@@ -379,24 +380,24 @@ class TaskManager(QObject):
             while task.state == PAUSED:
                 time.sleep(0.5)
             if task.state == CANCELLED:
-                raise InterruptedError("已取消")
+                raise InterruptedError(tr("已取消", "Cancelled"))
             task.progress = max(0, pct)
             self.sig_progress.emit(task.task_id, max(0, pct), f"{fn}  {msg}", "")
 
         try:
             ok = bool(task.runner(task, prog))
         except InterruptedError:
-            self.sig_log.emit(f"任务已取消：{task.name}", "info")
+            self.sig_log.emit(tr("任务已取消：{}", "Task cancelled: {}").format(task.name), "info")
             self._set_state(task, CANCELLED)
             return
         except Exception as ex:  # noqa: BLE001
             if str(ex) == "已取消":
-                self.sig_log.emit(f"任务已取消：{task.name}", "info")
+                self.sig_log.emit(tr("任务已取消：{}", "Task cancelled: {}").format(task.name), "info")
                 self._set_state(task, CANCELLED)
                 return
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(f"{fn} 处理失败：{hint}", "error")
+            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(fn, hint), "error")
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -405,17 +406,17 @@ class TaskManager(QObject):
 
         # 运行中取消：转换器自行返回 False，此时直接结束（与视频取消一致，不记历史）
         if task.state == CANCELLED:
-            self.sig_log.emit(f"任务已取消：{task.name}", "info")
+            self.sig_log.emit(tr("任务已取消：{}", "Task cancelled: {}").format(task.name), "info")
             return
 
         if ok:
             task.progress = 100
-            self.sig_progress.emit(task.task_id, 100, f"{fn}  处理完成", "")
-            self.sig_log.emit(f"{task.name} 完成", "success")
+            self.sig_progress.emit(task.task_id, 100, tr("{} 处理完成", "{} done").format(fn), "")
+            self.sig_log.emit(tr("{} 完成", "{} done").format(task.name), "success")
             self._set_state(task, SUCCESS)
         else:
-            task.error = task.error or "处理失败"
-            self.sig_log.emit(f"{fn} 处理失败：{task.error}", "error")
+            task.error = task.error or tr("处理失败", "Failed")
+            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(fn, task.error), "error")
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -442,7 +443,7 @@ class TaskManager(QObject):
             return
         if task.state == RUNNING:
             self._set_state(task, PAUSED)
-            self.sig_log.emit(f"{os.path.basename(task.file_path)} 已暂停", "info")
+            self.sig_log.emit(tr("{} 已暂停", "{} paused").format(os.path.basename(task.file_path)), "info")
         elif task.state == WAITING:
             self._set_state(task, PAUSED)
 
@@ -482,4 +483,4 @@ class TaskManager(QObject):
                 if task_id in self._queue:
                     self._queue.remove(task_id)
             self._set_state(task, CANCELLED)
-            self.sig_log.emit(f"{os.path.basename(task.file_path)} 已取消", "info")
+            self.sig_log.emit(tr("{} 已取消", "{} cancelled").format(os.path.basename(task.file_path)), "info")

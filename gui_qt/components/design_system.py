@@ -641,16 +641,16 @@ def apply_text_edit_style(edit):
     vp.setPalette(pal)
 
     edit.setStyleSheet(
-        f"TextEdit, QTextEdit, QPlainTextEdit {{"
-        f"background: {t['input_bg']};"
-        f"color: {t['ink']};"
-        f"border: 1px solid {t['input_bd']};"
-        f"border-radius: 8px;"
-        f"padding: 6px 10px;"
-        f"}}"
-        f"QTextEdit::selection {{"
-        f"background: {t['accent_pale']};"
-        f"color: {t['ink']};"
+        f"TextEdit, QTextEdit, QPlainTextEdit {{" +
+        f"background: {t['input_bg']};" +
+        f"color: {t['ink']};" +
+        f"border: 1px solid {t['input_bd']};" +
+        f"border-radius: 8px;" +
+        f"padding: 6px 10px;" +
+        f"}}" +
+        f"QTextEdit::selection {{" +
+        f"background: {t['accent_pale']};" +
+        f"color: {t['ink']};" +
         f"}}")
 
 
@@ -832,7 +832,7 @@ def fix_combobox_popup_direction():
 #  HeroBanner — 首页棱镜渐变横幅
 # ─────────────────────────────────────────────────────
 
-_LANE_LABELS = ["视频", "音频", "图片", "文档"]
+_LANE_LABELS = [tr("视频", "Video"), tr("音频", "Audio"), tr("图片", "Image"), tr("文档", "Document")]
 _LANE_COLORS = ["#38BDF8", "#A78BFA", "#2FC99A", "#F0A63A"]
 
 
@@ -954,7 +954,7 @@ class HeroBanner(QWidget):
 
         徽章/卡片底色用半透明深色（而非半透明白）——
         渐变右端为浅紫/粉色区，白字叠半透明白底对比度极低
-        （"透明白字"），叠深色底则白字始终清晰。
+        （tr("透明白字", "Translucent white text")），叠深色底则白字始终清晰。
         """
         self.title_label.setStyleSheet(
             "font-size: 27px; font-weight: 700; color: #FFFFFF;")

@@ -17,13 +17,13 @@ from gui_qt.components import toast
 from gui_qt.panels.base_panel import BaseQtPanel
 
 # 预置值（与 tkinter 版 qrcode_panel 一致）
-TYPE_VALUES = ["文本", "网址", "WiFi", "名片"]
+TYPE_VALUES = [tr("文本", "Text"), tr("网址", "URL"), "WiFi", tr("名片", "Card")]
 SIZE_VALUES = ["200", "300", "400", "500", "600"]
 BORDER_VALUES = ["1", "2", "4", "6"]
 DEFAULT_FG = "#000000"
 DEFAULT_BG = "#FFFFFF"
 
-VCARD_TPL = "BEGIN:VCARD\nFN:姓名\nTEL:13800138000\nEMAIL:email@example.com\nEND:VCARD"
+VCARD_TPL = tr("BEGIN:VCARD\nFN:姓名\nTEL:13800138000\nEMAIL:email@example.com\nEND:VCARD", "BEGIN:VCARD\nFN:Name\nTEL:13800138000\nEMAIL:email@example.com\nEND:VCARD")
 
 
 class QrcodePanelPage(BaseQtPanel):
@@ -35,17 +35,17 @@ class QrcodePanelPage(BaseQtPanel):
     def build(self):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("二维码生成器", "QR code generator")))
-        lay.addWidget(CaptionLabel("将文本、链接、联系方式等生成二维码图片"))
+        lay.addWidget(CaptionLabel(tr("将文本、链接、联系方式等生成二维码图片", "Generate QR codes from text, links, contact info")))
 
         from gui_qt.components.form_widgets import FormSection, FormGrid
 
         # 内容设置
-        sec = FormSection("内容设置", FluentIcon.EDIT)
+        sec = FormSection(tr("内容设置", "Content"), FluentIcon.EDIT)
         grid = FormGrid(columns=1)
 
         self.cb_type = grid.add_field(
-            "内容类型", self._combo(TYPE_VALUES, "文本"),
-            hint="选择要生成的二维码内容类型")
+            tr("内容类型", "Content type"), self._combo(TYPE_VALUES, tr("文本", "Text")),
+            hint=tr("选择要生成的二维码内容类型", "Choose QR content type"))
         self.cb_type.currentTextChanged.connect(self._on_type_changed)
 
         self.txt_content = TextEdit()
@@ -53,18 +53,19 @@ class QrcodePanelPage(BaseQtPanel):
         self.txt_content.setFixedHeight(80)
         from gui_qt.components import design_system as _ds
         _ds.apply_text_edit_style(self.txt_content)
-        grid.add_field("内容", self.txt_content, hint="输入二维码内容")
+        grid.add_field(tr("内容", "Content"), self.txt_content,
+                        hint=tr("输入二维码内容", "Enter QR content"))
 
         # WiFi 区（默认隐藏）
         self.wifi_frame = QHBoxLayout()
         self.wifi_frame.setSpacing(8)
-        self.wifi_frame.addWidget(CaptionLabel("WiFi名称"))
+        self.wifi_frame.addWidget(CaptionLabel(tr("WiFi名称", "WiFi name")))
         self.ed_ssid = LineEdit()
-        self.ed_ssid.setPlaceholderText("输入WiFi名称")
+        self.ed_ssid.setPlaceholderText(tr("输入WiFi名称", "Enter WiFi name"))
         self.wifi_frame.addWidget(self.ed_ssid)
-        self.wifi_frame.addWidget(CaptionLabel("密码"))
+        self.wifi_frame.addWidget(CaptionLabel(tr("密码", "Password")))
         self.ed_pass = PasswordLineEdit()
-        self.ed_pass.setPlaceholderText("输入WiFi密码")
+        self.ed_pass.setPlaceholderText(tr("输入WiFi密码", "Enter WiFi password"))
         self.wifi_frame.addWidget(self.ed_pass)
         wifi_holder = QWidget()
         wifi_holder.setLayout(self.wifi_frame)
@@ -74,27 +75,27 @@ class QrcodePanelPage(BaseQtPanel):
         lay.addWidget(sec)
 
         # 外观设置
-        sec_style = FormSection("外观设置", FluentIcon.PALETTE)
+        sec_style = FormSection(tr("外观设置", "Appearance"), FluentIcon.PALETTE)
         g2 = FormGrid(columns=4)
 
         self.cb_size = g2.add_field(
-            "尺寸", self._combo(SIZE_VALUES, "400"),
-            hint="二维码像素尺寸")
+            tr("尺寸", "Size"), self._combo(SIZE_VALUES, "400"),
+            hint=tr("二维码像素尺寸", "QR pixel size"))
         self.cb_border = g2.add_field(
-            "边距", self._combo(BORDER_VALUES, "4"),
-            hint="二维码空白边距")
+            tr("边距", "Margin"), self._combo(BORDER_VALUES, "4"),
+            hint=tr("二维码空白边距", "QR margin"))
         self.ed_fg = g2.add_field(
-            "前景色", self._make_color_edit(DEFAULT_FG),
-            hint="二维码图案颜色")
+            tr("前景色", "Foreground"), self._make_color_edit(DEFAULT_FG),
+            hint=tr("二维码图案颜色", "QR foreground color"))
         self.ed_bg = g2.add_field(
-            "背景色", self._make_color_edit(DEFAULT_BG),
-            hint="二维码背景颜色")
+            tr("背景色", "Background"), self._make_color_edit(DEFAULT_BG),
+            hint=tr("二维码背景颜色", "QR background color"))
         sec_style.add_form(g2)
         lay.addWidget(sec_style)
 
         # 预览区
         sec_prev = FormSection(tr("预览", "Preview"), FluentIcon.VIEW)
-        self.lb_preview = QLabel("点击「生成二维码」预览")
+        self.lb_preview = QLabel(tr("点击「生成二维码」预览", "Click \"Generate QR\" to preview"))
         self.lb_preview.setAlignment(Qt.AlignCenter)
         self.lb_preview.setMinimumHeight(220)
         sec_prev.add_widget(self.lb_preview)
@@ -103,9 +104,9 @@ class QrcodePanelPage(BaseQtPanel):
         # 操作按钮
         brow = QHBoxLayout()
         brow.setSpacing(8)
-        self.btn_go = PrimaryPushButton("生成二维码")
+        self.btn_go = PrimaryPushButton(tr("生成二维码", "Generate QR"))
         self.btn_go.clicked.connect(self._generate)
-        self.btn_save = PushButton("保存为图片")
+        self.btn_save = PushButton(tr("保存为图片", "Save as image"))
         self.btn_save.clicked.connect(self._save)
         brow.addWidget(self.btn_go)
         brow.addWidget(self.btn_save)
@@ -140,14 +141,14 @@ class QrcodePanelPage(BaseQtPanel):
         if t == "WiFi":
             self._set_wifi_visible(True)
             self.txt_content.setEnabled(False)
-            self.txt_content.setPlainText("↓ 在上方填写WiFi名称和密码")
+            self.txt_content.setPlainText(tr("↓ 在上方填写WiFi名称和密码", "↓ Fill in WiFi name and password above"))
             self.ed_ssid.setFocus()
         else:
             self._set_wifi_visible(False)
             self.txt_content.setEnabled(True)
-            if t == "网址":
+            if t == tr("网址", "URL"):
                 self.txt_content.setPlainText("https://")
-            elif t == "名片":
+            elif t == tr("名片", "Card"):
                 self.txt_content.setPlainText(VCARD_TPL)
             else:
                 self.txt_content.setPlainText("Hello World")
@@ -156,7 +157,7 @@ class QrcodePanelPage(BaseQtPanel):
         try:
             import qrcode
         except ImportError:
-            toast.show_error(self, "缺少 qrcode 库，请先执行 pip install qrcode[pil]")
+            toast.show_error(self, tr("缺少 qrcode 库，请先执行 pip install qrcode[pil]", "Missing qrcode lib, run: pip install qrcode[pil]"))
             return
 
         t = self.cb_type.currentText()
@@ -164,13 +165,13 @@ class QrcodePanelPage(BaseQtPanel):
             ssid = self.ed_ssid.text().strip()
             pwd = self.ed_pass.text().strip()
             if not ssid:
-                toast.show_warning(self, "请输入WiFi名称")
+                toast.show_warning(self, tr("请输入WiFi名称", "Enter WiFi name"))
                 return
             content = f"WIFI:T:WPA;S:{ssid};P:{pwd};;"
         else:
             content = self.txt_content.toPlainText().strip()
             if not content:
-                toast.show_warning(self, "请输入内容")
+                toast.show_warning(self, tr("请输入内容", "Enter content"))
                 return
 
         try:
@@ -188,12 +189,12 @@ class QrcodePanelPage(BaseQtPanel):
             img = img.resize((size, size), resample=0)
         except Exception as e:  # noqa: BLE001
             toast.show_error(self, f"生成失败：{e}")
-            self.lb_status.setText("生成失败")
+            self.lb_status.setText(tr("生成失败", "Failed"))
             return
 
         self._qr_img = img
         self._show_preview(img)
-        self.lb_status.setText(f"已生成 {size}×{size} 二维码")
+        self.lb_status.setText(tr("已生成 {}×{} 二维码", "QR generated {}x{}").format(size, size))
         self.save_prefs()
 
     def _show_preview(self, img):
@@ -205,23 +206,23 @@ class QrcodePanelPage(BaseQtPanel):
             self.lb_preview.setPixmap(pix.scaled(
                 240, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         except Exception as e:  # noqa: BLE001
-            toast.show_error(self, f"预览失败：{e}")
+            toast.show_error(self, tr("预览失败：{}", "Preview failed: {}").format(e))
 
     def _save(self):
         if self._qr_img is None:
-            toast.show_warning(self, "请先生成二维码")
+            toast.show_warning(self, tr("请先生成二维码", "Generate a QR code first"))
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "保存二维码", "qrcode.png",
-            "PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*.*)")
+            self, tr("保存二维码", "Save QR"), "qrcode.png",
+            tr("PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*.*)", "PNG images (*.png);;JPEG images (*.jpg);;All files (*.*)"))
         if not path:
             return
         try:
             self._qr_img.save(path)
-            self.lb_status.setText(f"已保存: {path.split('/')[-1]}")
-            toast.show_success(self, f"二维码已保存: {path}")
+            self.lb_status.setText(tr("已保存: {}", "Saved: {}").format(path.split('/')[-1]))
+            toast.show_success(self, tr("二维码已保存: {}", "QR saved: {}").format(path))
         except Exception as e:  # noqa: BLE001
-            toast.show_error(self, f"保存失败：{e}")
+            toast.show_error(self, tr("保存失败：{}", "Save failed: {}").format(e))
 
     # ── 参数/偏好（5 键与 tkinter 版一致）─────────
     def collect_params(self) -> dict:

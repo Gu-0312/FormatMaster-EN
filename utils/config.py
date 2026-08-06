@@ -1,10 +1,11 @@
 """配置文件 - 兼容开发环境与PyInstaller打包"""
+from gui_qt.i18n import tr
 import os
 import sys
 import shutil
 import threading
 
-APP_NAME = "格式大师"
+APP_NAME = tr("格式大师", "FormatMaster")
 APP_VERSION = "1.3.1"
 
 # ═══════════════════════════════════════════════
@@ -287,7 +288,7 @@ SUPPORTED_IMAGE = {
 }
 
 VIDEO_CODECS = {
-    "默认": None,
+    tr("默认", "Default"): None,
     "H.264": "libx264",
     "H.265/HEVC": "libx265",
     "VP9": "libvpx-vp9",
@@ -295,7 +296,7 @@ VIDEO_CODECS = {
 }
 
 AUDIO_CODECS = {
-    "默认": None,
+    tr("默认", "Default"): None,
     "AAC": "aac",
     "MP3": "libmp3lame",
     "FLAC": "flac",
@@ -305,7 +306,7 @@ AUDIO_CODECS = {
 }
 
 VIDEO_PRESETS = {
-    "原始质量": None,
+    tr("原始质量", "Original quality"): None,
     "高质量 (大文件)": "high",
     "中等质量": "medium",
     "低质量 (小文件)": "low",
@@ -314,7 +315,7 @@ VIDEO_PRESETS = {
 }
 
 RESOLUTIONS = {
-    "原始分辨率": None,
+    tr("原始分辨率", "Original resolution"): None,
     "4K (3840x2160)": (3840, 2160),
     "2K (2560x1440)": (2560, 1440),
     "1080p (1920x1080)": (1920, 1080),
@@ -326,10 +327,10 @@ RESOLUTIONS = {
 # ── 视频转换预设模板 ────────────────────────────
 # 每个预设包含一组面板参数，选择后自动填充
 VIDEO_CONVERT_PRESETS = {
-    "自定义": {},
+    tr("自定义", "Custom"): {},
     "高质量": {
-        "codec": "默认", "preset": "原始质量", "res": "原始分辨率",
-        "fps": "原始帧率", "br": "自动", "copy_mode": False,
+        "codec": tr("默认", "Default"), "preset": tr("原始质量", "Original quality"), "res": tr("原始分辨率", "Original resolution"),
+        "fps": tr("原始帧率", "Original FPS"), "br": tr("自动", "Auto"), "copy_mode": False,
     },
     "Web 优化": {
         "codec": "H.265", "preset": "中速", "res": "1080p (1920x1080)",
@@ -340,8 +341,8 @@ VIDEO_CONVERT_PRESETS = {
         "fps": "30", "br": "2M", "copy_mode": False,
     },
     "极速复制": {
-        "codec": "默认", "preset": "原始质量", "res": "原始分辨率",
-        "fps": "原始帧率", "br": "自动", "copy_mode": True,
+        "codec": tr("默认", "Default"), "preset": tr("原始质量", "Original quality"), "res": tr("原始分辨率", "Original resolution"),
+        "fps": tr("原始帧率", "Original FPS"), "br": tr("自动", "Auto"), "copy_mode": True,
     },
     "手机竖屏": {
         "codec": "H.264", "preset": "中速", "res": "720p (1280x720)",
@@ -349,7 +350,7 @@ VIDEO_CONVERT_PRESETS = {
     },
     "4K 影院": {
         "codec": "H.265", "preset": "高质量", "res": "4K (3840x2160)",
-        "fps": "原始帧率", "br": "20M", "copy_mode": False,
+        "fps": tr("原始帧率", "Original FPS"), "br": "20M", "copy_mode": False,
     },
 }
 
@@ -359,7 +360,7 @@ DOC_READ_FORMATS = {
     ".et": "WPS表格", ".csv": "CSV表格", ".pptx": "PPT演示",
     ".ppt": "PPT97演示", ".dps": "WPS演示", ".txt": "文本文件",
     ".html": "网页", ".htm": "网页",
-    ".jpg": "图片", ".jpeg": "图片", ".png": "图片",
+    ".jpg": tr("图片", "Image"), ".jpeg": tr("图片", "Image"), ".png": tr("图片", "Image"),
     ".bmp": "图片", ".tiff": "图片", ".webp": "图片",
     ".md": "Markdown", ".epub": "EPUB电子书",
     ".rtf": "RTF富文本", ".odt": "ODT文档",

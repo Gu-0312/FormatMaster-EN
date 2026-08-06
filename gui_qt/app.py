@@ -4,6 +4,7 @@ MainWindow：FluentWindow + Mica 云母背景（Win11，Win10 自动降级）
 + 侧边导航（nav_registry 全量注册）+ 亮/暗/跟随系统主题。
 启动时应用 Prism 设计系统全局样式。
 """
+from gui_qt.i18n import tr
 import os
 import sys
 
@@ -30,7 +31,7 @@ class MainWindow(FluentWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("格式大师")
+        self.setWindowTitle(tr("格式大师", "FormatMaster"))
         self._init_size()  # 按当前屏幕可用区域自适应初始尺寸
         self.setObjectName("FluentWindow")
         self._center_on_screen()
@@ -200,6 +201,20 @@ def run(convert_path=None):
     convert_path: 右键菜单 --convert 传入的文件路径，启动后自动打开
     对应面板并添加文件（见 _auto_open_convert_file）。
     """
+    # 提前加载语言偏好（main_qt.py 已做，此处兜底保证 run() 直接调用也生效——
+    # config 等模块的模块级 tr() 需要正确语言）
+    try:
+        import json as _json
+        from gui_qt.i18n import set_language
+        from utils.config import get_user_data_dir
+        _p = os.path.join(get_user_data_dir(), "user_prefs.json")
+        _lang = "zh"
+        if os.path.isfile(_p):
+            with open(_p, encoding="utf-8") as _f:
+                _lang = _json.load(_f).get("language", "zh")
+        set_language(_lang)
+    except Exception:  # noqa: BLE001
+        pass
     app = QApplication(sys.argv)
     app.setApplicationName("FormatMaster")
 

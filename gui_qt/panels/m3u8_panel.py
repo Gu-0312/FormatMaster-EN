@@ -24,7 +24,7 @@ from gui_qt.widgets import ActionBar
 # 预置值（与 tkinter 版 m3u8_panel 一致）
 THREADS_VALUES = ["4", "8", "16", "24", "32", "48", "64"]
 FORMAT_VALUES = ["mp4", "mkv", "avi", "mov", "ts"]
-SPEED_VALUES = ["不限", "2", "5", "10", "20", "50"]
+SPEED_VALUES = [tr("不限", "Unlimited"), "2", "5", "10", "20", "50"]
 
 
 def _parse_headers(text):
@@ -72,7 +72,7 @@ class M3u8PanelPage(BaseQtPanel):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(self.make_title(tr("M3U8 视频下载", "M3U8 download")))
-        head.addWidget(CaptionLabel("添加多个链接，支持画质选择，批量队列下载"))
+        head.addWidget(CaptionLabel(tr("添加多个链接，支持画质选择，批量队列下载", "Add multiple links, pick quality, batch queue download")))
         head.addStretch(1)
         lay.addLayout(head)
 
@@ -84,7 +84,7 @@ class M3u8PanelPage(BaseQtPanel):
         vl.setSpacing(8)
         self.txt_url = TextEdit()
         self.txt_url.setFixedHeight(64)
-        self.txt_url.setPlaceholderText("每行一个 M3U8 链接，支持批量粘贴")
+        self.txt_url.setPlaceholderText(tr("每行一个 M3U8 链接，支持批量粘贴", "One M3U8 link per line, batch supported"))
         self.txt_url.setAcceptRichText(False)
         from gui_qt.components import design_system as _ds
         _ds.apply_text_edit_style(self.txt_url)
@@ -93,9 +93,9 @@ class M3u8PanelPage(BaseQtPanel):
         brow.setSpacing(8)
         btn_add = PrimaryPushButton(tr("批量添加", "Add batch"))
         btn_add.clicked.connect(self._batch_add)
-        btn_fav = PushButton("⭐ 收藏")
+        btn_fav = PushButton(tr("⭐ 收藏", "⭐ Favorite"))
         btn_fav.clicked.connect(self._add_favorite)
-        btn_parse = PushButton("解析画质")
+        btn_parse = PushButton(tr("解析画质", "Parse quality"))
         btn_parse.clicked.connect(self._parse_url)
         brow.addWidget(btn_add)
         brow.addWidget(btn_fav)
@@ -104,12 +104,12 @@ class M3u8PanelPage(BaseQtPanel):
         vl.addLayout(brow)
         qrow = QHBoxLayout()
         qrow.setSpacing(8)
-        qrow.addWidget(CaptionLabel("画质"))
+        qrow.addWidget(CaptionLabel(tr("画质", "Quality")))
         self.cb_quality = ComboBox()
         self.cb_quality.addItem("")
         self.cb_quality.currentIndexChanged.connect(self._quality_changed)
         qrow.addWidget(self.cb_quality, 1)
-        self.lb_quality_hint = CaptionLabel("点击「解析画质」获取可选项")
+        self.lb_quality_hint = CaptionLabel(tr("点击「解析画质」获取可选项", "Click \"Parse quality\" for options"))
         qrow.addWidget(self.lb_quality_hint)
         vl.addLayout(qrow)
         card.add_widget(body)
@@ -120,9 +120,9 @@ class M3u8PanelPage(BaseQtPanel):
         nrow.setSpacing(8)
         nrow.addWidget(CaptionLabel(tr("文件名", "File name")))
         self.ed_name = LineEdit()
-        self.ed_name.setPlaceholderText("留空=自动命名")
+        self.ed_name.setPlaceholderText(tr("留空=自动命名", "blank = auto name"))
         nrow.addWidget(self.ed_name, 1)
-        nrow.addWidget(CaptionLabel("保存到"))
+        nrow.addWidget(CaptionLabel(tr("保存到", "Save to")))
         self.ed_dir = LineEdit()
         self.ed_dir.setText(os.path.expanduser("~/Downloads"))
         nrow.addWidget(self.ed_dir, 1)
@@ -136,27 +136,27 @@ class M3u8PanelPage(BaseQtPanel):
         grid = FormGrid(columns=3)
 
         self.cb_threads = grid.add_field(
-            "并发线程", self._combo(THREADS_VALUES, "16"),
-            hint="并发下载的线程数")
+            tr("并发线程", "Concurrent threads"), self._combo(THREADS_VALUES, "16"),
+            hint=tr("并发下载的线程数", "Concurrent download threads"))
         self.cb_format = grid.add_field(
-            "输出格式", self._combo(FORMAT_VALUES, "mp4"),
-            hint="输出视频容器格式")
+            tr("输出格式", "Output format"), self._combo(FORMAT_VALUES, "mp4"),
+            hint=tr("输出视频容器格式", "Output video container"))
         self.cb_speed = grid.add_field(
-            "限速 MB/s", self._combo(SPEED_VALUES, "不限"),
-            hint="下载速度上限，不限为 0")
+            tr("限速 MB/s", "Speed limit MB/s"), self._combo(SPEED_VALUES, tr("不限", "Unlimited")),
+            hint=tr("下载速度上限，不限为 0", "Download speed limit, 0 = unlimited"))
         self.ed_cookie = grid.add_field(
             "Cookie", self._line_edit(180, ""),
-            hint="登录 Cookie，用于访问受限资源")
+            hint=tr("登录 Cookie，用于访问受限资源", "Login cookie for restricted content"))
         self.ed_proxy = grid.add_field(
-            "代理", self._line_edit(180, "如 http://127.0.0.1:7890"),
-            hint="HTTP/HTTPS 代理地址")
+            tr("代理", "Proxy"), self._line_edit(180, "如 http://127.0.0.1:7890"),
+            hint=tr("HTTP/HTTPS 代理地址", "HTTP/HTTPS proxy"))
         self.ed_headers = grid.add_field(
-            "自定义Header", self._line_edit(0, "Key:Value,Key:Value"),
-            hint="自定义请求头，逗号分隔")
+            tr("自定义Header", "Custom headers"), self._line_edit(0, "Key:Value,Key:Value"),
+            hint=tr("自定义请求头，逗号分隔", "Custom headers, comma separated"))
         sec_grid_box = QWidget()
         chk_lay = QHBoxLayout(sec_grid_box)
         chk_lay.setContentsMargins(0, 0, 0, 0)
-        self.cb_resume = CheckBox("断点续传")
+        self.cb_resume = CheckBox(tr("断点续传", "Resume download"))
         self.cb_resume.setChecked(True)
         chk_lay.addWidget(self.cb_resume)
         chk_lay.addStretch(1)
@@ -169,7 +169,7 @@ class M3u8PanelPage(BaseQtPanel):
         qhead = QHBoxLayout()
         qhead.setSpacing(8)
         qhead.addStretch(1)
-        self.lb_count = CaptionLabel("0 个任务")
+        self.lb_count = CaptionLabel(tr("0 个任务", "0 tasks"))
         qhead.addWidget(self.lb_count)
         q_body = QWidget()
         ql = QVBoxLayout(q_body)
@@ -181,19 +181,19 @@ class M3u8PanelPage(BaseQtPanel):
         ql.addWidget(self.lst_queue)
         qbtn = QHBoxLayout()
         qbtn.setSpacing(8)
-        b_up = PushButton("▲ 上移")
+        b_up = PushButton(tr("▲ 上移", "▲ Up"))
         b_up.clicked.connect(lambda: self._move(-1))
-        b_down = PushButton("▼ 下移")
+        b_down = PushButton(tr("▼ 下移", "▼ Down"))
         b_down.clicked.connect(lambda: self._move(1))
-        b_del = PushButton("✕ 移除选中")
+        b_del = PushButton(tr("✕ 移除选中", "✕ Remove selected"))
         b_del.clicked.connect(self._remove_selected)
-        b_clear = PushButton("清空队列")
+        b_clear = PushButton(tr("清空队列", "Clear queue"))
         b_clear.clicked.connect(self._clear_queue)
-        b_import = PushButton("📁 批量导入")
+        b_import = PushButton(tr("📁 批量导入", "📁 Import batch"))
         b_import.clicked.connect(self._batch_import)
-        b_favs = PushButton("⭐ 收藏链接")
+        b_favs = PushButton(tr("⭐ 收藏链接", "⭐ Saved links"))
         b_favs.clicked.connect(self._show_favorites)
-        b_hist = PushButton("📋 历史记录")
+        b_hist = PushButton(tr("📋 历史记录", "📋 History"))
         b_hist.clicked.connect(self._show_history)
         for b in (b_up, b_down, b_del, b_clear, b_import, b_favs, b_hist):
             qbtn.addWidget(b)
@@ -205,8 +205,8 @@ class M3u8PanelPage(BaseQtPanel):
         # 选项
         orow = QHBoxLayout()
         orow.setSpacing(16)
-        self.cb_download_sub = CheckBox("同时下载字幕")
-        self.cb_notify = CheckBox("完成通知")
+        self.cb_download_sub = CheckBox(tr("同时下载字幕", "Also download subtitles"))
+        self.cb_notify = CheckBox(tr("完成通知", "Notify when done"))
         self.cb_notify.setChecked(True)
         orow.addWidget(self.cb_download_sub)
         orow.addWidget(self.cb_notify)
@@ -218,7 +218,7 @@ class M3u8PanelPage(BaseQtPanel):
         bar_row.setSpacing(8)
         self.action_bar = ActionBar(tr("开始下载", "Download"))
         bar_row.addWidget(self.action_bar, 1)
-        btn_open = PushButton("📁 打开输出文件夹")
+        btn_open = PushButton(tr("📁 打开输出文件夹", "📁 Open output folder"))
         btn_open.clicked.connect(self._open_output_folder)
         bar_row.addWidget(btn_open)
         lay.addLayout(bar_row)
@@ -256,10 +256,10 @@ class M3u8PanelPage(BaseQtPanel):
         from utils.format_helpers import extract_urls
         urls = extract_urls(self.txt_url.toPlainText())
         if not urls:
-            toast.show_warning(self, "请先输入M3U8链接")
+            toast.show_warning(self, tr("请先输入M3U8链接", "Enter M3U8 links first"))
             return
         url = urls[0]
-        self.lb_quality_hint.setText("正在解析画质...")
+        self.lb_quality_hint.setText(tr("正在解析画质...", "Parsing quality…"))
         self._worker = _QualityWorker(
             self._m3u8_dl, url,
             _parse_headers(self.ed_headers.text().strip()),
@@ -274,29 +274,29 @@ class M3u8PanelPage(BaseQtPanel):
         self.cb_quality.blockSignals(True)
         self.cb_quality.clear()
         if not qualities:
-            self.cb_quality.addItem("仅有一个画质")
-            hint = "该链接没有多码率选项，将使用默认画质"
+            self.cb_quality.addItem(tr("仅有一个画质", "Single quality"))
+            hint = tr("该链接没有多码率选项，将使用默认画质", "No quality options for this link, using default")
         else:
             self.cb_quality.addItems([q["display"] for q in qualities])
-            hint = f"找到 {len(qualities)} 个画质，最高: {qualities[0]['label']}"
+            hint = tr("找到 {} 个画质，最高: {}", "Found {} qualities, best: {}").format(len(qualities), qualities[0]['label'])
         if subs:
             names = ", ".join(s["name"] for s in subs)
-            hint += f"  |  字幕: {len(subs)}个 ({names})"
+            hint += tr("  |  字幕: {}个 ({})", "  |  Subtitles: {} ({})").format(len(subs), names)
         else:
-            hint += "  |  字幕: 无"
+            hint += tr("  |  字幕: 无", "  |  Subtitles: none")
         self.cb_quality.blockSignals(False)
         self.lb_quality_hint.setText(hint)
 
     def _on_parse_fail(self, err):
         self._qualities = []
         self.cb_quality.clear()
-        self.cb_quality.addItem("解析失败")
-        self.lb_quality_hint.setText(f"解析失败：{err[:50]}")
+        self.cb_quality.addItem(tr("解析失败", "Parse failed"))
+        self.lb_quality_hint.setText(tr("解析失败：{}", "Parse failed: {}").format(err[:50]))
 
     def _quality_changed(self, idx):
         if 0 <= idx < len(self._qualities):
             q = self._qualities[idx]
-            hint = f"已选: {q['label']}"
+            hint = tr("已选: {}", "Selected: {}").format(q['label'])
             if q.get("resolution"):
                 hint += f"  {q['resolution']}"
             if q.get("bandwidth_str"):
@@ -319,7 +319,7 @@ class M3u8PanelPage(BaseQtPanel):
         from utils.format_helpers import extract_urls
         urls = extract_urls(self.txt_url.toPlainText())
         if not urls:
-            toast.show_warning(self, "请先输入有效的M3U8链接")
+            toast.show_warning(self, tr("请先输入有效的M3U8链接", "Enter valid M3U8 links first"))
             return
         added = 0
         sel = self.cb_quality.currentIndex()
@@ -339,11 +339,11 @@ class M3u8PanelPage(BaseQtPanel):
         self.txt_url.clear()
         self.ed_name.clear()
         if added:
-            toast.show_success(self, f"已添加 {added} 个链接到队列")
+            toast.show_success(self, tr("已添加 {} 个链接到队列", "Added {} links to queue").format(added))
 
     def _batch_import(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择链接文件", "", "文本文件 (*.txt);;所有文件 (*.*)")
+            self, tr("选择链接文件", "Pick link file"), "", tr("文本文件 (*.txt);;所有文件 (*.*)", "Text files (*.txt);;All files (*.*)"))
         if not path:
             return
         try:
@@ -372,15 +372,15 @@ class M3u8PanelPage(BaseQtPanel):
             added += 1
         self._update_count()
         if added:
-            toast.show_success(self, f"成功导入 {added} 个链接")
+            toast.show_success(self, tr("成功导入 {} 个链接", "Imported {} links").format(added))
         else:
-            toast.show_warning(self, "未找到有效链接")
+            toast.show_warning(self, tr("未找到有效链接", "No valid links found"))
 
     def _add_favorite(self):
         from utils.format_helpers import extract_urls
         urls = extract_urls(self.txt_url.toPlainText())
         if not urls:
-            toast.show_warning(self, "请先输入链接")
+            toast.show_warning(self, tr("请先输入链接", "Enter links first"))
             return
         url = urls[0]
         path_parts = urlparse(url).path
@@ -388,7 +388,7 @@ class M3u8PanelPage(BaseQtPanel):
         if not name or name.endswith(".m3u8"):
             name = self.ed_name.text().strip() or url[:40]
         self._m3u8_dl.store.add_favorite(url, name, "")
-        toast.show_success(self, f"已收藏: {name}")
+        toast.show_success(self, tr("已收藏: {}", "Saved: {}").format(name))
 
     def _show_favorites(self):
         from gui_qt.panels.url_list_dialog import UrlListDialog
@@ -402,7 +402,7 @@ class M3u8PanelPage(BaseQtPanel):
                 self.lst_queue.addItem(display)
                 self._update_count()
 
-        dlg = UrlListDialog("收藏链接", self._m3u8_dl.store.get_favorites(),
+        dlg = UrlListDialog(tr("收藏链接", "Saved links"), self._m3u8_dl.store.get_favorites(),
                             use, self)
         dlg.exec()
 
@@ -414,12 +414,12 @@ class M3u8PanelPage(BaseQtPanel):
                 self.txt_url.setPlainText(url)
                 self.ed_name.setText(name or "")
 
-        dlg = UrlListDialog("下载历史", self._m3u8_dl.store.get_history(),
+        dlg = UrlListDialog(tr("下载历史", "Download history"), self._m3u8_dl.store.get_history(),
                             use, self)
         dlg.exec()
 
     def _update_count(self):
-        self.lb_count.setText(f"{len(self._queue)} 个任务")
+        self.lb_count.setText(tr("{} 个任务", "{} tasks").format(len(self._queue)))
 
     def _move(self, delta):
         row = self.lst_queue.currentRow()
@@ -446,7 +446,7 @@ class M3u8PanelPage(BaseQtPanel):
         self._update_count()
 
     def _browse_dir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择保存目录",
+        d = QFileDialog.getExistingDirectory(self, tr("选择保存目录", "Pick save folder"),
                                              self.ed_dir.text() or "")
         if d:
             self.ed_dir.setText(d)
@@ -456,24 +456,24 @@ class M3u8PanelPage(BaseQtPanel):
         if d and os.path.isdir(d):
             os.startfile(d)  # noqa: S606 Windows 资源管理器
         else:
-            toast.show_warning(self, "输出目录不存在")
+            toast.show_warning(self, tr("输出目录不存在", "Output folder does not exist"))
 
     # ── 提交下载 ─────────────────────────────────
     def _start(self):
         if not self._queue:
-            toast.show_warning(self, "请先添加下载链接")
+            toast.show_warning(self, tr("请先添加下载链接", "Add download links first"))
             return
         if not self.services.ffmpeg_ready():
             toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
             return
         out_dir = self.ed_dir.text().strip()
         if not out_dir:
-            toast.show_warning(self, "请选择保存目录")
+            toast.show_warning(self, tr("请选择保存目录", "Choose a save folder"))
             return
         try:
             os.makedirs(out_dir, exist_ok=True)
         except OSError as e:
-            toast.show_error(self, f"无法创建输出目录：{e}")
+            toast.show_error(self, tr("无法创建输出目录：{}", "Cannot create output folder: {}").format(e))
             return
         self.save_prefs()
 
@@ -481,7 +481,7 @@ class M3u8PanelPage(BaseQtPanel):
         base_params = {
             "threads": int(self.cb_threads.currentText()),
             "output_format": self.cb_format.currentText(),
-            "speed_limit": 0 if speed_str == "不限" else int(speed_str),
+            "speed_limit": 0 if speed_str == tr("不限", "Unlimited") else int(speed_str),
             "cookie": self.ed_cookie.text().strip() or None,
             "proxy": self.ed_proxy.text().strip() or None,
             "headers": _parse_headers(self.ed_headers.text().strip()),
@@ -507,19 +507,19 @@ class M3u8PanelPage(BaseQtPanel):
             p["name"] = name
             p["index"] = i
             tid = mgr.add_task(
-                name=f"M3U8下载 - {name}", task_type="m3u8",
+                name=f"{tr('M3U8下载', 'M3U8 Download')} - {name}", task_type="m3u8",
                 file_path="", output_path=output_path, params=p,
                 runner=self._runner, canceller=self._m3u8_dl.cancel,
-                history_type="M3U8 下载", history_target="M3U8下载",
+                history_type=tr("M3U8 下载", "M3U8 Download"), history_target=tr("M3U8下载", "M3U8 Download"),
                 need_ffmpeg=True)
             if tid is not None:
                 self._task_rows[tid] = i
                 added += 1
         if added:
             self.action_bar.set_running(True)
-            self.action_bar.set_status(f"已提交 {added} 个下载任务")
+            self.action_bar.set_status(tr("已提交 {} 个下载任务", "Submitted {} download tasks").format(added))
         else:
-            toast.show_error(self, "任务提交失败：FFmpeg 未就绪")
+            toast.show_error(self, tr("任务提交失败：FFmpeg 未就绪", "Submit failed: FFmpeg not ready"))
 
     def _runner(self, task, prog):
         p = task.params
@@ -547,12 +547,12 @@ class M3u8PanelPage(BaseQtPanel):
                         sub_ok = self._m3u8_dl.download_subtitle(
                             sub_url, sub_out, cookie=p.get("cookie"),
                             headers=p.get("headers"), proxy=p.get("proxy"))
-                        prog(-1, f"字幕{'已保存' if sub_ok else '下载失败'}: "
-                                 f"{os.path.basename(sub_out)}")
+                        prog(-1, tr("字幕{}: ", "Subtitle {}: ").format(tr("已保存", "saved") if sub_ok else tr("下载失败", "failed"))
+                                 + f"{os.path.basename(sub_out)}")
                 else:
-                    prog(-1, "未找到字幕轨道（该视频可能没有字幕）")
+                    prog(-1, tr("未找到字幕轨道（该视频可能没有字幕）", "No subtitle track found (video may have none)"))
             except Exception as e:  # noqa: BLE001
-                prog(-1, f"字幕下载出错: {e}")
+                prog(-1, tr("字幕下载出错: {}", "Subtitle download error: {}").format(e))
         if ok and p.get("notify"):
             try:
                 import winsound

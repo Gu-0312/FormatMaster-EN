@@ -89,7 +89,7 @@ class WaveformWidget(QWidget):
         mid = h // 2
         if not self.data:
             p.setPen(QColor(128, 128, 128))
-            p.drawText(self.rect(), Qt.AlignCenter, "（点击「刷新波形」加载）")
+            p.drawText(self.rect(), Qt.AlignCenter, tr("（点击「刷新波形」加载）", "(click \"Refresh wave\" to load)"))
             return
         n = len(self.data)
         bar_w = max(1.0, w / n)
@@ -126,20 +126,20 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("音频裁剪", "Audio trim")))
         lay.addWidget(CaptionLabel(
-            "选择音频文件，点击波形图选择起止位置进行裁剪，支持淡入淡出"))
+            tr("选择音频文件，点击波形图选择起止位置进行裁剪，支持淡入淡出", "Pick an audio file, click the waveform to set start/end, supports fade in/out")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=AUDIO_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.files_changed.connect(self._on_files_changed)
 
-        card = FormSection("裁剪设置", FluentIcon.CUT)
+        card = FormSection(tr("裁剪设置", "Crop settings"), FluentIcon.CUT)
 
         # 文件信息行
         info_wrap = QWidget()
         info_row = QHBoxLayout(info_wrap)
         info_row.setContentsMargins(0, 0, 0, 0)
         info_row.setSpacing(8)
-        self.lb_file = CaptionLabel("未选择音频文件")
+        self.lb_file = CaptionLabel(tr("未选择音频文件", "No audio file selected"))
         info_row.addWidget(self.lb_file)
         info_row.addStretch(1)
         self.lb_info = CaptionLabel("")
@@ -156,19 +156,19 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         time_row = QHBoxLayout(time_wrap)
         time_row.setContentsMargins(0, 0, 0, 0)
         time_row.setSpacing(8)
-        time_row.addWidget(CaptionLabel("开始"))
+        time_row.addWidget(CaptionLabel(tr("开始", "Start")))
         self.ed_start = LineEdit()
         self.ed_start.setText("00:00:00")
         self.ed_start.setFixedWidth(100)
         self.ed_start.textChanged.connect(self._marks_changed)
         time_row.addWidget(self.ed_start)
-        time_row.addWidget(CaptionLabel("结束"))
+        time_row.addWidget(CaptionLabel(tr("结束", "End")))
         self.ed_end = LineEdit()
         self.ed_end.setText("00:00:00")
         self.ed_end.setFixedWidth(100)
         self.ed_end.textChanged.connect(self._marks_changed)
         time_row.addWidget(self.ed_end)
-        self.lb_dur = CaptionLabel("时长: --")
+        self.lb_dur = CaptionLabel(tr("时长: --", "Duration: --"))
         time_row.addWidget(self.lb_dur)
         time_row.addStretch(1)
         btn_refresh = PushButton(tr("刷新波形", "Refresh wave"))
@@ -179,11 +179,11 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         # 淡入淡出
         fade_grid = FormGrid(columns=2)
         self.cb_fade_in = fade_grid.add_field(
-            "淡入(秒)", self._fade_combo("0"),
-            hint="淡入时长，0 表示不淡入")
+            tr("淡入(秒)", "Fade-in (sec)"), self._fade_combo("0"),
+            hint=tr("淡入时长，0 表示不淡入", "Fade-in duration, 0 = none"))
         self.cb_fade_out = fade_grid.add_field(
-            "淡出(秒)", self._fade_combo("0"),
-            hint="淡出时长，0 表示不淡出")
+            tr("淡出(秒)", "Fade-out (sec)"), self._fade_combo("0"),
+            hint=tr("淡出时长，0 表示不淡出", "Fade-out duration, 0 = none"))
         card.add_form(fade_grid)
 
         # 输出目录（并入裁剪设置卡片，与 tkinter 版一致）
@@ -210,9 +210,9 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
     def _refresh_waveform(self):
         files = self.file_card.files()
         if not files:
-            self.lb_file.setText("未选择音频文件")
+            self.lb_file.setText(tr("未选择音频文件", "No audio file selected"))
             self.lb_info.setText("")
-            self.lb_dur.setText("时长: --")
+            self.lb_dur.setText(tr("时长: --", "Duration: --"))
             self.wave.set_wave([], 0.0)
             return
         fp = files[0]
@@ -229,9 +229,9 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         if info:
             duration = float(info.get("duration") or 0.0)
             self.lb_info.setText(
-                f"{info.get('codec', '')} · {info.get('sample_rate', '')}Hz"
+                f"{info.get('codec', '')} · {info.get('sample_rate', '')}Hz" +
                 f" · {info.get('channels', '')}ch")
-            self.lb_dur.setText(f"时长: {duration:.1f}s")
+            self.lb_dur.setText(tr("时长: {:.1f}s", "Duration: {:.1f}s").format(duration))
             self.ed_end.setText(f"{duration:.2f}")
         self.wave.set_wave(data, duration)
         self._marks_changed()
@@ -299,14 +299,14 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         out_dir = self.out_row.resolve_dir(f)
         out_path = os.path.join(out_dir, nm + "_trim" + ext)
         return dict(
-            name=f"音频裁剪 - {os.path.basename(f)}",
+            name=f"{tr('音频裁剪', 'Audio Trim')} - {os.path.basename(f)}",
             task_type="audio_trim", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
-            history_type="音频裁剪", history_target="裁剪",
+            history_type="音频裁剪", history_target=tr("裁剪", "Crop"),
             need_ffmpeg=True)
 
     def _start(self):
         self._submit_files()
 
     def _empty_hint(self):
-        return "请先添加要裁剪的音频文件"
+        return tr("请先添加要裁剪的音频文件", "Add audio files to trim first")

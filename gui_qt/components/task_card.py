@@ -151,8 +151,8 @@ class TaskCard(Card):
     def _meta_text(self):
         p = self.task.params
         fmt = p.get('fmt', '') or self.task.history_target
-        base = fmt or "通用任务"
-        return f"{base} · 优先级 {self.task.priority}"
+        base = fmt or tr("通用任务", "General task")
+        return tr("{} · 优先级 {}", "{} · priority {}").format(base, self.task.priority)
 
     def _sync_buttons(self):
         s = self.task.state
@@ -161,7 +161,7 @@ class TaskCard(Card):
         self.btn_cancel.setVisible(running_like)
         if s == tm.PAUSED:
             self.btn_pause.setIcon(FluentIcon.PLAY)
-            self.btn_pause.setToolTip("恢复")
+            self.btn_pause.setToolTip(tr("恢复", "Resume"))
         else:
             self.btn_pause.setIcon(FluentIcon.PAUSE)
             self.btn_pause.setToolTip(tr("暂停", "Pause"))

@@ -58,43 +58,43 @@ class AboutPage(ScrollArea):
 
         app_texts = QVBoxLayout()
         app_texts.setSpacing(4)
-        app_texts.addWidget(TitleLabel("格式大师 FormatMaster"))
-        ver_label = BodyLabel(f"版本 {APP_VERSION}")
+        app_texts.addWidget(TitleLabel(tr("格式大师 FormatMaster", "FormatMaster")))
+        ver_label = BodyLabel(tr("版本 {}", "Version {}").format(APP_VERSION))
         ver_label.setStyleSheet(
             f"font-size: 14px; font-weight: 600; color: {ds.accent()};")
         app_texts.addWidget(ver_label)
         app_texts.addWidget(BodyLabel(
-            "Windows 桌面全能格式转换工具"))
+            tr("Windows 桌面全能格式转换工具", "All-in-one desktop format converter for Windows")))
         app_texts.addWidget(CaptionLabel(
-            "视频 / 音频 / 图片 / 文档转换，PDF 处理，下载与 OCR 识别"))
+            tr("视频 / 音频 / 图片 / 文档转换，PDF 处理，下载与 OCR 识别", "Video / Audio / Image / Document conversion, PDF tools, download & OCR")))
         app_box.addLayout(app_texts, 1)
         card_layout.addLayout(app_box)
         v.addWidget(card)
 
         # ── 技术栈卡片 ──────────────────────────────
         card2, cl2 = self._make_card()
-        sec_title = BodyLabel("技术栈")
+        sec_title = BodyLabel(tr("技术栈", "Tech stack"))
         sec_title.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {ds.ink()};")
         cl2.addWidget(sec_title)
         cl2.addSpacing(4)
         cl2.addWidget(CaptionLabel(
-            "Python + PySide6 + Fluent Widgets 构建，"
-            "转换内核由 FFmpeg 提供"))
+            tr("Python + PySide6 + Fluent Widgets 构建，", "Built with Python + PySide6 + Fluent Widgets, ")
+            + tr("转换内核由 FFmpeg 提供", "Powered by FFmpeg")))
         cl2.addWidget(CaptionLabel(
-            "支持 NVIDIA / AMD / Intel 硬件加速编码"))
+            tr("支持 NVIDIA / AMD / Intel 硬件加速编码", "NVIDIA / AMD / Intel hardware encoding")))
         v.addWidget(card2)
 
         # ── 检查更新 ─────────────────────────────────
         card3, cl3 = self._make_card()
-        sec_title2 = BodyLabel("检查更新")
+        sec_title2 = BodyLabel(tr("检查更新", "Check for updates"))
         sec_title2.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {ds.ink()};")
         cl3.addWidget(sec_title2)
         cl3.addSpacing(4)
 
         ver_row = QHBoxLayout()
-        self.version_label = CaptionLabel(f"当前版本 v{APP_VERSION}", self)
+        self.version_label = CaptionLabel(tr("当前版本 v{}", "Current version v{}").format(APP_VERSION), self)
         self.version_label.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_sec()};")
         ver_row.addWidget(self.version_label)
@@ -103,11 +103,11 @@ class AboutPage(ScrollArea):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
-        self.btn_check = PrimaryPushButton(FluentIcon.SYNC, "检查更新", self)
+        self.btn_check = PrimaryPushButton(FluentIcon.SYNC, tr("检查更新", "Check for updates"), self)
         self.btn_check.setMinimumWidth(120)
         self.btn_check.clicked.connect(self._on_check_update)
         btn_row.addWidget(self.btn_check)
-        self.btn_releases = BodyLabel("前往 GitHub Releases ›", self)
+        self.btn_releases = BodyLabel(tr("前往 GitHub Releases ›", "View GitHub Releases ›"), self)
         self.btn_releases.setCursor(Qt.PointingHandCursor)
         self.btn_releases.setStyleSheet(
             f"font-size: 12px; color: {ds.accent()}; font-weight: 600;")
@@ -127,17 +127,17 @@ class AboutPage(ScrollArea):
             return
         self._checking = True
         self.btn_check.setEnabled(False)
-        self.btn_check.setText("检查中…")
-        toast.show_info(self, "正在检查更新，请稍候…")
+        self.btn_check.setText(tr("检查中…", "Checking…"))
+        toast.show_info(self, tr("正在检查更新，请稍候…", "Checking for updates, please wait…"))
 
         def _done(version, url):
             self._checking = False
             self.btn_check.setEnabled(True)
-            self.btn_check.setText("检查更新")
+            self.btn_check.setText(tr("检查更新", "Check for updates"))
             if version and version_gt(version, APP_VERSION):
                 show_update_dialog(self, version, url or RELEASES_URL)
             else:
-                toast.show_success(self, f"当前已是最新版本 v{APP_VERSION}")
+                toast.show_success(self, tr("当前已是最新版本 v{}", "Already up to date v{}").format(APP_VERSION))
 
         self._checker = UpdateChecker(self)
         self._checker.checked.connect(_done)

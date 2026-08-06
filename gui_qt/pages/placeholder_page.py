@@ -1,4 +1,5 @@
 """placeholder_page — 未迁移功能的占位页。"""
+from gui_qt.i18n import tr
 from qfluentwidgets import FluentIcon, ScrollArea
 
 from gui_qt.components.empty_state import EmptyState
@@ -24,5 +25,5 @@ class PlaceholderPage(ScrollArea):
         v.addLayout(EmptyState(
             icon=FluentIcon.CONSTRACT,
             title=feature_name,
-            desc=f"「{feature_name}」正在从旧界面迁移到 Fluent Design，敬请期待。"))
+            desc=tr("「{}」正在从旧界面迁移到 Fluent Design，敬请期待。", "{} is being migrated to Fluent Design, coming soon.").format(feature_name)))
         self.setWidget(container)

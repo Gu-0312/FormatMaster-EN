@@ -16,14 +16,14 @@ from gui_qt.components.card import Card
 GITHUB_URL = "https://github.com/Gu-0312/FormatMaster-EN"
 # 开源动作：图标 / 标题 / 描述 / URL
 _ACTIONS = [
-    (FluentIcon.HEART, "支持这个项目",
-     "你的支持是开源项目前进的动力",
+    (FluentIcon.HEART, tr("支持这个项目", "Support this project"),
+     tr("你的支持是开源项目前进的动力", "Your support drives this open-source project"),
      f"{GITHUB_URL}"),
-    (FluentIcon.FEEDBACK, "提交 Issue",
-     "反馈 Bug 或提出新功能建议",
+    (FluentIcon.FEEDBACK, tr("提交 Issue", "Submit Issue"),
+     tr("反馈 Bug 或提出新功能建议", "Report bugs or suggest features"),
      f"{GITHUB_URL}/issues"),
-    (FluentIcon.CODE, "参与贡献",
-     "Fork 仓库，提交你的代码改进",
+    (FluentIcon.CODE, tr("参与贡献", "Contribute"),
+     tr("Fork 仓库，提交你的代码改进", "Fork the repo and submit your improvements"),
      f"{GITHUB_URL}"),
 ]
 
