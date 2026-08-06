@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QWidget)
 from qfluentwidgets import CaptionLabel, FluentIcon, IconWidget
 
+from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 from gui_qt.components import sysinfo
 from gui_qt.components.card import Card
@@ -74,7 +75,7 @@ class SystemInfoCard(Card):
         icon = IconWidget(FluentIcon.INFO, self)
         icon.setFixedSize(18, 18)
         header.addWidget(icon)
-        title = QLabel("系统信息")
+        title = QLabel(tr("系统信息", "System info"))
         title.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
             "border: none; background: transparent;")

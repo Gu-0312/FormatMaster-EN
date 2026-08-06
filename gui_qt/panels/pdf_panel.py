@@ -15,6 +15,7 @@ from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox,
 from core.tools import (pdf_add_page_numbers, pdf_add_watermark, pdf_compress,
                         pdf_decrypt, pdf_encrypt, pdf_merge, pdf_split)
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -71,7 +72,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("PDF处理"))
+        lay.addWidget(self.make_title(tr("PDF处理", "PDF tools")))
         lay.addWidget(CaptionLabel("合并、拆分、提取、加密、解密、压缩、水印、页码、转图片"))
 
         # 编辑器入口：跳转 PDF编辑 导航页（对应 tkinter 版「编辑器」按钮）
@@ -90,13 +91,13 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(self._build_settings_card())
 
         from gui_qt.components.form_widgets import FormSection
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始处理")
+        self.action_bar = ActionBar(tr("开始处理", "Start"))
         lay.addWidget(self.action_bar)
 
         self._mode_changed()
@@ -105,7 +106,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
     def _build_settings_card(self):
         from gui_qt.components.form_widgets import FormSection
 
-        sec = FormSection("操作设置", FluentIcon.SETTING)
+        sec = FormSection(tr("操作设置", "Options"), FluentIcon.SETTING)
 
         # 模式行：分段选择器（10 个短标签，routeKey 为完整模式名）
         mode_row = QHBoxLayout()
@@ -171,7 +172,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_split_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("页码范围"))
+            h.addWidget(CaptionLabel(tr("页码范围", "Page range")))
             self.ed_range = LineEdit()
             self.ed_range.setText("1-3,5,7-10")
             self.ed_range.setFixedWidth(180)
@@ -185,15 +186,15 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_encrypt_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("打开密码"))
+            h.addWidget(CaptionLabel(tr("打开密码", "Open password")))
             self.ed_open_pwd = PasswordLineEdit()
             self.ed_open_pwd.setFixedWidth(160)
             h.addWidget(self.ed_open_pwd)
-            h.addWidget(CaptionLabel("权限密码"))
+            h.addWidget(CaptionLabel(tr("权限密码", "Owner password")))
             self.ed_owner_pwd = PasswordLineEdit()
             self.ed_owner_pwd.setFixedWidth(160)
             h.addWidget(self.ed_owner_pwd)
-            h.addWidget(CaptionLabel("加密方式"))
+            h.addWidget(CaptionLabel(tr("加密方式", "Encryption")))
             self.cb_encrypt_method = ComboBox()
             self.cb_encrypt_method.addItems(["AES-256", "AES-128"])
             self.cb_encrypt_method.setCurrentIndex(0)
@@ -202,7 +203,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_decrypt_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("输入密码"))
+            h.addWidget(CaptionLabel(tr("输入密码", "Password")))
             self.ed_decrypt_pwd = PasswordLineEdit()
             self.ed_decrypt_pwd.setFixedWidth(240)
             h.addWidget(self.ed_decrypt_pwd)
@@ -224,7 +225,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_watermark_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("水印文字"))
+            h.addWidget(CaptionLabel(tr("水印文字", "Watermark text")))
             self.ed_wm_text = LineEdit()
             self.ed_wm_text.setText("机密")
             self.ed_wm_text.setFixedWidth(140)
@@ -239,7 +240,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_wm_opacity.addItems(["0.1", "0.2", "0.3", "0.5", "0.7", "0.9"])
             self.cb_wm_opacity.setCurrentText("0.3")
             h.addWidget(self.cb_wm_opacity)
-            h.addWidget(CaptionLabel("旋转"))
+            h.addWidget(CaptionLabel(tr("旋转", "Rotate")))
             self.cb_wm_rotate = ComboBox()
             self.cb_wm_rotate.addItems(["0°", "45°", "90°"])
             self.cb_wm_rotate.setCurrentIndex(0)
@@ -248,7 +249,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _build_page_number_section(self):
         def build(h):
-            h.addWidget(CaptionLabel("起始页码"))
+            h.addWidget(CaptionLabel(tr("起始页码", "Start number")))
             self.ed_pn_start = LineEdit()
             self.ed_pn_start.setText("1")
             self.ed_pn_start.setFixedWidth(60)
@@ -258,7 +259,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_pn_pos.addItems(["底部居中", "底部左对齐", "底部右对齐", "顶部居中"])
             self.cb_pn_pos.setCurrentIndex(0)
             h.addWidget(self.cb_pn_pos)
-            h.addWidget(CaptionLabel("格式"))
+            h.addWidget(CaptionLabel(tr("格式", "Format")))
             self.ed_pn_fmt = LineEdit()
             self.ed_pn_fmt.setText("第{n}页")
             self.ed_pn_fmt.setFixedWidth(110)
@@ -278,7 +279,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_img_dpi.addItems(["72", "100", "150", "200", "300", "400", "600"])
             self.cb_img_dpi.setCurrentText("200")
             h.addWidget(self.cb_img_dpi)
-            h.addWidget(CaptionLabel("页码范围"))
+            h.addWidget(CaptionLabel(tr("页码范围", "Page range")))
             self.ed_img_pages = LineEdit()
             self.ed_img_pages.setPlaceholderText("留空=全部  示例: 1-3,5,7")
             self.ed_img_pages.setFixedWidth(160)
@@ -550,7 +551,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             toast.show_warning(self, "请先添加 PDF 文件")
             return
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
-            toast.show_warning(self, "请先选择自定义输出目录")
+            toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return
 
         mode = self.cb_mode.currentText()

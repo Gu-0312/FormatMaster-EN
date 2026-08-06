@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PushButton)
 
+from gui_qt.i18n import tr
 from gui_qt.components.form_widgets import FormSection, FormGrid
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -123,11 +124,11 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("音频裁剪"))
+        lay.addWidget(self.make_title(tr("音频裁剪", "Audio trim")))
         lay.addWidget(CaptionLabel(
             "选择音频文件，点击波形图选择起止位置进行裁剪，支持淡入淡出"))
 
-        self.file_card = FileListCard("文件列表", file_exts=AUDIO_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=AUDIO_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.files_changed.connect(self._on_files_changed)
 
@@ -170,7 +171,7 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         self.lb_dur = CaptionLabel("时长: --")
         time_row.addWidget(self.lb_dur)
         time_row.addStretch(1)
-        btn_refresh = PushButton("刷新波形")
+        btn_refresh = PushButton(tr("刷新波形", "Refresh wave"))
         btn_refresh.clicked.connect(self._refresh_waveform)
         time_row.addWidget(btn_refresh)
         card.add_widget(time_wrap)
@@ -186,7 +187,7 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_form(fade_grid)
 
         # 输出目录（并入裁剪设置卡片，与 tkinter 版一致）
-        out_lbl = CaptionLabel("输出目录")
+        out_lbl = CaptionLabel(tr("输出目录", "Output folder"))
         out_lbl.setStyleSheet(
             "font-size: 12px; font-weight: 600; color: #6b7280;"
             "border: none; background: transparent;")
@@ -196,7 +197,7 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_widget(self.out_row)
         lay.addWidget(card)
 
-        self.action_bar = ActionBar("开始裁剪")
+        self.action_bar = ActionBar(tr("开始裁剪", "Trim"))
         lay.addWidget(self.action_bar)
 
         self._wave_worker = None

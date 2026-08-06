@@ -10,6 +10,7 @@
 import os
 
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.widgets import OutputDirRow
 
@@ -41,10 +42,10 @@ class TaskPanelMixin:
             toast.show_warning(self, self._empty_hint())
             return False
         if not self.services.ffmpeg_ready():
-            toast.show_error(self, "FFmpeg 未就绪，请稍后重试")
+            toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
             return False
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
-            toast.show_warning(self, "请先选择自定义输出目录")
+            toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return False
 
         self.save_prefs()

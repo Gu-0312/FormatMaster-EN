@@ -8,6 +8,7 @@ import os
 from qfluentwidgets import CaptionLabel, ComboBox, FluentIcon
 
 from core.tools import image_compress
+from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
@@ -27,11 +28,11 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("图片压缩"))
+        lay.addWidget(self.make_title(tr("图片压缩", "Image compress")))
         lay.addWidget(CaptionLabel(
             "批量压缩图片体积，保持格式不变，支持限制最大分辨率"))
 
-        self.file_card = FileListCard("文件列表", file_exts=IMAGE_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
 
         from gui_qt.components.form_widgets import FormSection, FormGrid
@@ -47,7 +48,7 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         sec.add_form(grid)
         lay.addWidget(sec)
 
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)

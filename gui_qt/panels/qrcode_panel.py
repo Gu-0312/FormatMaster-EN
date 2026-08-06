@@ -12,6 +12,7 @@ from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PasswordLineEdit, PrimaryPushButton, PushButton,
                             TextEdit)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.panels.base_panel import BaseQtPanel
 
@@ -33,7 +34,7 @@ class QrcodePanelPage(BaseQtPanel):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("二维码生成器"))
+        lay.addWidget(self.make_title(tr("二维码生成器", "QR code generator")))
         lay.addWidget(CaptionLabel("将文本、链接、联系方式等生成二维码图片"))
 
         from gui_qt.components.form_widgets import FormSection, FormGrid
@@ -92,7 +93,7 @@ class QrcodePanelPage(BaseQtPanel):
         lay.addWidget(sec_style)
 
         # 预览区
-        sec_prev = FormSection("预览", FluentIcon.VIEW)
+        sec_prev = FormSection(tr("预览", "Preview"), FluentIcon.VIEW)
         self.lb_preview = QLabel("点击「生成二维码」预览")
         self.lb_preview.setAlignment(Qt.AlignCenter)
         self.lb_preview.setMinimumHeight(220)
@@ -109,7 +110,7 @@ class QrcodePanelPage(BaseQtPanel):
         brow.addWidget(self.btn_go)
         brow.addWidget(self.btn_save)
         brow.addStretch(1)
-        self.lb_status = CaptionLabel("就绪")
+        self.lb_status = CaptionLabel(tr("就绪", "Ready"))
         brow.addWidget(self.lb_status)
         lay.addLayout(brow)
 

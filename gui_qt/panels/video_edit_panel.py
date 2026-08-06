@@ -60,7 +60,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(CaptionLabel(
             "剪辑 · 合并 · 字幕烧录 · 变速，一站式视频处理"))
 
-        self.file_card = FileListCard("文件列表", file_exts=VIDEO_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=VIDEO_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("视频处理")
 
@@ -84,7 +84,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         # 模式分段选择
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
-        mode_row.addWidget(CaptionLabel("处理模式"))
+        mode_row.addWidget(CaptionLabel(tr("处理模式", "Mode")))
         self.sg_mode = SegmentedWidget()
         for key, label in MODES:
             self.sg_mode.addItem(key, label)

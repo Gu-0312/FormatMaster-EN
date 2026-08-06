@@ -13,6 +13,7 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon,
 
 from gui_qt.components import toast
 from gui_qt.components.card import Card
+from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
 from gui_qt.components import design_system as ds
 from gui_qt.update_checker import (RELEASES_URL, UpdateChecker,
@@ -40,7 +41,7 @@ class AboutPage(ScrollArea):
 
         # ── 页面标题 ───────────────────────────────
         v.addWidget(PageHeader(
-            "关于格式大师", "版本、技术栈与更新检查", icon=FluentIcon.INFO))
+            tr("关于格式大师", "About FormatMaster"), tr("版本、技术栈与更新检查", "Version, tech stack and updates"), icon=FluentIcon.INFO))
 
         # ── 应用信息卡片 ────────────────────────────
         card, card_layout = self._make_card()

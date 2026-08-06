@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout,
 from qfluentwidgets import (CaptionLabel, CheckBox,
                             LineEdit, PushButton, FluentIcon)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormSection
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -159,7 +160,7 @@ class DetectPanelPage(BaseQtPanel):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("格式检测"))
+        lay.addWidget(self.make_title(tr("格式检测", "Format detect")))
         lay.addWidget(CaptionLabel(
             "批量检测文件夹中所有文件的格式，支持按内容识别、文件详情预览和选择性批量转换"))
 
@@ -170,7 +171,7 @@ class DetectPanelPage(BaseQtPanel):
         self.ed_path = LineEdit()
         self.ed_path.setPlaceholderText("选择要扫描的文件夹…")
         row.addWidget(self.ed_path, 1)
-        btn_browse = PushButton("浏览")
+        btn_browse = PushButton(tr("浏览", "Browse"))
         btn_browse.clicked.connect(self._browse)
         row.addWidget(btn_browse)
         row_wrap = QWidget()
@@ -186,15 +187,15 @@ class DetectPanelPage(BaseQtPanel):
         # 底部操作栏（自定义：检测/批量转换双态）
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        self.btn_go = PushButton(FluentIcon.SEARCH, "开始检测")
+        self.btn_go = PushButton(FluentIcon.SEARCH, tr("开始检测", "Detect"))
         self.btn_go.clicked.connect(self._on_go)
-        self.btn_cancel = PushButton(FluentIcon.CANCEL, "取消")
+        self.btn_cancel = PushButton(FluentIcon.CANCEL, tr("取消", "Cancel"))
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self._stop_scan)
         bar.addWidget(self.btn_go)
         bar.addWidget(self.btn_cancel)
         bar.addStretch(1)
-        self.lb_status = CaptionLabel("就绪")
+        self.lb_status = CaptionLabel(tr("就绪", "Ready"))
         bar.addWidget(self.lb_status)
         lay.addLayout(bar)
 
@@ -204,14 +205,14 @@ class DetectPanelPage(BaseQtPanel):
         self._rows = []               # [(file_path, cat, check_item)]
 
     def _build_result_card(self):
-        card = FormSection("检测结果", FluentIcon.INFO)
+        card = FormSection(tr("检测结果", "Result"), FluentIcon.INFO)
 
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addStretch(1)
-        self.btn_sel_all = PushButton("全选")
+        self.btn_sel_all = PushButton(tr("全选", "Select all"))
         self.btn_sel_all.clicked.connect(lambda: self._set_all(True))
-        self.btn_unsel = PushButton("取消全选")
+        self.btn_unsel = PushButton(tr("取消全选", "Deselect all"))
         self.btn_unsel.clicked.connect(lambda: self._set_all(False))
         self.btn_reset = PushButton("重新检测")
         self.btn_reset.clicked.connect(self._reset)
@@ -361,10 +362,10 @@ class DetectPanelPage(BaseQtPanel):
     def _reset(self):
         self._clear_table()
         self._phase = "idle"
-        self.btn_go.setText("开始检测")
+        self.btn_go.setText(tr("开始检测", "Detect"))
         for b in (self.btn_sel_all, self.btn_unsel, self.btn_reset):
             b.setEnabled(False)
-        self.lb_status.setText("就绪")
+        self.lb_status.setText(tr("就绪", "Ready"))
 
     # ── 批量转换 / 自动添加 ──────────────────────
     def _selected_by_cat(self):

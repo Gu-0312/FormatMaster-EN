@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QPlainTextEdit, QVBoxLayout,
 from qfluentwidgets import (CaptionLabel, FluentIcon, ScrollArea)
 
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
 from gui_qt.components.empty_state import EmptyState
@@ -38,7 +39,7 @@ class TaskPage(ScrollArea):
 
         # ── 页面标题 ───────────────────────────────
         v.addWidget(PageHeader(
-            "任务中心", "管理所有进行中、等待中和已完成的任务",
+            tr("任务中心", "Tasks"), tr("管理所有进行中、等待中和已完成的任务", "Manage all running, waiting and finished tasks"),
             icon=FluentIcon.CHECKBOX))
 
         # ── 任务列表章节头 ─────────────────────────
@@ -47,7 +48,7 @@ class TaskPage(ScrollArea):
         lh = QHBoxLayout(list_header)
         lh.setContentsMargins(4, 0, 4, 0)
         lh.setSpacing(8)
-        self.list_title = CaptionLabel("任务列表")
+        self.list_title = CaptionLabel(tr("任务列表", "Task list"))
         self.list_title.setStyleSheet(
             f"font-size: 13px; font-weight: 600; color: {ds.ink_sec()};")
         lh.addWidget(self.list_title)

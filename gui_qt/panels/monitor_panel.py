@@ -52,7 +52,7 @@ class MonitorPanelPage(BaseQtPanel):
         self.ed_dir = LineEdit()
         self.ed_dir.setPlaceholderText("选择要监视的文件夹…")
         self.ed_dir.setReadOnly(True)
-        self.btn_browse = PushButton(FluentIcon.FOLDER, "浏览")
+        self.btn_browse = PushButton(FluentIcon.FOLDER, tr("浏览", "Browse"))
         self.btn_browse.clicked.connect(self._pick_dir)
         row.addWidget(self.ed_dir, 1)
         row.addWidget(self.btn_browse)
@@ -110,7 +110,7 @@ class MonitorPanelPage(BaseQtPanel):
         _, exts = self._target()
         self._seen = {f for f in self._list_files(d) if f.lower().endswith(tuple(exts))}
         self._timer.start()
-        self.btn_toggle.setText("停止监视")
+        self.btn_toggle.setText(tr("停止监视", "Stop watch"))
         self.btn_toggle.setIcon(FluentIcon.CANCEL)
         self.status_label.setText(f"监视中：{os.path.basename(d)}")
         toast.show_success(self, "开始监视文件夹")
@@ -118,7 +118,7 @@ class MonitorPanelPage(BaseQtPanel):
     def _stop(self):
         self._running = False
         self._timer.stop()
-        self.btn_toggle.setText("开始监视")
+        self.btn_toggle.setText(tr("开始监视", "Start watch"))
         self.btn_toggle.setIcon(FluentIcon.PLAY)
         self.status_label.setText(f"已停止（本次转换 {self._converted} 个文件）")
 

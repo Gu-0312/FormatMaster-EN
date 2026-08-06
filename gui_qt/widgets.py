@@ -18,6 +18,7 @@ from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon, LineEdit,
                             SubtitleLabel, ToolButton,
                             TransparentToolButton)
 
+from gui_qt.i18n import tr
 from gui_qt.components.card import Card
 from gui_qt.components import design_system as ds
 
@@ -61,11 +62,11 @@ class FileListCard(Card):
             f"font-size: 12px; color: {ds.ink_sec()};")
         head.addWidget(self.count_label)
         head.addStretch(1)
-        self.btn_add = PushButton(FluentIcon.ADD, "添加文件")
-        self.btn_add_dir = PushButton(FluentIcon.FOLDER_ADD, "添加文件夹")
-        self.btn_rm = PushButton(FluentIcon.REMOVE, "移除选中")
+        self.btn_add = PushButton(FluentIcon.ADD, tr("添加文件", "Add files"))
+        self.btn_add_dir = PushButton(FluentIcon.FOLDER_ADD, tr("添加文件夹", "Add folder"))
+        self.btn_rm = PushButton(FluentIcon.REMOVE, tr("移除选中", "Remove"))
         self.btn_clear = TransparentToolButton(FluentIcon.DELETE)
-        self.btn_clear.setToolTip("清空全部")
+        self.btn_clear.setToolTip(tr("清空全部", "Clear all"))
         for b in (self.btn_add, self.btn_add_dir, self.btn_rm):
             head.addWidget(b)
         head.addWidget(self.btn_clear)
@@ -97,7 +98,7 @@ class FileListCard(Card):
         self.table.verticalHeader().setDefaultSectionSize(38)
 
         # 空态提示：无文件时用提示页替代空白表格
-        self.empty_label = QLabel("拖拽文件到此处，或点击上方「添加文件」")
+        self.empty_label = QLabel(tr("拖拽文件到此处，或点击上方「添加文件」", "Drag files here, or click the add button above"))
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet(
             f"font-size: 13px; color: {ds.ink_dis()};"
@@ -225,7 +226,7 @@ class FileListCard(Card):
             act_rm = menu.addAction("移除此文件")
             act_rm.triggered.connect(lambda: self.remove_row(row))
             menu.addSeparator()
-        act_clear = menu.addAction("清空全部")
+        act_clear = menu.addAction(tr("清空全部", "Clear all"))
         act_clear.triggered.connect(self.clear_files)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
@@ -353,7 +354,7 @@ class OutputDirRow(QWidget):
         self.btn_browse.setEnabled(False)
         h.addWidget(self.btn_browse)
 
-        self.btn_open = PushButton("打开文件夹", self)
+        self.btn_open = PushButton(tr("打开文件夹", "Open folder"), self)
         h.addWidget(self.btn_open)
 
         self.mode_combo.currentIndexChanged.connect(self._on_mode)
@@ -445,7 +446,7 @@ class ActionBar(QWidget):
 
         self.btn_go = PrimaryPushButton(FluentIcon.PLAY, go_text, self)
         self.btn_go.setMinimumHeight(34)
-        self.btn_cancel = PushButton(FluentIcon.CANCEL, "取消", self)
+        self.btn_cancel = PushButton(FluentIcon.CANCEL, tr("取消", "Cancel"), self)
         self.btn_cancel.setMinimumHeight(34)
         self.btn_cancel.setEnabled(False)
         self.bar_total = ProgressBar(self)
@@ -453,7 +454,7 @@ class ActionBar(QWidget):
         self.bar_total.setValue(0)
         self.bar_total.setMinimumWidth(200)
         self.bar_total.setFixedHeight(12)
-        self.status_label = CaptionLabel("就绪", self)
+        self.status_label = CaptionLabel(tr("就绪", "Ready"), self)
         self.status_label.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_sec()};")
 

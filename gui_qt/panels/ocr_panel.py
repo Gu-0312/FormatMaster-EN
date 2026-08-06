@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, PushButton,
                             TextEdit)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormSection
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -33,17 +34,17 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("OCR 文字识别"))
-        lay.addWidget(CaptionLabel("从图片或PDF中识别文字，支持批量处理"))
+        lay.addWidget(self.make_title(tr("OCR 文字识别", "OCR")))
+        lay.addWidget(CaptionLabel(tr("从图片或PDF中识别文字，支持批量处理", "OCR text from images or PDF, batch supported")))
 
-        self.file_card = FileListCard("文件列表", file_exts=OCR_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=OCR_EXTS)
         lay.addWidget(self.file_card)
 
         # 识别设置
-        sec = FormSection("识别设置", FluentIcon.FONT)
+        sec = FormSection(tr("识别设置", "OCR settings"), FluentIcon.FONT)
         row = QHBoxLayout()
         row.setSpacing(8)
-        row.addWidget(CaptionLabel("识别语言"))
+        row.addWidget(CaptionLabel(tr("识别语言", "Language")))
         self.cb_lang = ComboBox()
         self.cb_lang.addItems(OCR_LANGS)
         self.cb_lang.setCurrentText("chi_sim+eng")
@@ -54,7 +55,7 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(sec)
 
         # 识别结果区
-        res_card = FormSection("识别结果", FluentIcon.INFO)
+        res_card = FormSection(tr("识别结果", "Result"), FluentIcon.INFO)
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addStretch(1)
@@ -78,7 +79,7 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
         self.out_row.bind_file_list(self.file_card)
         lay.addWidget(self.out_row)
 
-        self.action_bar = ActionBar("开始识别")
+        self.action_bar = ActionBar(tr("开始识别", "OCR"))
         lay.addWidget(self.action_bar)
 
         self._wire_tasks()

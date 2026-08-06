@@ -15,6 +15,7 @@ from gui_qt.components import toast
 from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
 from gui_qt.components.empty_state import EmptyState
+from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
 
 _COLS = ["时间", "类型", "源文件", "目标格式", "结果"]
@@ -67,7 +68,7 @@ class HistoryPage(ScrollArea):
 
         # ── 页面标题 ───────────────────────────────
         v.addWidget(PageHeader(
-            "转换历史", "搜索、筛选并统计所有转换记录",
+            tr("转换历史", "History"), tr("搜索、筛选并统计所有转换记录", "Search, filter and summarize all records"),
             icon=FluentIcon.HISTORY))
 
         # ── 统计概览 ───────────────────────────────

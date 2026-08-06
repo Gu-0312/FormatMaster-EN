@@ -10,6 +10,7 @@ import subprocess
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon)
 
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
@@ -32,16 +33,16 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("GIF转换"))
+        lay.addWidget(self.make_title(tr("GIF转换", "GIF convert")))
         lay.addWidget(CaptionLabel(
             "将视频片段转换为GIF动图，支持自定义分辨率和帧率"))
 
-        self.file_card = FileListCard("文件列表", file_exts=GIF_SRC_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=GIF_SRC_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("GIF")
 
         from gui_qt.components.form_widgets import FormSection, FormGrid
-        card = FormSection("GIF设置", FluentIcon.MOVIE)
+        card = FormSection(tr("GIF设置", "GIF settings"), FluentIcon.MOVIE)
         grid = FormGrid(columns=2)
 
         def _combo(items, default):
@@ -64,13 +65,13 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_form(grid)
         lay.addWidget(card)
 
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始转换")
+        self.action_bar = ActionBar(tr("开始转换", "Convert"))
         lay.addWidget(self.action_bar)
         self._proc_holder = {}   # 串行队列下共享当前 ffmpeg 进程句柄
         self._wire_tasks()

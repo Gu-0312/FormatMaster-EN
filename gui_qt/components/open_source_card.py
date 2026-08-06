@@ -9,6 +9,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QWidget)
 from qfluentwidgets import (CaptionLabel, FluentIcon, IconWidget)
 
+from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
 
@@ -99,7 +100,7 @@ class OpenSourceCard(Card):
         icon = IconWidget(FluentIcon.GITHUB, self)
         icon.setFixedSize(18, 18)
         header.addWidget(icon)
-        title = QLabel("开源项目")
+        title = QLabel(tr("开源项目", "Open source"))
         title.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
             "border: none; background: transparent;")

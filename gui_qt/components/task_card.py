@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, IconWidget,
                             ProgressBar, ToolButton, TransparentToolButton)
 
+from gui_qt.i18n import tr
 from gui_qt.components.card import Card
 from gui_qt.components import design_system as ds
 from gui_qt import task_manager as tm
@@ -140,9 +141,9 @@ class TaskCard(Card):
         h.addWidget(self.badge)
 
         self.btn_pause = ToolButton(FluentIcon.PAUSE, self)
-        self.btn_pause.setToolTip("暂停")
+        self.btn_pause.setToolTip(tr("暂停", "Pause"))
         self.btn_cancel = TransparentToolButton(FluentIcon.CLOSE, self)
-        self.btn_cancel.setToolTip("取消")
+        self.btn_cancel.setToolTip(tr("取消", "Cancel"))
         h.addWidget(self.btn_pause)
         h.addWidget(self.btn_cancel)
         self._sync_buttons()
@@ -163,7 +164,7 @@ class TaskCard(Card):
             self.btn_pause.setToolTip("恢复")
         else:
             self.btn_pause.setIcon(FluentIcon.PAUSE)
-            self.btn_pause.setToolTip("暂停")
+            self.btn_pause.setToolTip(tr("暂停", "Pause"))
 
     # ── 供页面连接的外部动作 ───────────────────────
     def wire(self, on_pause, on_cancel):

@@ -28,20 +28,20 @@ class TableOcrPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(CaptionLabel(
             "识别图片中的表格结构并输出为 CSV / Excel（本地 RapidOCR）"))
 
-        self.file_card = FileListCard("文件列表", file_exts=IMAGE_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("表格识别")
 
         lay.addWidget(self._build_params_card())
 
         from gui_qt.components.form_widgets import FormSection
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始识别")
+        self.action_bar = ActionBar(tr("开始识别", "OCR"))
         lay.addWidget(self.action_bar)
 
         self._wire_tasks()

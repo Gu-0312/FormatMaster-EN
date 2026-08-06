@@ -12,6 +12,7 @@ from qfluentwidgets import (ComboBox, ExpandLayout, FluentIcon,
                             PushSettingCard, ScrollArea, SettingCard,
                             SettingCardGroup, SwitchSettingCard)
 
+from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
 from gui_qt.components.theme_manager import (MODE_AUTO, MODE_DARK,
                                              MODE_LIGHT, MODES)
@@ -106,12 +107,12 @@ class SettingsPage(ScrollArea):
     def _build_header(self):
         """页面标题区域。"""
         self.expand_layout.addWidget(PageHeader(
-            "设置中心", "自定义应用行为、主题、编码与高级选项",
+            tr("设置中心", "Settings"), tr("自定义应用行为、主题、编码与高级选项", "Customize behavior, theme, codecs and advanced options"),
             icon=FluentIcon.SETTING))
 
     # ── 常规 ─────────────────────────────────────
     def _build_general(self):
-        g = self._group("常规")
+        g = self._group(tr("常规", "General"))
 
         self.card_autostart = SwitchSettingCard(
             FluentIcon.POWER_BUTTON, "开机启动", "登录 Windows 后自动运行格式大师",
@@ -162,7 +163,7 @@ class SettingsPage(ScrollArea):
     def _on_autostart(self, on):
         from gui_qt.components import toast
         if _set_autostart(bool(on)):
-            toast.show_success(self, "开机启动" + ("已开启" if on else "已关闭"))
+            toast.show_success(self, tr("开机启动", "Launch at startup") + ("已开启" if on else "已关闭"))
         else:
             toast.show_error(self, "设置开机启动失败（注册表写入被拒绝）")
             self.card_autostart.setValue(_autostart_enabled())
@@ -262,7 +263,7 @@ class SettingsPage(ScrollArea):
 
     # ── 高级 ─────────────────────────────────────
     def _build_advanced(self):
-        g = self._group("高级")
+        g = self._group(tr("高级", "Advanced"))
 
         from gui_qt import context_menu as _cm
         self.card_menu = PushSettingCard(

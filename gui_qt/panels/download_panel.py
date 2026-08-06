@@ -13,6 +13,7 @@ from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox,
                             LineEdit, ListWidget, PrimaryPushButton, PushButton,
                             TextEdit)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt import task_manager as tm
@@ -62,7 +63,7 @@ class DownloadPanelPage(BaseQtPanel):
         lay = self.content_layout
         head = QHBoxLayout()
         head.setSpacing(8)
-        head.addWidget(self.make_title("视频下载"))
+        head.addWidget(self.make_title(tr("视频下载", "Video download")))
         head.addWidget(CaptionLabel("支持 B站 / YouTube / 微博 / Instagram 等数百个平台"))
         head.addStretch(1)
         lay.addLayout(head)
@@ -88,7 +89,7 @@ class DownloadPanelPage(BaseQtPanel):
         brow.setSpacing(8)
         btn_parse = PushButton("解析格式")
         btn_parse.clicked.connect(self._parse_url)
-        btn_add = PrimaryPushButton("添加链接")
+        btn_add = PrimaryPushButton(tr("添加链接", "Add link"))
         btn_add.clicked.connect(self._add_url)
         btn_import = PushButton("📁 批量导入")
         btn_import.clicked.connect(self._batch_import)
@@ -117,7 +118,7 @@ class DownloadPanelPage(BaseQtPanel):
         lay.addWidget(card)
 
         # 设置区
-        set_card = FormSection("下载设置", FluentIcon.DOWNLOAD)
+        set_card = FormSection(tr("下载设置", "Download settings"), FluentIcon.DOWNLOAD)
         grid = FormGrid(columns=3)
 
         self.ed_cookie = grid.add_field(
@@ -161,16 +162,16 @@ class DownloadPanelPage(BaseQtPanel):
         self.ed_dir = LineEdit()
         self.ed_dir.setText(os.path.expanduser("~/Downloads"))
         drow.addWidget(self.ed_dir, 1)
-        btn_browse = PushButton("浏览")
+        btn_browse = PushButton(tr("浏览", "Browse"))
         btn_browse.clicked.connect(self._browse_dir)
         drow.addWidget(btn_browse)
-        btn_open_dir = PushButton("打开文件夹")
+        btn_open_dir = PushButton(tr("打开文件夹", "Open folder"))
         btn_open_dir.clicked.connect(self._open_output_folder)
         drow.addWidget(btn_open_dir)
         lay.addLayout(drow)
 
         # 下载队列
-        q_card = FormSection("下载队列", FluentIcon.MENU)
+        q_card = FormSection(tr("下载队列", "Download queue"), FluentIcon.MENU)
         q_body = QWidget()
         ql = QVBoxLayout(q_body)
         ql.setContentsMargins(0, 0, 0, 0)
@@ -201,7 +202,7 @@ class DownloadPanelPage(BaseQtPanel):
         q_card.add_widget(q_body)
         lay.addWidget(q_card)
 
-        self.action_bar = ActionBar("开始下载")
+        self.action_bar = ActionBar(tr("开始下载", "Download"))
         lay.addWidget(self.action_bar)
 
         # 运行态

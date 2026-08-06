@@ -11,6 +11,7 @@ from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PushButton, RadioButton)
 
 from core.watermark_tool import process_watermark
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormSection
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -38,17 +39,17 @@ class WatermarkPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("图片水印"))
+        lay.addWidget(self.make_title(tr("图片水印", "Image watermark")))
         lay.addWidget(CaptionLabel(
             "批量给图片添加文字或图片水印，支持透明度、旋转、位置"))
 
-        self.file_card = FileListCard("文件列表", file_exts=IMAGE_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
 
         lay.addWidget(self._build_settings_card())
 
         # 输出目录
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
@@ -98,7 +99,7 @@ class WatermarkPanelPage(BaseQtPanel, TaskPanelMixin):
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(8)
 
-        vl.addWidget(CaptionLabel("水印文字"))
+        vl.addWidget(CaptionLabel(tr("水印文字", "Watermark text")))
         self.ed_text = LineEdit()
         self.ed_text.setText("水印")
         vl.addWidget(self.ed_text)
@@ -151,7 +152,7 @@ class WatermarkPanelPage(BaseQtPanel, TaskPanelMixin):
         vl.addLayout(pick_row)
 
         def build(h):
-            h.addWidget(CaptionLabel("缩放比例"))
+            h.addWidget(CaptionLabel(tr("缩放比例", "Scale")))
             self.cb_scale = ComboBox()
             self.cb_scale.addItems(SCALES)
             self.cb_scale.setCurrentText("0.2")

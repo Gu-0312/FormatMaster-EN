@@ -7,6 +7,7 @@ import os
 
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox)
 
+from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
@@ -27,8 +28,8 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("视频缩略图"))
-        lay.addWidget(CaptionLabel("从视频中提取多帧画面，生成网格缩略图墙"))
+        lay.addWidget(self.make_title(tr("视频缩略图", "Thumbnails")))
+        lay.addWidget(CaptionLabel(tr("从视频中提取多帧画面，生成网格缩略图墙", "Extract frames to a thumbnail grid")))
 
         self.file_card = FileListCard("视频列表", file_exts=VIDEO_EXTS)
         lay.addWidget(self.file_card)

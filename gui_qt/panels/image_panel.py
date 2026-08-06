@@ -9,6 +9,7 @@ import os
 from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox, LineEdit)
 
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
@@ -33,24 +34,24 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("图片转换"))
+        lay.addWidget(self.make_title(tr("图片转换", "Image convert")))
         lay.addWidget(CaptionLabel(
             "JPG · PNG · BMP · GIF · TIFF · WEBP · ICO 格式互转"))
 
-        self.file_card = FileListCard("文件列表", file_exts=IMAGE_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("PNG")
 
         lay.addWidget(self._build_params_card())
 
         from gui_qt.components.form_widgets import FormSection
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始转换")
+        self.action_bar = ActionBar(tr("开始转换", "Convert"))
         lay.addWidget(self.action_bar)
 
         self.cb_fmt.currentTextChanged.connect(self.file_card.set_target_fmt)
@@ -59,7 +60,7 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
 
-        sec = FormSection("转换参数", FluentIcon.SETTING)
+        sec = FormSection(tr("转换参数", "Convert settings"), FluentIcon.SETTING)
         grid = FormGrid(columns=2)
 
         def _combo(items, default):

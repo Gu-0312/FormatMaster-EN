@@ -65,16 +65,22 @@ class HomePage(QWidget):
         v.addWidget(self.hero)
 
     def _greeting(self):
+        from gui_qt.i18n import tr
         hour = datetime.datetime.now().hour
         if hour < 6:
-            return "你好，夜深了也别忘了保存工作"
+            return tr("你好，夜深了也别忘了保存工作",
+                      "Hi, late night — remember to save your work")
         if hour < 12:
-            return "你好，欢迎使用格式大师！"
+            return tr("你好，欢迎使用格式大师！",
+                      "Hi, welcome to FormatMaster!")
         if hour < 14:
-            return "你好，午间时光也要高效工作"
+            return tr("你好，午间时光也要高效工作",
+                      "Hi, productive afternoon ahead")
         if hour < 18:
-            return "你好，下午好！欢迎使用格式大师"
-        return "你好，晚上好！欢迎使用格式大师"
+            return tr("你好，下午好！欢迎使用格式大师",
+                      "Good afternoon, welcome to FormatMaster")
+        return tr("你好，晚上好！欢迎使用格式大师",
+                  "Good evening, welcome to FormatMaster")
 
     # ── 2. 统计卡 ×4 ─────────────────────────────
     def _build_stats(self, v):

@@ -15,6 +15,7 @@ from qfluentwidgets import (FluentIcon, NavigationItemPosition,
                             TransparentToolButton)
 
 from gui_qt import nav_registry
+from gui_qt.i18n import tr
 from gui_qt.components.theme_manager import MODES
 
 
@@ -124,7 +125,7 @@ def _setup_context_menu(window, pages):
         menu = QMenu(window)
         fav_act = menu.addAction(FluentIcon.HEART, "收藏")
         pin_act = menu.addAction(FluentIcon.PIN, "固定到顶部")
-        close_act = menu.addAction(FluentIcon.CLOSE, "关闭")
+        close_act = menu.addAction(FluentIcon.CLOSE, tr("关闭", "Close"))
         act = menu.exec(nav.mapToGlobal(pos))
         if act == fav_act:
             pass  # TODO: 收藏

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PushButton, TextEdit)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormGrid, FormSection
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -41,11 +42,11 @@ class HashPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("哈希校验"))
+        lay.addWidget(self.make_title(tr("哈希校验", "Hash check")))
         lay.addWidget(CaptionLabel(
             "计算文件 MD5/SHA1/SHA256/SHA512 哈希值，支持对比验证"))
 
-        self.file_card = FileListCard("文件列表")  # 不限扩展名
+        self.file_card = FileListCard(tr("文件列表", "Files"))  # 不限扩展名
         lay.addWidget(self.file_card)
 
         # 哈希设置
@@ -78,7 +79,7 @@ class HashPanelPage(BaseQtPanel, TaskPanelMixin):
         head.setContentsMargins(0, 0, 0, 0)
         head.setSpacing(8)
         head.addStretch(1)
-        btn_copy = PushButton("复制")
+        btn_copy = PushButton(tr("复制", "Copy"))
         btn_copy.clicked.connect(self._copy_result)
         btn_txt = PushButton("导出TXT")
         btn_txt.clicked.connect(lambda: self._export("txt"))

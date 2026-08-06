@@ -12,6 +12,7 @@ from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon,
                             Slider, SubtitleLabel)
 
 from gui_qt import task_manager as tm
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components import design_system as ds
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -39,26 +40,26 @@ class AudioPanelPage(BaseQtPanel):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("音频转换"))
+        lay.addWidget(self.make_title(tr("音频转换", "Audio convert")))
         lay.addWidget(CaptionLabel(
             "MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转"))
 
         exts = set(SUPPORTED_AUDIO.values())
-        self.file_card = FileListCard("文件列表", file_exts=exts)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=exts)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("MP3")
 
         lay.addWidget(self._build_params_card())
 
         from gui_qt.components.form_widgets import FormSection
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
         # 底部操作栏
-        self.action_bar = ActionBar("开始转换")
+        self.action_bar = ActionBar(tr("开始转换", "Convert"))
         lay.addWidget(self.action_bar)
         self.btn_go = self.action_bar.btn_go
         self.btn_cancel = self.action_bar.btn_cancel
@@ -77,7 +78,7 @@ class AudioPanelPage(BaseQtPanel):
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
 
-        sec = FormSection("转换参数", FluentIcon.SETTING)
+        sec = FormSection(tr("转换参数", "Convert settings"), FluentIcon.SETTING)
         grid = FormGrid(columns=2)
 
         def _combo(items, default):
@@ -103,7 +104,7 @@ class AudioPanelPage(BaseQtPanel):
         vol_box = QWidget()
         vol_row = QHBoxLayout(vol_box)
         vol_row.setSpacing(8)
-        vol_lbl = CaptionLabel("音量")
+        vol_lbl = CaptionLabel(tr("音量", "Volume"))
         vol_lbl.setStyleSheet(
             f"font-size: 12px; font-weight: 600; color: {ds.ink_sec()};"
             "border: none; background: transparent;")
@@ -177,10 +178,10 @@ class AudioPanelPage(BaseQtPanel):
             toast.show_warning(self, "请先添加要转换的音频文件")
             return
         if not self.services.ffmpeg_ready():
-            toast.show_error(self, "FFmpeg 未就绪，请稍后重试")
+            toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
             return
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
-            toast.show_warning(self, "请先选择自定义输出目录")
+            toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return
 
         params = self.collect_params()

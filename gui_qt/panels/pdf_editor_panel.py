@@ -16,6 +16,7 @@ from qfluentwidgets import (FluentIcon, BodyLabel, CaptionLabel, ComboBox, LineE
                             MessageBox, PrimaryPushButton, PushButton,
                             SpinBox, SubtitleLabel)
 
+from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 
 from core.pdf_editor import PdfEditor
@@ -106,10 +107,10 @@ class _DialogBase(FluentDialogBase):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.addStretch(1)
-        btn_cancel = PushButton("取消")
+        btn_cancel = PushButton(tr("取消", "Cancel"))
         btn_cancel.clicked.connect(self.reject)
         btn_row.addWidget(btn_cancel)
-        self.btn_ok = PrimaryPushButton("确定")
+        self.btn_ok = PrimaryPushButton(tr("确定", "OK"))
         self.btn_ok.clicked.connect(self._on_ok)
         btn_row.addWidget(self.btn_ok)
         self._outer.addLayout(btn_row)
@@ -133,9 +134,9 @@ class _WatermarkDialog(_DialogBase):
                                   "0.6", "0.7", "0.8", "0.9", "1.0"])
         self.cb_opacity.setCurrentText("0.3")
 
-        self._form.addRow("水印文字", self.ed_text)
+        self._form.addRow(tr("水印文字", "Watermark text"), self.ed_text)
         self._form.addRow("位置", self.cb_pos)
-        self._form.addRow("不透明度", self.cb_opacity)
+        self._form.addRow(tr("不透明度", "Opacity"), self.cb_opacity)
 
     def _on_ok(self):
         text = self.ed_text.text().strip()
@@ -201,7 +202,7 @@ class PdfEditorPanelPage(BaseQtPanel):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("PDF编辑"))
+        lay.addWidget(self.make_title(tr("PDF编辑", "PDF editor")))
         lay.addWidget(CaptionLabel("缩略图网格：选中页面 → 点击工具栏操作 → 完成后保存"))
 
         self.editor = PdfEditor()
@@ -234,7 +235,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         self.lb_guide = CaptionLabel(
             "💡 操作即时生效 — Ctrl/Shift 多选页面，拖拽缩略图可调整顺序")
         gl2.addWidget(self.lb_guide)
-        self.lb_status = CaptionLabel("就绪")
+        self.lb_status = CaptionLabel(tr("就绪", "Ready"))
         gl2.addWidget(self.lb_status)
         lay.addWidget(guide_card)
 
@@ -293,7 +294,7 @@ class PdfEditorPanelPage(BaseQtPanel):
                 btn.clicked.connect(slot)
                 hl.addWidget(btn)
         hl.addStretch(1)
-        btn_all = PushButton("全选")
+        btn_all = PushButton(tr("全选", "Select all"))
         btn_all.clicked.connect(self._toggle_select_all)
         hl.addWidget(btn_all)
         btn_inv = PushButton("反选")
@@ -475,7 +476,7 @@ class PdfEditorPanelPage(BaseQtPanel):
         if indices is None:
             return
         dlg = MessageBox("确认删除", f"确定要删除选中的 {len(indices)} 页吗？", self)
-        dlg.yesButton.setText("删除")
+        dlg.yesButton.setText(tr("删除", "Delete"))
         if not dlg.exec():
             return
         if self.editor.delete_pages(indices):
@@ -584,7 +585,7 @@ class PdfEditorPanelPage(BaseQtPanel):
     def _update_status(self):
         n = self.editor.page_count
         if not n:
-            self.lb_status.setText("就绪")
+            self.lb_status.setText(tr("就绪", "Ready"))
             return
         parts = [f"共 {n} 页"]
         sel = len(self._selected_indices())

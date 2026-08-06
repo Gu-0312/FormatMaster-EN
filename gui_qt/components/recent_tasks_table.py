@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
                                QWidget)
 from qfluentwidgets import CaptionLabel
 
+from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
 
@@ -62,7 +63,7 @@ class RecentTasksTable(Card):
 
         # 标题 —— L2 区块标题 15px/700
         header = QHBoxLayout()
-        title = QLabel("最近任务")
+        title = QLabel(tr("最近任务", "Recent tasks"))
         title.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
             "border: none; background: transparent;")
@@ -80,14 +81,14 @@ class RecentTasksTable(Card):
         # 底部操作行
         footer = QHBoxLayout()
         footer.addStretch(1)
-        self.btn_history = QPushButton("打开历史记录", self)
+        self.btn_history = QPushButton(tr("打开历史记录", "Open history"), self)
         self.btn_history.setStyleSheet(
             "font-size: 12px; background: transparent; color: %s;"
             "border: none; padding: 4px 8px;"
             "font-weight: 600;" % ds.accent())
         self.btn_history.setCursor(Qt.PointingHandCursor)
         footer.addWidget(self.btn_history)
-        self.btn_clear = QPushButton("清空列表", self)
+        self.btn_clear = QPushButton(tr("清空列表", "Clear list"), self)
         self.btn_clear.setStyleSheet(
             "font-size: 12px; background: transparent; color: %s;"
             "border: none; padding: 4px 8px;" % ds.ink_sec())

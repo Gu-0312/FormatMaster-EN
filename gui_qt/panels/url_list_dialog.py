@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
 from qfluentwidgets import BodyLabel, ListWidget, PrimaryPushButton, PushButton
 
+from gui_qt.i18n import tr
 from gui_qt.components.dialog import FluentDialogBase
 
 
@@ -43,9 +44,9 @@ class UrlListDialog(FluentDialogBase):
 
         brow = QHBoxLayout()
         brow.setSpacing(8)
-        btn_use = PrimaryPushButton("使用")
+        btn_use = PrimaryPushButton(tr("使用", "Use"))
         btn_use.clicked.connect(self._on_use)
-        btn_close = PushButton("关闭")
+        btn_close = PushButton(tr("关闭", "Close"))
         btn_close.clicked.connect(self.reject)
         brow.addWidget(btn_use)
         brow.addStretch(1)

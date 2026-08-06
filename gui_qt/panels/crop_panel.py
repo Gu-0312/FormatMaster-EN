@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon)
 
 import core.image_cropper as ic
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -29,10 +30,10 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title("封面裁剪"))
+        lay.addWidget(self.make_title(tr("封面裁剪", "Crop cover")))
         lay.addWidget(CaptionLabel("按社交媒体尺寸批量裁剪图片"))
 
-        self.file_card = FileListCard("文件列表", file_exts=IMAGE_EXTS)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=IMAGE_EXTS)
         lay.addWidget(self.file_card)
 
         from gui_qt.components.form_widgets import FormSection
@@ -51,7 +52,7 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
 
         row2 = QHBoxLayout()
         row2.setSpacing(8)
-        row2.addWidget(CaptionLabel("裁剪模式"))
+        row2.addWidget(CaptionLabel(tr("裁剪模式", "Crop mode")))
         self.cb_mode = ComboBox()
         self.cb_mode.addItems(MODE_VALUES)
         self.cb_mode.setCurrentIndex(0)
@@ -61,13 +62,13 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_layout(row2)
         lay.addWidget(card)
 
-        out_card = FormSection("输出目录", FluentIcon.FOLDER)
+        out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
-        self.action_bar = ActionBar("开始裁剪")
+        self.action_bar = ActionBar(tr("开始裁剪", "Trim"))
         lay.addWidget(self.action_bar)
 
         self._wire_tasks()
@@ -120,7 +121,7 @@ class CropPanelPage(BaseQtPanel, TaskPanelMixin):
             toast.show_warning(self, "请先添加要裁剪的图片")
             return
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
-            toast.show_warning(self, "请先选择自定义输出目录")
+            toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return
 
         params = self.collect_params()

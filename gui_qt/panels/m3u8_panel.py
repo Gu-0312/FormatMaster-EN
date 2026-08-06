@@ -14,6 +14,7 @@ from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox,
                             LineEdit, ListWidget, PrimaryPushButton, PushButton,
                             TextEdit)
 
+from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormSection, FormGrid
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -70,13 +71,13 @@ class M3u8PanelPage(BaseQtPanel):
         lay = self.content_layout
         head = QHBoxLayout()
         head.setSpacing(8)
-        head.addWidget(self.make_title("M3U8 视频下载"))
+        head.addWidget(self.make_title(tr("M3U8 视频下载", "M3U8 download")))
         head.addWidget(CaptionLabel("添加多个链接，支持画质选择，批量队列下载"))
         head.addStretch(1)
         lay.addLayout(head)
 
         # URL 输入区
-        card = FormSection("M3U8 链接", FluentIcon.DOWNLOAD)
+        card = FormSection(tr("M3U8 链接", "M3U8 link"), FluentIcon.DOWNLOAD)
         body = QWidget()
         vl = QVBoxLayout(body)
         vl.setContentsMargins(0, 0, 0, 0)
@@ -90,7 +91,7 @@ class M3u8PanelPage(BaseQtPanel):
         vl.addWidget(self.txt_url)
         brow = QHBoxLayout()
         brow.setSpacing(8)
-        btn_add = PrimaryPushButton("批量添加")
+        btn_add = PrimaryPushButton(tr("批量添加", "Add batch"))
         btn_add.clicked.connect(self._batch_add)
         btn_fav = PushButton("⭐ 收藏")
         btn_fav.clicked.connect(self._add_favorite)
@@ -117,7 +118,7 @@ class M3u8PanelPage(BaseQtPanel):
         # 文件名 + 保存目录
         nrow = QHBoxLayout()
         nrow.setSpacing(8)
-        nrow.addWidget(CaptionLabel("文件名"))
+        nrow.addWidget(CaptionLabel(tr("文件名", "File name")))
         self.ed_name = LineEdit()
         self.ed_name.setPlaceholderText("留空=自动命名")
         nrow.addWidget(self.ed_name, 1)
@@ -125,13 +126,13 @@ class M3u8PanelPage(BaseQtPanel):
         self.ed_dir = LineEdit()
         self.ed_dir.setText(os.path.expanduser("~/Downloads"))
         nrow.addWidget(self.ed_dir, 1)
-        btn_browse = PushButton("浏览")
+        btn_browse = PushButton(tr("浏览", "Browse"))
         btn_browse.clicked.connect(self._browse_dir)
         nrow.addWidget(btn_browse)
         lay.addLayout(nrow)
 
         # 下载设置
-        set_card = FormSection("下载设置", FluentIcon.SETTING)
+        set_card = FormSection(tr("下载设置", "Download settings"), FluentIcon.SETTING)
         grid = FormGrid(columns=3)
 
         self.cb_threads = grid.add_field(
@@ -164,7 +165,7 @@ class M3u8PanelPage(BaseQtPanel):
         lay.addWidget(set_card)
 
         # 下载队列
-        q_card = FormSection("下载队列", FluentIcon.MENU)
+        q_card = FormSection(tr("下载队列", "Download queue"), FluentIcon.MENU)
         qhead = QHBoxLayout()
         qhead.setSpacing(8)
         qhead.addStretch(1)
@@ -215,7 +216,7 @@ class M3u8PanelPage(BaseQtPanel):
         # 底部操作栏（ActionBar + 打开输出文件夹）
         bar_row = QHBoxLayout()
         bar_row.setSpacing(8)
-        self.action_bar = ActionBar("开始下载")
+        self.action_bar = ActionBar(tr("开始下载", "Download"))
         bar_row.addWidget(self.action_bar, 1)
         btn_open = PushButton("📁 打开输出文件夹")
         btn_open.clicked.connect(self._open_output_folder)
@@ -463,7 +464,7 @@ class M3u8PanelPage(BaseQtPanel):
             toast.show_warning(self, "请先添加下载链接")
             return
         if not self.services.ffmpeg_ready():
-            toast.show_error(self, "FFmpeg 未就绪，请稍后重试")
+            toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
             return
         out_dir = self.ed_dir.text().strip()
         if not out_dir:

@@ -10,6 +10,7 @@
 - HeroBanner 首页渐变横幅组件
 - set_app_style() 全局样式应用入口
 """
+from gui_qt.i18n import tr
 from PySide6.QtCore import (QEasingCurve, QPointF, QPropertyAnimation,
                             Qt, QRectF)
 from PySide6.QtGui import (QBrush, QColor, QFont, QLinearGradient, QPainter,
@@ -926,7 +927,7 @@ class HeroBanner(QWidget):
         left.addWidget(self.subtitle_label)
         left.addStretch()
 
-        self.badge = CaptionLabel("本地转换 · FFmpeg 引擎")
+        self.badge = CaptionLabel(tr("本地转换 · FFmpeg 引擎", "Local convert · FFmpeg engine"))
         left.addWidget(self.badge)
         outer.addLayout(left, 1)
 

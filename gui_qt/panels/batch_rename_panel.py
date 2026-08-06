@@ -27,7 +27,7 @@ class BatchRenamePanelPage(BaseQtPanel):
             "占位符：{n} 序号 · {name} 原名 · {ext} 扩展名 · "
             "{date} 日期 · {time} 时间 · {folder} 文件夹"))
 
-        self.file_card = FileListCard("文件列表", file_exts=None)
+        self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=None)
         lay.addWidget(self.file_card)
 
         lay.addWidget(self._build_params_card())
@@ -61,7 +61,7 @@ class BatchRenamePanelPage(BaseQtPanel):
     def _run(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, "请先添加要重命名的文件")
+            toast.show_warning(self, tr("请先添加要重命名的文件", "Add files first"))
             return
         pattern = self.ed_pattern.text().strip()
         if not pattern:
