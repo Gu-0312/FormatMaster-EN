@@ -195,12 +195,45 @@ class MainWindow(FluentWindow):
         super().closeEvent(e)
 
 
+def _install_crash_logging():
+    """安装全局异常兜底：未捕获异常/原生崩溃写入 %APPDATA%/FormatMaster/crash.log。
+
+    用于定位"任务完成后闪退"等难以复现的问题——下次崩溃时
+    crash.log 会记录完整 traceback（或 faulthandler 线程栈），可据此修复。
+    """
+    try:
+        from utils.config import get_user_data_dir
+        import time as _time
+        crash_path = os.path.join(get_user_data_dir(), "crash.log")
+
+        def _hook(exc_type, exc_val, exc_tb):
+            import traceback
+            try:
+                with open(crash_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n[{_time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                            f"未捕获异常: {exc_type.__name__}: {exc_val}\n")
+                    traceback.print_tb(exc_tb, file=f)
+            except Exception:
+                pass
+            # 保持默认行为（打印 + 退出）
+            sys.__excepthook__(exc_type, exc_val, exc_tb)
+
+        sys.excepthook = _hook
+        # 原生崩溃（段错误/C 扩展 abort）也记录线程栈
+        import faulthandler
+        with open(crash_path, "a", encoding="utf-8") as f:
+            faulthandler.enable(file=f)
+    except Exception:  # noqa: BLE001 - 日志兜底失败不影响启动
+        pass
+
+
 def run(convert_path=None):
     """应用入口：python main_qt.py
 
     convert_path: 右键菜单 --convert 传入的文件路径，启动后自动打开
     对应面板并添加文件（见 _auto_open_convert_file）。
     """
+    _install_crash_logging()
     # 提前加载语言偏好（main_qt.py 已做，此处兜底保证 run() 直接调用也生效——
     # config 等模块的模块级 tr() 需要正确语言）
     try:

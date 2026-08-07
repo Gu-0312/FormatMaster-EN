@@ -394,6 +394,9 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         mode = self.cb_mode.currentRouteKey()
         # 高级模式自动展开折叠区；主模式自动收起（blockSignals 防递归）
         is_adv = any(k in mode for k in self._ADV_MODES)
+        # 高级选项复选框只在高级模式（加密/解密/水印/页码/表单）下显示；
+        # 合并/拆分/提取/压缩/转图片等主模式与它无关，隐藏避免困惑
+        self.adv_toggle.setVisible(is_adv)
         if is_adv and not self.adv_toggle.isChecked():
             self.adv_toggle.blockSignals(True)
             self.adv_toggle.setChecked(True)
