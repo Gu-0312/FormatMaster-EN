@@ -65,6 +65,13 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             tr("区域高度", "Area height"), _combo(HEIGHT_VALUES, "15%"),
             hint=tr("越小越精准；若字幕被截断请调大", "Smaller = more precise; enlarge if subtitles get cut off"))
         card.add_form(grid)
+
+        from PySide6.QtWidgets import CheckBox
+        self.cb_auto = CheckBox(
+            tr("自动检测字幕区域（推荐，适应各种视频布局）",
+               "Auto-detect subtitle area (recommended, adapts to any layout)"))
+        self.cb_auto.setChecked(True)
+        card.add_widget(self.cb_auto)
         lay.addWidget(card)
 
         self.out_row = OutputDirRow()
@@ -85,6 +92,7 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             "lang": self.cb_lang.currentText(),
             "region": self.cb_region.currentText(),
             "height": self.cb_height.currentText(),
+            "auto_detect": self.cb_auto.isChecked(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -103,6 +111,8 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_region.setCurrentText(str(prefs["region"]))
         if prefs.get("height") in HEIGHT_VALUES:
             self.cb_height.setCurrentText(str(prefs["height"]))
+        if "auto_detect" in prefs:
+            self.cb_auto.setChecked(bool(prefs["auto_detect"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
@@ -119,7 +129,8 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
         height = float(p.get("height", "15%").replace("%", "")) / 100.0
         return extract_subtitles(
             task.file_path, task.output_path, fps,
-            p.get("lang", "chi_sim+eng"), region, height, prog)
+            p.get("lang", "chi_sim+eng"), region, height,
+            bool(p.get("auto_detect", True)), prog)
 
     def _make_task(self, f):
         params = self.collect_params()

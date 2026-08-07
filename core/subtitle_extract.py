@@ -67,13 +67,67 @@ def _extract_frames(video, tmp_dir, fps, progress_cb=None, cancel_check=None):
     return frames
 
 
-def _ocr_frames(frames, fps, lang, region="bottom", height=0.15,
+def detect_subtitle_band(frame_path, scan_ratio=0.7, min_band=0.02):
+    """自动检测字幕条带位置（亮度分析）。
+
+    字幕通常为"半透明黑底条 + 白字"，位于画面下部/中部：
+    扫描下半 70% 画面，逐行统计暗像素比例（底条）与亮像素比例（文字），
+    同时满足的连续行带即字幕区。返回 (top_ratio, bottom_ratio)（0~1），
+    未检测到返回 None（调用方回退手动区域）。
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+        arr = np.asarray(Image.open(frame_path).convert("L"))
+    except Exception:
+        return None
+    h, w = arr.shape
+    if h < 40:
+        return None
+    scan_top = int(h * (1 - scan_ratio))
+    dark = (arr < 80)
+    bright = (arr > 200)
+    row_dark = dark.mean(axis=1)
+    row_bright = bright.mean(axis=1)
+    # 字幕行：同时含一定暗像素（底条）与亮像素（文字）
+    band_mask = (row_dark > 0.06) & (row_bright > 0.005)
+    best = None
+    cur_start = None
+    cur_len = 0
+    for y in range(scan_top, h):
+        if band_mask[y]:
+            if cur_start is None:
+                cur_start = y
+            cur_len += 1
+            if best is None or cur_len > best[2]:
+                best = (cur_start, y, cur_len)
+        else:
+            cur_start = None
+            cur_len = 0
+    min_rows = max(6, int(h * min_band))
+    if best and best[2] >= min_rows:
+        return best[0] / h, best[1] / h
+    return None
+
+
+def _crop_box(img, region, height, band):
+    """按 region/height 或自动检测 band 计算裁剪框 (left, top, right, bottom)。"""
+    w, h = img.size
+    if band is not None:
+        return (0, int(band[0] * h), w, int(band[1] * h))
+    if region == "top":
+        return (0, 0, w, int(h * height))
+    return (0, int(h * (1 - height)), w, h)  # bottom / full 走 bottom（full 即高=1）
+
+
+def _ocr_frames(frames, fps, lang, region="bottom", height=0.15, band=None,
                 progress_cb=None, cancel_check=None):
     """逐帧 OCR，返回 [(start_sec, end_sec, text), ...]（已合并相邻相同文本）。
 
     region: "bottom" 只识别画面底部字幕区（默认，避免误提屏幕上 UI 文字）、
             "top" 顶部、"full" 全屏（会连屏幕上的其他文字一起识别）。
     height: bottom/top 模式的裁剪高度比例（0.05~0.4，默认 0.15）。
+    band: 自动检测到的字幕条带 (top_ratio, bottom_ratio)，优先于 region/height。
     """
     from core.ocr_tool import _get_engine
     engine = _get_engine()
@@ -97,12 +151,12 @@ def _ocr_frames(frames, fps, lang, region="bottom", height=0.15,
         text = ""
         try:
             img = Image.open(fp).convert("RGB")
-            w, h = img.size
-            if region == "bottom":
-                # 字幕通常位于画面最底部，裁剪后 OCR 更快更准
-                img = img.crop((0, int(h * (1 - height)), w, h))
-            elif region == "top":
-                img = img.crop((0, 0, w, int(h * height)))
+            img = img.crop(_crop_box(img, region, height, band))
+            # 小字幕区放大后再 OCR（提升小字号识别率）
+            if img.height < 120:
+                ratio = 240 / img.height
+                img = img.resize((int(img.width * ratio), int(img.height * ratio)),
+                                 Image.LANCZOS)
             arr = np.asarray(img)
             img.close()
             result, _ = engine(arr)
@@ -130,7 +184,7 @@ def _ocr_frames(frames, fps, lang, region="bottom", height=0.15,
 
 
 def extract_subtitles(video, output_path, fps=1, lang="chi_sim+eng",
-                      region="bottom", height=0.15,
+                      region="bottom", height=0.15, auto_detect=False,
                       progress_cb=None, cancel_check=None, tmp_dir=None):
     """提取视频硬字幕为 .srt 文件，返回是否成功。
 
@@ -138,6 +192,7 @@ def extract_subtitles(video, output_path, fps=1, lang="chi_sim+eng",
     region: 字幕识别区域——"bottom"（底部，默认，避免误提屏幕 UI 文字）/
             "top"（顶部）/"full"（全屏，可能连屏幕其他文字一起提取）。
     height: bottom/top 模式的裁剪高度比例（默认 0.15=底部 15%）。
+    auto_detect: 自动检测字幕条带位置（亮度分析），检测成功优先于 region/height。
     tmp_dir: 临时目录，默认系统 temp（自动创建/清理）。
     """
     import tempfile
@@ -161,8 +216,15 @@ def extract_subtitles(video, output_path, fps=1, lang="chi_sim+eng",
             return False
         if cancel_check and cancel_check():
             return False
+        band = None
+        if auto_detect:
+            if progress_cb:
+                progress_cb(15, "检测字幕区域…")
+            # 用中间帧检测字幕条带；失败回退手动区域
+            mid = frames[len(frames) // 2]
+            band = detect_subtitle_band(mid)
         entries = _ocr_frames(frames, float(fps) or 1.0, lang, region, height,
-                              progress_cb, cancel_check)
+                              band, progress_cb, cancel_check)
         if entries is None:
             return False
         if not entries:
