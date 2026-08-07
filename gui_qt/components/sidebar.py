@@ -59,12 +59,12 @@ def _patch_compact_nav_paint():
                 painter.setBrush(QColor(c, c, c, 6 if self.isAboutSelected else 10))
                 painter.drawRoundedRect(self.rect(), 5, 5)
             # 紧凑：图标 11.5 → 7，文字 44 → 32
-            drawIcon(self._icon, painter, QRectF(6 + pl, 10, 16, 16))
+            drawIcon(self._icon, painter, QRectF(5 + pl, 10, 16, 16))
             if self.isCompacted:
                 return
             painter.setFont(self.font())
             painter.setPen(self.textColor())
-            left = 28 + pl if not self.icon().isNull() else pl + 8
+            left = 26 + pl if not self.icon().isNull() else pl + 7
             painter.drawText(
                 QRectF(left, 0, self.width() - 13 - left - pr,
                        self.height()), Qt.AlignVCenter, self.text())
@@ -149,7 +149,7 @@ def build_navigation(window, services, theme_mgr):
     panel.scrollLayout.setSpacing(1)
     panel.expandAni.setDuration(200)  # 展开/折叠动画 200ms
     # 展开宽度 322 → 200：配合导航项紧凑绘制（图标/文字左移），留白最小化
-    nav.setExpandWidth(160)
+    nav.setExpandWidth(152)
 
     return pages
 
