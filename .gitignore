@@ -46,3 +46,5 @@ FormatMaster/
 /screenshot*.ps1
 /take_screenshot.ps1
 /click_video.ps1
+# PyInstaller 图标注入临时文件
+__icon_injected_*.py

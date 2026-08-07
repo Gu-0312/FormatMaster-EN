@@ -6,7 +6,7 @@
 """
 import os
 
-from qfluentwidgets import ComboBox, FluentIcon
+from qfluentwidgets import CheckBox, ComboBox, FluentIcon
 
 from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
@@ -48,6 +48,11 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
             tr("目标底色", "Target color"), _combo(BG_VALUES, tr("蓝底", "Blue")),
             hint=tr("蓝底/红底/白底为证件照标准底色", "Blue/red/white are standard ID photo colors"))
         card.add_form(grid)
+        self.cb_ai = CheckBox(
+            tr("AI 人像抠图（推荐，干净不误伤衣服眼睛）",
+               "AI portrait matting (recommended, clean result, won't damage clothes/eyes)"))
+        self.cb_ai.setChecked(True)
+        card.add_widget(self.cb_ai)
         lay.addWidget(card)
 
         self.out_row = OutputDirRow()
@@ -65,6 +70,7 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
     def collect_params(self) -> dict:
         return {
             "bg": self.cb_bg.currentText(),
+            "use_ai": self.cb_ai.isChecked(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -77,6 +83,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
             return
         if prefs.get("bg") in BG_VALUES:
             self.cb_bg.setCurrentText(str(prefs["bg"]))
+        if "use_ai" in prefs:
+            self.cb_ai.setChecked(bool(prefs["use_ai"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
@@ -86,7 +94,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         from core.id_photo import change_background
         return change_background(
             task.file_path, task.output_path,
-            task.params.get("bg", tr("蓝底", "Blue")), prog)
+            task.params.get("bg", tr("蓝底", "Blue")), prog,
+            use_ai=task.params.get("use_ai", True))
 
     def _make_task(self, f):
         params = self.collect_params()
