@@ -18,22 +18,19 @@ import urllib.request
 import numpy as np
 from PIL import Image, ImageFilter
 
-# ── 标准底色 ────────────────────────────────────
+# ── 目标底色 ────────────────────────────────────
+# 键为中文名（面板下拉项与偏好存储统一用键，中英界面下语义一致）
 BG_COLORS = {
     "红底": (219, 64, 64),
     "蓝底": (67, 142, 219),
     "白底": (255, 255, 255),
-}
-DEFAULT_COLOR = "蓝底"
-# 抠图换背景常用底色（比证件照色更多）
-CUTOUT_BG_COLORS = {
-    "白底": (255, 255, 255),
-    "蓝底": (67, 142, 219),
-    "红底": (219, 64, 64),
     "灰底": (200, 200, 200),
     "绿底": (0, 180, 90),
     "黑底": (40, 40, 40),
 }
+DEFAULT_COLOR = "蓝底"
+# 透明输出：生成带 alpha 通道的 PNG（可叠加到任意画面）
+TRANSPARENT_KEY = "透明PNG"
 
 # ── AI 模型相关 ─────────────────────────────────
 MODEL_DIR = os.path.join("data", "models", "idphoto")
@@ -271,13 +268,14 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
                       size=None, offset=0.0):
     """换底色（可选按标准证件照尺寸裁剪缩放）。
 
+    color: BG_COLORS 的键（蓝底/红底/白底/灰底/绿底/黑底）或 TRANSPARENT_KEY（透明 PNG）；
     use_ai=True 优先 AI 引擎，失败/异常自动回退色度键。
     size: PHOTO_SIZES 的像素元组 (w, h) 或 None 不裁剪；
     offset: 裁剪窗口垂直偏移 -1~1（正=保留更多顶部）。
     """
-    if color not in BG_COLORS:
+    if color != TRANSPARENT_KEY and color not in BG_COLORS:
         return False
-    target = BG_COLORS[color]
+    target = BG_COLORS.get(color)  # 透明时为 None
     try:
         img = Image.open(input_path).convert("RGB")
     except (OSError, IOError):
@@ -288,10 +286,17 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
 
     alpha, engine = _get_alpha(arr, progress_callback, use_ai)
 
-    if progress_callback:
-        progress_callback(80, "合成新底色…")
-    out_arr = _apply_alpha(arr, alpha, target)
-    out = Image.fromarray(np.clip(out_arr, 0, 255).astype(np.uint8), "RGB")
+    if target is None:
+        # 透明 PNG：RGB 原样 + alpha 通道（背景区域透明）
+        if progress_callback:
+            progress_callback(80, "生成透明 PNG…")
+        a = np.clip((alpha * 255).astype(np.uint8), 0, 255)
+        out = Image.fromarray(np.dstack([arr, a]), "RGBA")
+    else:
+        if progress_callback:
+            progress_callback(80, "合成新底色…")
+        out_arr = _apply_alpha(arr, alpha, target)
+        out = Image.fromarray(np.clip(out_arr, 0, 255).astype(np.uint8), "RGB")
     if size is not None:
         if progress_callback:
             progress_callback(85, f"裁剪缩放 {size[0]}×{size[1]}…")
@@ -308,53 +313,3 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
         progress_callback(100, f"完成（{engine}）")
     return True
 
-
-def cutout_portrait(input_path, output_path, bg_color=None,
-                    progress_callback=None, use_ai=True):
-    """通用人像抠图：AI 抠出人像主体，输出透明 PNG 或贴纯色背景。
-
-    bg_color: None → 透明 PNG（带 alpha 通道）；
-              否则为 BG_COLORS / CUTOUT_BG_COLORS 的键或 (r, g, b) 元组 → 贴纯色背景。
-    返回 True/False；AI 不可用时自动回退色度键。
-    """
-    try:
-        img = Image.open(input_path).convert("RGB")
-    except (OSError, IOError):
-        if progress_callback:
-            progress_callback(-1, "错误：无法打开图片，文件可能已损坏")
-        return False
-    arr = np.asarray(img, dtype=np.uint8)
-    alpha, engine = _get_alpha(arr, progress_callback, use_ai)
-
-    if bg_color is None:
-        # 透明 PNG：RGB 原样 + alpha 通道（背景区域透明）
-        if progress_callback:
-            progress_callback(80, "生成透明 PNG…")
-        a = np.clip((alpha * 255).astype(np.uint8), 0, 255)
-        rgba = np.dstack([arr, a])
-        out = Image.fromarray(rgba, "RGBA")
-    else:
-        if isinstance(bg_color, str):
-            target = (BG_COLORS.get(bg_color)
-                      or CUTOUT_BG_COLORS.get(bg_color))
-        else:
-            target = tuple(int(c) for c in bg_color)
-        if target is None:
-            if progress_callback:
-                progress_callback(-1, f"未知背景色：{bg_color}")
-            return False
-        if progress_callback:
-            progress_callback(80, "合成新背景…")
-        out_arr = _apply_alpha(arr, alpha, target)
-        out = Image.fromarray(np.clip(out_arr, 0, 255).astype(np.uint8), "RGB")
-    try:
-        out.save(output_path)
-    except (OSError, IOError) as e:
-        if progress_callback:
-            progress_callback(-1, f"保存失败：{e}")
-        return False
-    out.close()
-    img.close()
-    if progress_callback:
-        progress_callback(100, f"完成（{engine}）")
-    return True

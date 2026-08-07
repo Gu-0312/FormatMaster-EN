@@ -12,7 +12,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 from qfluentwidgets import CaptionLabel, CheckBox, ComboBox, FluentIcon, PushButton, Slider
 
-from core.id_photo import PHOTO_SIZES
+from core.id_photo import PHOTO_SIZES, TRANSPARENT_KEY
 from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -20,7 +20,11 @@ from gui_qt.panels.task_mixin import TaskPanelMixin
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".heic", ".heif"}
-BG_VALUES = [tr("蓝底", "Blue"), tr("红底", "Red"), tr("白底", "White")]
+# 目标底色下拉（显示名 ↔ _BG_KEYS 键一一对应；偏好/任务存键，中英界面语义一致）
+BG_VALUES = [tr("蓝底", "Blue"), tr("红底", "Red"), tr("白底", "White"),
+             tr("灰底", "Gray"), tr("绿底", "Green"), tr("黑底", "Black"),
+             tr("透明PNG", "Transparent PNG")]
+_BG_KEYS = ["蓝底", "红底", "白底", "灰底", "绿底", "黑底", "透明PNG"]
 # 证件照尺寸下拉项（显示名与 PHOTO_SIZES 键一一对应）
 SIZE_VALUES = [tr("原尺寸", "Original"),
                tr("1寸 (295×413)", "1-inch (295×413)"),
@@ -30,8 +34,21 @@ SIZE_VALUES = [tr("原尺寸", "Original"),
                tr("3寸 (550×840)", "3-inch (550×840)")]
 _SIZE_KEYS = ["原尺寸", "1寸", "小1寸", "大1寸", "2寸", "3寸"]
 
-# 预览临时输出（系统临时目录，每次覆盖）
-_PREVIEW_OUT = os.path.join(tempfile.gettempdir(), "FormatMaster_idphoto_preview.jpg")
+# 预览临时输出（系统临时目录，每次覆盖；透明预览为 PNG）
+_PREVIEW_OUT = os.path.join(tempfile.gettempdir(), "FormatMaster_idphoto_preview.png")
+
+
+def _checker_composite(rgb, alpha):
+    """棋盘格垫底合成（透明预览用，直观看到透明区域）。"""
+    import numpy as _np
+    h, w = alpha.shape[:2]
+    yy, xx = _np.mgrid[:h, :w]
+    cell = 16
+    checker = _np.full((h, w, 3), 210, dtype=_np.uint8)
+    checker[((yy // cell) + (xx // cell)) % 2 == 0] = 235
+    a = alpha[..., None].astype(_np.float32) / 255.0
+    return (rgb.astype(_np.float32) * a
+            + checker.astype(_np.float32) * (1 - a)).astype(_np.uint8)
 
 
 class _PreviewWorker(QThread):
@@ -51,9 +68,23 @@ class _PreviewWorker(QThread):
             ok = change_background(
                 self._src, self._out, self._color, None, self._use_ai,
                 size=self._size, offset=self._offset)
+            if ok and self._color == TRANSPARENT_KEY:
+                self._apply_checker()
             self.sig_done.emit(bool(ok), self._out if ok else "")
         except Exception:  # noqa: BLE001 - 预览失败仅提示，不打断流程
             self.sig_done.emit(False, "")
+
+    def _apply_checker(self):
+        """透明预览：把透明区域叠成棋盘格再存回（显示透明效果）。"""
+        try:
+            from PIL import Image
+            import numpy as _np
+            img = Image.open(self._out).convert("RGBA")
+            rgb = _np.asarray(img.convert("RGB"))
+            alpha = _np.asarray(img)[..., 3]
+            Image.fromarray(_checker_composite(rgb, alpha), "RGB").save(self._out)
+        except Exception:  # noqa: BLE001 - 棋盘格失败则保留原透明图
+            pass
 
 
 class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
@@ -66,8 +97,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         lay = self.content_layout
         lay.addWidget(self.make_title(tr("证件照换底色", "ID photo background")))
         lay.addWidget(self.make_subtitle(
-            tr("一键把照片背景替换为红/蓝/白标准底色，适合证件照办理",
-               "Swap photo background to standard red/blue/white for ID photos")))
+            tr("AI 抠出人像换任意底色或导出透明 PNG，适合证件照办理",
+               "AI extracts the person; swap to any color or export a transparent PNG")))
 
         self.file_card = FileListCard(tr("照片列表", "Photos"), file_exts=PHOTO_EXTS)
         lay.addWidget(self.file_card)
@@ -84,7 +115,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
 
         self.cb_bg = grid.add_field(
             tr("目标底色", "Target color"), _combo(BG_VALUES, tr("蓝底", "Blue")),
-            hint=tr("蓝底/红底/白底为证件照标准底色", "Blue/red/white are standard ID photo colors"))
+            hint=tr("多色可选，透明 PNG 保留 alpha 可叠加到任意画面",
+                    "Multiple colors; transparent PNG keeps alpha for layering"))
         self.cb_size = grid.add_field(
             tr("证件照尺寸", "Photo size"), _combo(SIZE_VALUES, SIZE_VALUES[0]),
             hint=tr("1寸=2.5×3.5cm、2寸=3.5×5.3cm、3寸=5.5×8.4cm（300dpi）",
@@ -160,9 +192,13 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         self._wire_tasks()
 
     # ── 参数/偏好 ────────────────────────────────
+    def _bg_key(self) -> str:
+        idx = self.cb_bg.currentIndex()
+        return _BG_KEYS[idx] if 0 <= idx < len(_BG_KEYS) else "蓝底"
+
     def collect_params(self) -> dict:
         return {
-            "bg": self.cb_bg.currentText(),
+            "bg": self._bg_key(),
             "use_ai": self.cb_ai.isChecked(),
             "size_key": self._size_key(),
             "offset": self.sl_offset.value() / 100.0,
@@ -176,8 +212,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
     def apply_prefs(self, prefs: dict):
         if not prefs:
             return
-        if prefs.get("bg") in BG_VALUES:
-            self.cb_bg.setCurrentText(str(prefs["bg"]))
+        if prefs.get("bg") in _BG_KEYS:
+            self.cb_bg.setCurrentIndex(_BG_KEYS.index(str(prefs["bg"])))
         if "use_ai" in prefs:
             self.cb_ai.setChecked(bool(prefs["use_ai"]))
         if prefs.get("size_key") in _SIZE_KEYS:
@@ -223,7 +259,7 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         self._pv_status_text(tr("预览中…", "Previewing…"))
         self._pv_worker = _PreviewWorker(
             path, _PREVIEW_OUT,
-            self.cb_bg.currentText(), self.cb_ai.isChecked(),
+            self._bg_key(), self.cb_ai.isChecked(),
             size=PHOTO_SIZES.get(self._size_key()),
             offset=self.sl_offset.value() / 100.0)
         self._pv_worker.sig_done.connect(self._on_preview_done)
@@ -258,7 +294,7 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         from core.id_photo import change_background
         return change_background(
             task.file_path, task.output_path,
-            task.params.get("bg", tr("蓝底", "Blue")), prog,
+            task.params.get("bg", "蓝底"), prog,
             use_ai=task.params.get("use_ai", True),
             size=PHOTO_SIZES.get(task.params.get("size_key", "原尺寸")),
             offset=task.params.get("offset", 0.0))
@@ -266,7 +302,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
     def _make_task(self, f):
         params = self.collect_params()
         out_dir = self.out_row.resolve_dir(f)
-        out_path = tm.make_output_path(f, out_dir, ".jpg")
+        ext = ".png" if params["bg"] == TRANSPARENT_KEY else ".jpg"
+        out_path = tm.make_output_path(f, out_dir, ext)
         return dict(
             name=f"{tr('证件照换底色', 'ID photo')} - {os.path.basename(f)}",
             task_type="id_photo", file_path=f, output_path=out_path,
