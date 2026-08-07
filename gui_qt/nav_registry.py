@@ -70,7 +70,7 @@ NAV_GROUPS = [
     (tr("转换中心", "Convert"), [
         dict(key="video", text=tr("视频转换", "Video Convert"), icon=FluentIcon.VIDEO,
              factory=_page("gui_qt.panels.video_panel", "VideoPanelPage")),
-        dict(key="audio", text=tr("音频转换", "Audio Convert"), icon=FluentIcon.MUSIC,
+        dict(key="audio", text=tr("音频转换/提取", "Audio Convert/Extract"), icon=FluentIcon.MUSIC,
              factory=_page("gui_qt.panels.audio_panel", "AudioPanelPage")),
         dict(key="image", text=tr("图片转换", "Image Convert"), icon=FluentIcon.PHOTO,
              factory=_page("gui_qt.panels.image_panel", "ImagePanelPage")),

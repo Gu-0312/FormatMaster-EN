@@ -17,7 +17,7 @@ from gui_qt.components import toast
 from gui_qt.components import design_system as ds
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
-from utils.config import SUPPORTED_AUDIO
+from utils.config import SUPPORTED_AUDIO, SUPPORTED_VIDEO
 
 # 音频格式 → FFmpeg 编码器映射（与 tkinter 版 audio_panel.AUDIO_CODEC_MAP 一致）
 AUDIO_CODEC_MAP = {
@@ -40,11 +40,12 @@ class AudioPanelPage(BaseQtPanel):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title(tr("音频转换", "Audio convert")))
+        lay.addWidget(self.make_title(tr("音频转换 / 提取", "Audio convert / extract")))
         lay.addWidget(CaptionLabel(
-            tr("MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转", "MP3 · WAV · WMA · AAC · FLAC · OGG · M4A interconvert")))
+            tr("MP3 · WAV · WMA · AAC · FLAC · OGG · M4A 等格式互转，也可直接拖入视频提取音频（如 MP4 → MP3）",
+               "Interconvert audio formats, or drop a video to extract its audio (e.g. MP4 → MP3)")))
 
-        exts = set(SUPPORTED_AUDIO.values())
+        exts = set(SUPPORTED_AUDIO.values()) | set(SUPPORTED_VIDEO.values())
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=exts)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("MP3")
@@ -175,7 +176,7 @@ class AudioPanelPage(BaseQtPanel):
     def _start(self):
         files = self.file_card.files()
         if not files:
-            toast.show_warning(self, tr("请先添加要转换的音频文件", "Add audio files to convert first"))
+            toast.show_warning(self, tr("请先添加要转换的音频或视频文件", "Add audio or video files to convert first"))
             return
         if not self.services.ffmpeg_ready():
             toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
@@ -190,9 +191,16 @@ class AudioPanelPage(BaseQtPanel):
         mgr = self.services.task_manager
         conv = self.services.audio_conv
         added = 0
+        used_out = set()  # 同批内已分配的输出路径（防同名不同源互相覆盖）
         for f in files:
             out_dir = self.out_row.resolve_dir(f)
             out_path = tm.make_output_path(f, out_dir, fmt_ext)
+            base, e = os.path.splitext(out_path)
+            n = 1
+            while out_path.lower() in used_out:
+                out_path = f"{base}_{n}{e}"
+                n += 1
+            used_out.add(out_path.lower())
             tid = mgr.add_task(
                 name=f"{tr('音频转换', 'Audio Convert')} - {os.path.basename(f)}",
                 task_type="audio", file_path=f, output_path=out_path,
