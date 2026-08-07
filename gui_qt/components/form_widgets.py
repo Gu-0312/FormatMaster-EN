@@ -67,18 +67,8 @@ class FormGrid(QGridLayout):
         self._columns = columns
         self._col = 0
         self._row = 0
-        self._rows = []  # (row, label_layout, control) 用于整行显隐
         self.setHorizontalSpacing(16)
         self.setVerticalSpacing(12)
-
-    def set_row_visible(self, control, visible):
-        """按控件隐藏/显示其所在行（含标签）。control 来自 add_field 返回值。"""
-        for row, lbl_widget, ctrl in self._rows:
-            if ctrl is control:
-                if lbl_widget is not None:
-                    lbl_widget.setVisible(visible)
-                control.setVisible(visible)
-                return
 
     def add_field(self, label, control, icon=None, hint=None, colspan=1):
         """添加一个参数项。control 为任意 Qt 控件。"""
@@ -109,9 +99,6 @@ class FormGrid(QGridLayout):
         # 控件
         self.addWidget(control, row + 1, col, 1, colspan)
         self.setColumnStretch(col, 1)
-        # 记录行元素（label widget + control，供 set_row_visible 整行显隐）
-        self._rows.append((row, lbl_row.itemAt(0).widget() if lbl_row.count() else None,
-                           control))
         # 下一个位置：右移一列，到底换行
         self._col += colspan
         if self._col >= self._columns:
