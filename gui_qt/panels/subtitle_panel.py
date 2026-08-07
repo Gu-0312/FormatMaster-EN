@@ -131,12 +131,17 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
     def _runner(self, task, prog):
         p = task.params
         if p.get("source") == "asr":
-            # 语音识别：模型未就绪先下载（首次约 100MB）
+            # 语音识别：模型未就绪先下载（首次约 126MB）
             from core.asr_tool import (is_model_ready, download_model,
-                                       audio_to_srt)
+                                       audio_to_srt, _ENGINE_OK,
+                                       ENGINE_MISSING_MSG)
+            if not _ENGINE_OK:
+                task.error = ENGINE_MISSING_MSG
+                prog(-1, ENGINE_MISSING_MSG)
+                return False
             if not is_model_ready():
-                prog(5, tr("首次使用需下载语音模型（约 100MB）…",
-                           "First use downloads the speech model (~100MB)…"))
+                prog(5, tr("首次使用需下载语音模型（约 126MB）…",
+                           "First use downloads the speech model (~126MB)…"))
                 if not download_model(prog):
                     task.error = tr("语音模型下载失败，请检查网络后重试",
                                     "Speech model download failed, check network")

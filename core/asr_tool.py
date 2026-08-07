@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""asr_tool — 语音转文字字幕（ASR，基于 sherpa-onnx + Paraformer 中文模型）。
+"""asr_tool — 语音转文字字幕（ASR，基于 sherpa-onnx + 中文流式模型）。
 
-流程：FFmpeg 提取音频为 16k 单声道 WAV → sherpa-onnx OfflineRecognizer 识别
-（输出带 token 级时间戳）→ 按标点切句生成 .srt。
-模型首次使用时自动下载到用户数据目录 models/（约 100MB，离线后可复用）。
+流程：FFmpeg 提取音频为 16k 单声道 WAV → sherpa-onnx OnlineRecognizer 识别
+（输出带 token 级时间戳）→ 按标点/停顿切句生成 .srt。
+模型首次使用时自动下载到用户数据目录 models/（约 126MB，离线后可复用）。
 """
 import os
 import subprocess
@@ -11,6 +11,17 @@ import tarfile
 import urllib.request
 
 from utils.config import get_ffmpeg_path, get_user_data_dir
+
+# sherpa-onnx 引擎（延迟 import，缺失时给出明确提示而非笼统 ModuleNotFoundError）
+try:
+    import sherpa_onnx
+    _ENGINE_OK = True
+except ImportError:
+    sherpa_onnx = None
+    _ENGINE_OK = False
+
+ENGINE_MISSING_MSG = ("语音识别引擎（sherpa-onnx）未安装。请用项目虚拟环境运行："
+                      "venv\\Scripts\\python main_qt.py（或执行 pip install sherpa-onnx）")
 
 # 中文流式 ASR 模型（sherpa-onnx 官方 zipformer transducer int8，126MB）
 MODEL_VERSION = "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30"
@@ -84,7 +95,8 @@ def _get_recognizer():
     """懒加载识别器（流式 OnlineRecognizer，模型需已就绪）。"""
     global _recognizer
     if _recognizer is None:
-        import sherpa_onnx
+        if not _ENGINE_OK:
+            raise RuntimeError(ENGINE_MISSING_MSG)
         _recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
             tokens=os.path.join(_model_base(), "tokens.txt"),
             encoder=_onnx("encoder"),
@@ -148,13 +160,16 @@ def transcribe(audio_path, progress_cb=None, cancel_check=None):
 
     模型未就绪时返回 None（需先 download_model）。
     """
+    if not _ENGINE_OK:
+        if progress_cb:
+            progress_cb(-1, ENGINE_MISSING_MSG)
+        return None
     if not is_model_ready():
         if progress_cb:
             progress_cb(-1, "语音模型未就绪，请先下载模型")
         return None
     import tempfile
     import shutil
-    import sherpa_onnx
 
     tmp = tempfile.mkdtemp(prefix="fm_asr_")
     wav = os.path.join(tmp, "audio.wav")
@@ -171,7 +186,16 @@ def transcribe(audio_path, progress_cb=None, cancel_check=None):
         samples, sr = _read_wav(wav)
         if progress_cb:
             progress_cb(25, "语音识别中…")
-        recognizer = _get_recognizer()
+        try:
+            recognizer = _get_recognizer()
+        except RuntimeError as e:
+            if progress_cb:
+                progress_cb(-1, str(e))
+            return None
+        except Exception as e:
+            if progress_cb:
+                progress_cb(-1, f"语音引擎加载失败：{e}")
+            return None
         stream = recognizer.create_stream()
         stream.accept_waveform(sr, samples)
         stream.input_finished()
