@@ -118,6 +118,8 @@ def main(onefile=False):
         "--hidden-import", "core.image_album",
         "--hidden-import", "core.audio_tools",
         "--hidden-import", "core.subtitle_extract",
+        "--hidden-import", "core.asr_tool",
+        "--hidden-import", "sherpa_onnx",
         "--hidden-import", "utils.panel_presets",
         "--hidden-import", "gui_qt.panels.id_photo_panel",
         "--hidden-import", "gui_qt.panels.image_merge_panel",
