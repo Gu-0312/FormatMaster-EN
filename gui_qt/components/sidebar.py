@@ -90,6 +90,8 @@ def build_navigation(window, services, theme_mgr):
     panel.bottomLayout.setSpacing(1)
     panel.scrollLayout.setSpacing(1)
     panel.expandAni.setDuration(200)  # 展开/折叠动画 200ms
+    # 展开宽度 322 → 280：侧边栏整体收窄，减少文字右侧留白
+    nav.setExpandWidth(280)
 
     return pages
 
