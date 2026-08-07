@@ -291,15 +291,14 @@ def build_navigation(window, services, theme_mgr):
         header.clicked.connect(lambda _=None, g=group: _toggle_group(g))
 
     # ── 管理中心独立卡片（底部）────────────────
+    # ── 管理中心页面（只进堆栈，不进导航；卡片按钮接管切换）──
+    # 注意：不能 addSubInterface + removeWidget——removeWidget 的 deleteLater
+    # 延迟删除会让导航项残留布局（与管理卡片重复显示/重叠）
     for item in nav_registry.ADMIN_ITEMS:
         page = item["factory"](window, services)
-        if not page.objectName():
-            page.setObjectName(f"page_{item['key']}")
+        page.setObjectName(f"page_{item['key']}")
         pages[item["key"]] = page
-        # 注册进堆栈供切换，但不在导航中显示（由卡片按钮接管）
-        window.addSubInterface(page, item["icon"], nav_registry.label(item),
-                               NavigationItemPosition.BOTTOM)
-        window.navigationInterface.removeWidget("panel_" + item["key"])
+        window.stackedWidget.addWidget(page)
 
     # ── 键盘快捷键 Ctrl+1~9 切页 ────────────────────────
     _setup_shortcuts(window, pages.keys())
