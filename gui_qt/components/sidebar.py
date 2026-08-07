@@ -10,13 +10,42 @@
 """
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF
 from PySide6.QtGui import QAction, QColor, QCursor, QKeySequence, QPainter
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QFrame, QMenu
 from qfluentwidgets import (FluentIcon, NavigationItemPosition,
-                            TransparentToolButton)
+                            TransparentToolButton, isDarkTheme)
 
 from gui_qt import nav_registry
 from gui_qt.i18n import tr
 from gui_qt.components.theme_manager import MODES
+
+
+def _admin_divider_qss():
+    """管理中心顶部悬浮分割线样式：1px 实线 + 向下渐变阴影（主题感知）。
+
+    亮色用黑色投影、暗色用白色微光；stop 0~0.10 同色形成 1px 实线，
+    之后淡出模拟 box-shadow 悬浮感。
+    """
+    if isDarkTheme():
+        top, mid, tail = ("rgba(255,255,255,0.14)",
+                          "rgba(255,255,255,0.05)",
+                          "rgba(255,255,255,0)")
+    else:
+        top, mid, tail = ("rgba(0,0,0,0.20)",
+                          "rgba(0,0,0,0.05)",
+                          "rgba(0,0,0,0)")
+    return (f"QFrame#adminDivider {{ background: qlineargradient("
+            f"x1:0, y1:0, x2:0, y2:1, "
+            f"stop:0 {top}, stop:0.10 {top}, stop:0.30 {mid}, stop:1 {tail}); "
+            f"border: none; }}")
+
+
+def _make_admin_divider():
+    """创建 10px 高的悬浮分割线（插在 bottomLayout 上方）。"""
+    d = QFrame()
+    d.setObjectName("adminDivider")
+    d.setFixedHeight(10)
+    d.setStyleSheet(_admin_divider_qss())
+    return d
 
 
 def _patch_compact_nav_paint():
@@ -129,6 +158,11 @@ def build_navigation(window, services, theme_mgr):
     def _do_theme_switch(theme_mgr, mode, btn):
         theme_mgr.set_mode(mode)
         btn.setToolTip(tr("主题", "Theme") + f": {theme_mgr.current_mode()}")
+        # 分割线颜色随主题刷新（亮色黑投影/暗色白微光）
+        try:
+            admin_divider.setStyleSheet(_admin_divider_qss())
+        except Exception:  # noqa: BLE001 - 刷新失败不影响主题切换
+            pass
 
     theme_btn.clicked.connect(_cycle_theme)
     nav.addWidget(routeKey="theme_toggle", widget=theme_btn,
@@ -150,6 +184,11 @@ def build_navigation(window, services, theme_mgr):
     panel.expandAni.setDuration(200)  # 展开/折叠动画 200ms
     # 展开宽度 322 → 200：配合导航项紧凑绘制（图标/文字左移），留白最小化
     nav.setExpandWidth(152)
+
+    # ── 管理中心顶部悬浮分割线：把功能区与底部管理区物理切割 ──
+    admin_divider = _make_admin_divider()
+    panel.vBoxLayout.insertWidget(
+        panel.vBoxLayout.indexOf(panel.bottomLayout), admin_divider)
 
     return pages
 
