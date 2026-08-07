@@ -125,8 +125,7 @@ class SettingsPage(ScrollArea):
             FluentIcon.BACKGROUND_FILL, tr("系统托盘", "System tray"), tr("关闭时最小化到托盘而不是退出", "Minimize to tray on close instead of quitting"),
             parent=g)
         self.card_tray.setValue(bool(self.services.get_pref("tray", False)))
-        self.card_tray.checkedChanged.connect(
-            lambda on: self.services.set_pref("tray", bool(on)))
+        self.card_tray.checkedChanged.connect(self._on_tray_changed)
         g.addSettingCard(self.card_tray)
 
         self.card_outdir = PushSettingCard(
@@ -167,6 +166,16 @@ class SettingsPage(ScrollArea):
         else:
             toast.show_error(self, tr("设置开机启动失败（注册表写入被拒绝）", "Failed to enable auto-start (registry write denied)"))
             self.card_autostart.setValue(_autostart_enabled())
+
+    def _on_tray_changed(self, on):
+        """系统托盘开关：保存偏好 + 立即创建/移除托盘图标。"""
+        self.services.set_pref("tray", bool(on))
+        setup = getattr(self.window, "_setup_tray", None)
+        if callable(setup):
+            try:
+                setup()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _pick_outdir(self):
         d = QFileDialog.getExistingDirectory(self, tr("选择默认输出目录", "Pick default output folder"))

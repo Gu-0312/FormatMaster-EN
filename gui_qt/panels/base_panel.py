@@ -39,6 +39,22 @@ class BaseQtPanel(ScrollArea):
         self.build()
         self.content_layout.addStretch(1)
         self.apply_prefs(self._load_prefs())
+        # 应用"默认输出目录"偏好（设置中心配置；仅当面板尚未选择自定义时生效，
+        # 不覆盖用户在面板内恢复的自定义目录）
+        self._apply_default_out_dir()
+
+    def _apply_default_out_dir(self):
+        """读取设置中心的"默认输出目录"，应用到本面板的 OutputDirRow。"""
+        try:
+            import os
+            if not hasattr(self, "out_row"):
+                return
+            d = self.services.get_pref("default_out_dir", "")
+            if d and os.path.isdir(d) and \
+                    self.out_row.mode() == self.out_row.MODE_SAME:
+                self.out_row.set_state(self.out_row.MODE_CUSTOM, d)
+        except Exception:  # noqa: BLE001 - 偏好应用失败不影响面板
+            pass
 
     # ── 子类约定 ─────────────────────────────────
     def build(self):

@@ -8,6 +8,7 @@ from gui_qt.i18n import tr
 import os
 import sys
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import FluentWindow, isDarkTheme
@@ -68,6 +69,58 @@ class MainWindow(FluentWindow):
 
         # ── Mica 云母背景（Win11；Win10 自动跳过）──
         self._enable_mica()
+
+        # ── 系统托盘（偏好开启时创建；关闭窗口最小化到托盘）──
+        self.tray = None
+        self._force_quit = False
+        self._setup_tray()
+
+    def _setup_tray(self):
+        """按"系统托盘"偏好创建/移除托盘图标。"""
+        if self.services.get_pref("tray", False):
+            self._create_tray()
+        elif self.tray is not None:
+            self.tray.hide()
+            self.tray.deleteLater()
+            self.tray = None
+
+    def _create_tray(self):
+        from PySide6.QtGui import QIcon
+        from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+        from utils.config import get_resource_path
+        if self.tray is not None:
+            return
+        icon_path = get_resource_path(os.path.join("assets", "icon.ico"))
+        icon = QIcon(icon_path) if os.path.isfile(icon_path) \
+            else self.windowIcon()
+        self.tray = QSystemTrayIcon(icon, self)
+        menu = QMenu(self)
+        act_show = menu.addAction(tr("显示主窗口", "Show window"))
+        act_quit = menu.addAction(tr("退出", "Quit"))
+        act_show.triggered.connect(self._show_from_tray)
+        act_quit.triggered.connect(self._quit_from_tray)
+        self.tray.setContextMenu(menu)
+        self.tray.setToolTip(tr("格式大师 FormatMaster", "FormatMaster"))
+        self.tray.activated.connect(
+            lambda reason: self._show_from_tray()
+            if reason == QSystemTrayIcon.DoubleClick else None)
+        self.tray.show()
+
+    def _show_from_tray(self):
+        self.show()
+        try:
+            self.setWindowState(
+                (self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
+        except Exception:  # noqa: BLE001 - 无边框窗口在特殊环境下句柄异常
+            pass
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self):
+        self._force_quit = True
+        if self.tray is not None:
+            self.tray.hide()
+        self.close()
 
     def _init_size(self):
         """初始窗口尺寸自适应屏幕。
@@ -192,6 +245,13 @@ class MainWindow(FluentWindow):
                     cleanup()
                 except Exception:  # noqa: BLE001
                     pass
+        # 系统托盘开启时：点关闭 = 最小化到托盘（托盘菜单"退出"或 _quit_from_tray 可真正退出）
+        if (getattr(self, "tray", None) is not None
+                and self.tray.isVisible()
+                and not getattr(self, "_force_quit", False)):
+            e.ignore()
+            self.hide()
+            return
         super().closeEvent(e)
 
 
