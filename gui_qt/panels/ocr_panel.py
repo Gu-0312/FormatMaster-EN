@@ -51,6 +51,11 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
         row.addWidget(self.cb_lang)
         row.addWidget(CaptionLabel(tr("chi_sim=简体中文  eng=英文  jpn=日文  kor=韩文", "chi_sim=Chinese  eng=English  jpn=Japanese  kor=Korean")))
         row.addStretch(1)
+        row.addWidget(CaptionLabel(tr("导出格式", "Export format")))
+        self.cb_export = ComboBox()
+        self.cb_export.addItems([tr("TXT 文本", "TXT"), tr("Word 文档", "Word")])
+        self.cb_export.setCurrentIndex(0)
+        row.addWidget(self.cb_export)
         sec.add_layout(row)
         lay.addWidget(sec)
 
@@ -111,6 +116,7 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
     def collect_params(self) -> dict:
         return {
             "lang": self.cb_lang.currentText(),
+            "export_fmt": "docx" if self.cb_export.currentIndex() == 1 else "txt",
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -123,21 +129,21 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
             return
         if prefs.get("lang") in OCR_LANGS:
             self.cb_lang.setCurrentText(prefs["lang"])
+        if prefs.get("export_fmt") == "docx":
+            self.cb_export.setCurrentIndex(1)
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
 
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
-        from core.ocr_tool import ocr_image
+        from core.ocr_tool import ocr_image, write_result
         text = ocr_image(task.file_path, task.params.get("lang", "chi_sim+eng"), prog)
         if not text:
             task.error = tr("未识别到文字", "No text recognized")
             return False
-        try:
-            with open(task.output_path, "w", encoding="utf-8") as f:
-                f.write(text)
-        except OSError:
+        if not write_result(task.output_path, text,
+                            task.params.get("export_fmt", "txt")):
             task.error = tr("结果保存失败", "Failed to save result")
             return False
         return True
@@ -146,7 +152,8 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
         params = self.collect_params()
         nm = os.path.splitext(os.path.basename(f))[0]
         out_dir = self.out_row.resolve_dir(f)
-        out_path = os.path.join(out_dir, nm + ".txt")
+        out_ext = ".docx" if params.get("export_fmt") == "docx" else ".txt"
+        out_path = os.path.join(out_dir, nm + out_ext)
         return dict(
             name=f"{tr('OCR识别', 'OCR')} - {os.path.basename(f)}",
             task_type="ocr", file_path=f, output_path=out_path,
@@ -164,7 +171,8 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
     def _on_state(self, task_id, state):
         task = self.services.task_manager.get_task(task_id)
         if (task and task.task_type == "ocr" and state == tm.SUCCESS
-                and os.path.isfile(task.output_path)):
+                and os.path.isfile(task.output_path)
+                and task.params.get("export_fmt", "txt") != "docx"):
             try:
                 with open(task.output_path, "r", encoding="utf-8") as f:
                     self.txt_result.setPlainText(f.read())

@@ -13,3 +13,4 @@ qrcode[pil]>=7.4
 pywin32>=305
 PySide6>=6.6
 PySide6-Fluent-Widgets>=1.5
+pillow-heif>=1.4.0

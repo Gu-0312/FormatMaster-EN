@@ -7,7 +7,7 @@ import os
 import sys
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QVBoxLayout, QWidget
 from qfluentwidgets import (ComboBox, ExpandLayout, FluentIcon,
                             PushButton, PushSettingCard, ScrollArea,
                             SettingCard, SettingCardGroup, SwitchSettingCard)
@@ -71,6 +71,12 @@ def _set_autostart(enable):
         return False
 
 
+def _make_preset_store():
+    """延迟导入避免循环依赖。"""
+    from utils.panel_presets import PanelPresetStore
+    return PanelPresetStore()
+
+
 class SettingsPage(ScrollArea):
     """设置中心页。"""
 
@@ -97,6 +103,7 @@ class SettingsPage(ScrollArea):
         self._build_theme()
         self._build_convert()
         self._build_advanced()
+        self._build_presets()
 
     def _group(self, title):
         # 必须以 scroll_widget 为父容器，否则分组不会显示
@@ -325,6 +332,95 @@ class SettingsPage(ScrollArea):
         self.card_debug.checkedChanged.connect(
             lambda on: self.services.set_pref("debug", bool(on)))
         g.addSettingCard(self.card_debug)
+
+    # ── 转换预设 ─────────────────────────────────
+    def _build_presets(self):
+        g = self._group(tr("转换预设", "Convert presets"))
+
+        from gui_qt.components import toast
+        self.preset_store = _make_preset_store()
+
+        card = SettingCard(FluentIcon.LIBRARY, tr("应用预设", "Apply preset"),
+                           tr("把保存的参数组合一键应用到所有面板", "Apply a saved param combo to all panels"), g)
+        self.cb_preset = ComboBox()
+        self.cb_preset.setFixedWidth(160)
+        self._reload_preset_list()
+        card.hBoxLayout.addWidget(self.cb_preset, 0, Qt.AlignRight)
+        btn_del = PushButton(tr("删除", "Delete"))
+        btn_del.clicked.connect(self._delete_preset)
+        btn_apply = PushButton(tr("应用", "Apply"))
+        btn_apply.clicked.connect(self._apply_preset)
+        card.hBoxLayout.addWidget(btn_del)
+        card.hBoxLayout.addWidget(btn_apply)
+        card.hBoxLayout.addSpacing(16)
+        g.addSettingCard(card)
+
+        self.card_save_preset = PushSettingCard(
+            tr("保存预设", "Save preset"), FluentIcon.ADD,
+            tr("保存当前所有面板参数", "Save current panel params"),
+            tr("把当前各面板的参数组合保存为命名预设，可一键复用", "Save current panel settings as a named preset for reuse"), g)
+        self.card_save_preset.clicked.connect(self._save_preset)
+        g.addSettingCard(self.card_save_preset)
+
+    def _reload_preset_list(self):
+        names = self.preset_store.list()
+        self.cb_preset.clear()
+        self.cb_preset.addItems(names)
+        if names:
+            self.cb_preset.setCurrentIndex(0)
+
+    def _save_preset(self):
+        from gui_qt.components import toast
+        name, ok = QInputDialog.getText(
+            self, tr("保存预设", "Save preset"),
+            tr("预设名称：", "Preset name:"))
+        name = (name or "").strip()
+        if not ok or not name:
+            return
+        panels = {}
+        for page in getattr(self.window, "pages", {}).values():
+            collect = getattr(page, "collect_prefs", None)
+            key = getattr(page, "panel_key", None)
+            if callable(collect) and key:
+                try:
+                    panels[key] = collect()
+                except Exception:  # noqa: BLE001
+                    pass
+        self.preset_store.save(name, panels)
+        self._reload_preset_list()
+        toast.show_success(self, tr("预设已保存：{}", "Preset saved: {}").format(name))
+
+    def _apply_preset(self):
+        from gui_qt.components import toast
+        name = self.cb_preset.currentText().strip()
+        if not name:
+            toast.show_warning(self, tr("暂无预设，请先保存", "No presets yet, save one first"))
+            return
+        panels = self.preset_store.load(name)
+        if not panels:
+            toast.show_error(self, tr("预设不存在或已损坏", "Preset missing or corrupted"))
+            self._reload_preset_list()
+            return
+        applied = 0
+        for page in getattr(self.window, "pages", {}).values():
+            apply = getattr(page, "apply_prefs", None)
+            key = getattr(page, "panel_key", None)
+            if callable(apply) and key and key in panels:
+                try:
+                    apply(panels[key])
+                    applied += 1
+                except Exception:  # noqa: BLE001
+                    pass
+        toast.show_success(self, tr("已应用 {} 个面板的参数", "Applied params to {} panels").format(applied))
+
+    def _delete_preset(self):
+        from gui_qt.components import toast
+        name = self.cb_preset.currentText().strip()
+        if not name:
+            return
+        self.preset_store.delete(name)
+        self._reload_preset_list()
+        toast.show_info(self, tr("预设已删除：{}", "Preset deleted: {}").format(name))
 
     def _toggle_context_menu(self):
         from gui_qt import context_menu as cm

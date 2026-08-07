@@ -86,3 +86,24 @@ def batch_ocr(files, output_dir, lang="chi_sim+eng", progress_cb=None):
     if progress_cb:
         progress_cb(100, f"完成  {success}/{total}")
     return success
+
+
+def write_result(output_path, text, fmt="txt"):
+    """把 OCR 文本写出为 txt 或 docx。
+
+    fmt: "txt" 纯文本 / "docx" Word 文档（python-docx）。
+    返回是否成功。
+    """
+    try:
+        if fmt == "docx":
+            from docx import Document
+            doc = Document()
+            for line in text.splitlines():
+                doc.add_paragraph(line)
+            doc.save(output_path)
+        else:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(text)
+        return True
+    except Exception:
+        return False

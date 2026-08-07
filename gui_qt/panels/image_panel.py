@@ -23,7 +23,7 @@ CROP_VALUES = [tr("原始比例", "Original ratio"), tr("裁剪为正方形", "C
 WATERMARK_POS_VALUES = [tr("右下角", "Bottom right"), tr("左下角", "Bottom left"), tr("右上角", "Top right"), tr("左上角", "Top left"), tr("居中", "Center")]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff",
-              ".webp", ".ico", ".tga"}
+              ".webp", ".ico", ".tga", ".heic", ".heif"}
 
 
 class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
@@ -91,6 +91,8 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
 
         self.cb_gray = CheckBox(tr("转为黑白（灰度）", "Convert to grayscale"))
         sec.add_widget(self.cb_gray)
+        self.cb_strip = CheckBox(tr("清除 EXIF 隐私信息（拍摄设备/GPS）", "Strip EXIF privacy data (camera/GPS)"))
+        sec.add_widget(self.cb_strip)
         sec.add_form(grid)
         return sec
 
@@ -105,6 +107,7 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             "rotate": self.cb_rotate.currentText(),
             "crop": self.cb_crop.currentText(),
             "grayscale": self.cb_gray.isChecked(),
+            "strip_exif": self.cb_strip.isChecked(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -117,6 +120,7 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             "rotate": self.cb_rotate.currentText(),
             "crop": self.cb_crop.currentText(),
             "grayscale": self.cb_gray.isChecked(),
+            "strip_exif": self.cb_strip.isChecked(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -136,6 +140,8 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_crop.setCurrentText(prefs["crop"])
         if "grayscale" in prefs:
             self.cb_gray.setChecked(bool(prefs["grayscale"]))
+        if "strip_exif" in prefs:
+            self.cb_strip.setChecked(bool(prefs["strip_exif"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
@@ -152,6 +158,7 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             p.get("watermark", ""), p.get("watermark_pos", tr("右下角", "Bottom right")),
             rotate=rotate_val, crop_mode=p.get("crop", tr("原始比例", "Original ratio")),
             grayscale=p.get("grayscale", False),
+            strip_exif=p.get("strip_exif", False),
             resize_factor=resize_factor, progress_callback=prog)
 
     def _make_task(self, f):

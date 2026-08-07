@@ -2,6 +2,13 @@
 import os
 from PIL import Image, ImageDraw, ImageFont
 
+# HEIC/HEIF 支持（iPhone 照片格式；未安装 pillow-heif 时自动降级，不影响其他格式）
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pillow_heif = None
+
 class ImageConverter:
     def __init__(self):
         self._cancel = False
@@ -51,7 +58,7 @@ class ImageConverter:
     def convert(self, input_path, output_path, quality=95, resize=None,
                 watermark_text=None, watermark_position="右下角",
                 rotate=0, crop_mode="原始比例", grayscale=False,
-                resize_factor=1.0,
+                resize_factor=1.0, strip_exif=False,
                 progress_callback=None):
         self._cancel = False
         try:
@@ -138,8 +145,19 @@ class ImageConverter:
             elif ext == '.avif':
                 # AVIF 编码依赖 pillow-avif-plugin（requirements 已加入）
                 save_kwargs['quality'] = quality
+            elif ext in ('.heic', '.heif'):
+                # HEIC 编码依赖 pillow-heif
+                save_kwargs['quality'] = quality
             elif ext == '.tiff':
                 save_kwargs['compression'] = 'tiff_lzw'
+
+            if strip_exif:
+                # 清除拍摄设备/GPS 等隐私元数据（EXIF/ICC），仅保留像素
+                img.info.pop('exif', None)
+                img.info.pop('icc_profile', None)
+                img.info.pop('photoshop', None)
+                if ext in ('.jpg', '.jpeg', '.webp'):
+                    save_kwargs['exif'] = b''
 
             img.save(output_path, **save_kwargs)
             img.close()
