@@ -188,6 +188,19 @@ class SettingsPage(ScrollArea):
         if d:
             self.services.set_pref("default_out_dir", d)
             self.card_outdir.setContent(d)
+            self._apply_outdir_to_panels(d)
+
+    def _apply_outdir_to_panels(self, directory):
+        """设置"默认输出目录"后立即应用到所有面板（覆盖面板旧自定义，
+        否则用户新设置看不到效果——面板会保留之前的选择）。"""
+        from gui_qt.widgets import OutputDirRow
+        for page in getattr(self.window, "pages", {}).values():
+            out_row = getattr(page, "out_row", None)
+            if isinstance(out_row, OutputDirRow):
+                try:
+                    out_row.set_state(OutputDirRow.MODE_CUSTOM, directory)
+                except Exception:  # noqa: BLE001
+                    pass
 
     # ── 主题 ─────────────────────────────────────
     def _build_theme(self):
