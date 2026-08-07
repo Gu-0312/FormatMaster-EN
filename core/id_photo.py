@@ -134,6 +134,10 @@ def _run_ai(arr, progress_callback=None):
         progress_callback(35, "AI 抠图：预处理…")
     # 短边 512 保持比例 bilinear（Xenova/modnet 预处理约定）
     scale = 512.0 / min(H, W)
+    nw, nh = W * scale, H * scale
+    # 长边封顶 1536：极长宽比（全景/长条图）避免推理输入过大变慢
+    if max(nw, nh) > 1536:
+        scale *= 1536.0 / max(nw, nh)
     nw, nh = int(round(W * scale)), int(round(H * scale))
     # 模型 Concat 节点要求尺寸能被 32 整除（U-Net 步幅 32）；向上对齐
     nw, nh = ((nw + 31) // 32) * 32, ((nh + 31) // 32) * 32
