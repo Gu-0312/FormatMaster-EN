@@ -11,7 +11,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
-from qfluentwidgets import FluentIcon, FluentWindow, ToolButton, isDarkTheme
+from qfluentwidgets import FluentWindow, isDarkTheme
 
 from gui_qt.components.sidebar import build_navigation
 from gui_qt.components.theme_manager import ThemeManager
@@ -67,9 +67,6 @@ class MainWindow(FluentWindow):
         self.pages = build_navigation(self, self.services, self.theme_mgr)
         self.switchTo(self.pages["home"])
 
-        # ── 管理中心入口（右上角按钮，不占侧边栏）──
-        self._setup_admin_buttons()
-
         # ── Mica 云母背景（Win11；Win10 自动跳过）──
         self._enable_mica()
 
@@ -77,30 +74,6 @@ class MainWindow(FluentWindow):
         self.tray = None
         self._force_quit = False
         self._setup_tray()
-
-    def _setup_admin_buttons(self):
-        """管理中心入口：任务/历史/设置/关于 移到窗口右上角（侧边栏不再显示）。
-
-        按钮插在标题栏窗口控制按钮左侧；点击切换到对应页面。
-        """
-        entries = [
-            ("tasks", FluentIcon.CHECKBOX, tr("任务中心", "Tasks")),
-            ("history", FluentIcon.HISTORY, tr("转换历史", "History")),
-            ("settings", FluentIcon.SETTING, tr("设置", "Settings")),
-            ("about", FluentIcon.INFO, tr("关于", "About")),
-        ]
-        tb = self.titleBar
-        idx = tb.hBoxLayout.indexOf(tb.buttonLayout)
-        self._admin_btns = []
-        # 逆序插入到控制按钮前，最终从左到右为 任务/历史/设置/关于
-        for key, icon, tip in reversed(entries):
-            btn = ToolButton(icon, tb)
-            btn.setToolTip(tip)
-            btn.setFixedSize(34, 34)
-            btn.clicked.connect(
-                lambda _=None, k=key: self.switchTo(self.pages[k]))
-            tb.hBoxLayout.insertWidget(idx, btn)
-            self._admin_btns.append(btn)
 
     def _setup_tray(self):
         """按"系统托盘"偏好创建/移除托盘图标。"""
