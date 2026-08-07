@@ -93,8 +93,8 @@ def build_navigation(window, services, theme_mgr):
         if idx > 0 and pos == prev_pos:
             nav.addSeparator(pos)
 
-        # 分组小标题（首页不显示）
-        if idx > 0:
+        # 分组小标题（首页与"管理中心"不显示——管理功能放底部无需标题）
+        if idx > 0 and not is_bottom:
             nav.addItemHeader(nav_registry.group_label(group), pos)
 
         for item in items:
