@@ -71,6 +71,10 @@ class _AdminCard(NavigationWidget):
 
     def __init__(self, parent=None):
         super().__init__(False, parent=parent)
+        # NavigationWidget.__init__ 默认 setFixedSize(40, 36)——必须解除，
+        # 否则 4 行内容会被锁死在 36px 高度里互相重叠
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
         self.setObjectName("adminCard")
         self._lay = QVBoxLayout(self)
         self._lay.setContentsMargins(6, 6, 6, 6)
@@ -78,6 +82,13 @@ class _AdminCard(NavigationWidget):
 
     def paintEvent(self, e):
         pass  # 背景交给 QSS（#adminCard）
+
+    def setCompacted(self, isCompacted: bool):
+        """卡片不参与导航紧凑尺寸控制。
+
+        库默认 setCompacted(False) 会 setFixedSize(EXPAND_WIDTH, 36) 锁死高度，
+        4 行内容会挤在 36px 里互相重叠——必须覆写为空，尺寸交给内部布局。
+        """
 
     def add_row(self, row):
         self._lay.addWidget(row)
@@ -96,7 +107,11 @@ class _AdminRow(NavigationWidget):
         self._key = key
         self.setObjectName("adminRow")
         self.setCursor(Qt.PointingHandCursor)
+        # 高度固定 34 保留；宽度解除 NavigationWidget 默认的 40px 固定，
+        # 否则展开态下行宽只有 40px，文字被挤压
         self.setFixedHeight(34)
+        self.setMinimumWidth(0)
+        self.setMaximumWidth(16777215)
         h = QHBoxLayout(self)
         h.setContentsMargins(10, 0, 10, 0)
         h.setSpacing(8)
@@ -142,7 +157,8 @@ def _make_admin_card(window, services, pages):
         if item["key"] == "tasks":
             badge_set = row.add_badge()
         card.add_row(row)
-    card.setFixedHeight(card.sizeHint().height())
+    # 注意：不能 setFixedHeight(sizeHint)——NavigationWidget 覆写 sizeHint
+    # 返回错误小值（36px），会把 4 行内容挤在一起重叠；交给布局自适应
     # 任务徽标联动：任务状态/批次完成时更新活动任务数
     try:
         from gui_qt.task_manager import PAUSED, RUNNING, WAITING
