@@ -20,30 +20,17 @@ from gui_qt.components.theme_manager import MODES
 
 
 def _admin_divider_qss():
-    """管理中心顶部悬浮分割线样式：1px 实线 + 向下渐变阴影（主题感知）。
-
-    亮色用黑色投影、暗色用白色微光；stop 0~0.10 同色形成 1px 实线，
-    之后淡出模拟 box-shadow 悬浮感。
-    """
-    if isDarkTheme():
-        top, mid, tail = ("rgba(255,255,255,0.14)",
-                          "rgba(255,255,255,0.05)",
-                          "rgba(255,255,255,0)")
-    else:
-        top, mid, tail = ("rgba(0,0,0,0.20)",
-                          "rgba(0,0,0,0.05)",
-                          "rgba(0,0,0,0)")
-    return (f"QFrame#adminDivider {{ background: qlineargradient("
-            f"x1:0, y1:0, x2:0, y2:1, "
-            f"stop:0 {top}, stop:0.10 {top}, stop:0.30 {mid}, stop:1 {tail}); "
-            f"border: none; }}")
+    """管理中心顶部普通分隔线样式：1px 细实线（主题感知，无阴影）。"""
+    color = "rgba(255,255,255,0.10)" if isDarkTheme() else "rgba(0,0,0,0.12)"
+    return (f"QFrame#adminDivider {{ border: none; "
+            f"border-top: 1px solid {color}; background: transparent; }}")
 
 
 def _make_admin_divider():
-    """创建 10px 高的悬浮分割线（插在 bottomLayout 上方）。"""
+    """创建普通分隔线（插在 bottomLayout 上方）。"""
     d = QFrame()
     d.setObjectName("adminDivider")
-    d.setFixedHeight(10)
+    d.setFixedHeight(6)
     d.setStyleSheet(_admin_divider_qss())
     return d
 
