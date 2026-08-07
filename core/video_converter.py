@@ -172,8 +172,14 @@ class VideoConverter:
                 vf_parts = []
 
             if subtitle_path and os.path.isfile(subtitle_path):
-                # 字幕烧录：转义路径中的特殊字符（FFmpeg subtitles 滤镜要求）
-                sub_escaped = subtitle_path.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                # 字幕烧录：转义滤镜特殊字符（冒号/引号/方括号/逗号等，防 Windows 路径含特殊字符崩溃）
+                sub_escaped = (subtitle_path.replace("\\", "/")
+                               .replace(":", "\\:")
+                               .replace("'", "\\'")
+                               .replace("[", "\\[")
+                               .replace("]", "\\]")
+                               .replace("%", "\\%")
+                               .replace(",", "\\,"))
                 vf_parts.append(f"subtitles='{sub_escaped}'")
 
             if vf_parts:

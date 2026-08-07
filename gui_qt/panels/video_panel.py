@@ -108,6 +108,7 @@ class VideoPanelPage(BaseQtPanel):
         sec.add_form(grid)
 
         self.cb_copy = CheckBox(tr("直接复制流（不重新编码，速度最快）", "Copy stream directly (no re-encode, fastest)"))
+        self.cb_copy.toggled.connect(self._on_copy_toggled)
         sec.add_widget(self.cb_copy)
 
         # 字幕烧录
@@ -170,12 +171,25 @@ class VideoPanelPage(BaseQtPanel):
             self, tr("选择字幕文件", "Pick subtitle file"), "",
             tr("字幕文件 (*.srt *.ass *.ssa *.vtt);;所有文件 (*)", "Subtitle files (*.srt *.ass *.ssa *.vtt);;All files (*)"))
         if path:
+            # 复制流模式不支持烧录字幕（会静默忽略），自动切回重编码
+            if self.cb_copy.isChecked():
+                self.cb_copy.setChecked(False)
+                toast.show_info(self, tr("烧录字幕需要重新编码，已自动关闭「直接复制流」",
+                                         "Burning subtitles requires re-encode, turned off copy stream"))
             self._subtitle_path = path
             name = os.path.basename(path)
             self._lbl_sub.setText(name)
         else:
             self._subtitle_path = ""
             self._lbl_sub.setText(tr("未选择字幕", "No subtitle"))
+
+    def _on_copy_toggled(self, checked):
+        """勾选「直接复制流」时，若已选字幕则清除（copy 模式无法烧录字幕）。"""
+        if checked and self._subtitle_path:
+            self._subtitle_path = ""
+            self._lbl_sub.setText(tr("未选择字幕", "No subtitle"))
+            toast.show_info(self, tr("「直接复制流」不支持烧录字幕，已清除已选字幕",
+                                     "Copy stream cannot burn subtitles, cleared subtitle selection"))
 
     def _resolve_hw_accel(self):
         """显示名 → 内部 key（与 tkinter 版 _resolve_hw_accel 一致）。"""
