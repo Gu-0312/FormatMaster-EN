@@ -25,6 +25,15 @@ BG_COLORS = {
     "白底": (255, 255, 255),
 }
 DEFAULT_COLOR = "蓝底"
+# 抠图换背景常用底色（比证件照色更多）
+CUTOUT_BG_COLORS = {
+    "白底": (255, 255, 255),
+    "蓝底": (67, 142, 219),
+    "红底": (219, 64, 64),
+    "灰底": (200, 200, 200),
+    "绿底": (0, 180, 90),
+    "黑底": (40, 40, 40),
+}
 
 # ── AI 模型相关 ─────────────────────────────────
 MODEL_DIR = os.path.join("data", "models", "idphoto")
@@ -236,6 +245,27 @@ def crop_to_size(pil_img, target, offset=0.0):
 
 
 # ── 统一入口 ────────────────────────────────────
+def _get_alpha(arr, progress_callback=None, use_ai=True):
+    """AI 人像抠图优先，失败/异常自动回退色度键。返回 (alpha, 引擎名)。"""
+    engine = ""
+    alpha = None
+    if use_ai:
+        if progress_callback:
+            progress_callback(3, "AI 人像抠图引擎…")
+        sess = _get_session(progress_callback)
+        if sess is not None:
+            alpha = _run_ai(arr, progress_callback)
+            if alpha is not None:
+                engine = "AI 人像抠图"
+    if alpha is None:
+        if progress_callback:
+            progress_callback(35, "色度键算法（兜底）…")
+        alpha = _alpha_chroma(arr)
+        if not engine:
+            engine = "色度键算法"
+    return alpha, engine
+
+
 def change_background(input_path, output_path, color=DEFAULT_COLOR,
                       progress_callback=None, use_ai=True,
                       size=None, offset=0.0):
@@ -256,22 +286,7 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
         return False
     arr = np.asarray(img, dtype=np.uint8)
 
-    engine = ""
-    alpha = None
-    if use_ai:
-        if progress_callback:
-            progress_callback(3, "AI 人像抠图引擎…")
-        sess = _get_session(progress_callback)
-        if sess is not None:
-            alpha = _run_ai(arr, progress_callback)
-            if alpha is not None:
-                engine = "AI 人像抠图"
-    if alpha is None:
-        if progress_callback:
-            progress_callback(35, "色度键算法（兜底）…")
-        alpha = _alpha_chroma(arr)
-        if not engine:
-            engine = "色度键算法"
+    alpha, engine = _get_alpha(arr, progress_callback, use_ai)
 
     if progress_callback:
         progress_callback(80, "合成新底色…")
@@ -283,6 +298,57 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
         out = crop_to_size(out, size, offset)
     try:
         out.save(output_path, quality=95)
+    except (OSError, IOError) as e:
+        if progress_callback:
+            progress_callback(-1, f"保存失败：{e}")
+        return False
+    out.close()
+    img.close()
+    if progress_callback:
+        progress_callback(100, f"完成（{engine}）")
+    return True
+
+
+def cutout_portrait(input_path, output_path, bg_color=None,
+                    progress_callback=None, use_ai=True):
+    """通用人像抠图：AI 抠出人像主体，输出透明 PNG 或贴纯色背景。
+
+    bg_color: None → 透明 PNG（带 alpha 通道）；
+              否则为 BG_COLORS / CUTOUT_BG_COLORS 的键或 (r, g, b) 元组 → 贴纯色背景。
+    返回 True/False；AI 不可用时自动回退色度键。
+    """
+    try:
+        img = Image.open(input_path).convert("RGB")
+    except (OSError, IOError):
+        if progress_callback:
+            progress_callback(-1, "错误：无法打开图片，文件可能已损坏")
+        return False
+    arr = np.asarray(img, dtype=np.uint8)
+    alpha, engine = _get_alpha(arr, progress_callback, use_ai)
+
+    if bg_color is None:
+        # 透明 PNG：RGB 原样 + alpha 通道（背景区域透明）
+        if progress_callback:
+            progress_callback(80, "生成透明 PNG…")
+        a = np.clip((alpha * 255).astype(np.uint8), 0, 255)
+        rgba = np.dstack([arr, a])
+        out = Image.fromarray(rgba, "RGBA")
+    else:
+        if isinstance(bg_color, str):
+            target = (BG_COLORS.get(bg_color)
+                      or CUTOUT_BG_COLORS.get(bg_color))
+        else:
+            target = tuple(int(c) for c in bg_color)
+        if target is None:
+            if progress_callback:
+                progress_callback(-1, f"未知背景色：{bg_color}")
+            return False
+        if progress_callback:
+            progress_callback(80, "合成新背景…")
+        out_arr = _apply_alpha(arr, alpha, target)
+        out = Image.fromarray(np.clip(out_arr, 0, 255).astype(np.uint8), "RGB")
+    try:
+        out.save(output_path)
     except (OSError, IOError) as e:
         if progress_callback:
             progress_callback(-1, f"保存失败：{e}")

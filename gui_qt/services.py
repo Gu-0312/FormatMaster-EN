@@ -8,6 +8,7 @@ from gui_qt.i18n import tr
 import time
 
 from core.audio_converter import AudioConverter
+from core.video_compress import VideoCompressor
 from core.doc_converter import DocumentConverter
 from core.image_converter import ImageConverter
 from core.video_converter import VideoConverter
@@ -43,6 +44,7 @@ class QtServices:
         self.image_conv = ImageConverter()
         self.doc_conv = DocumentConverter()
         self.ffmpeg_mgr = FFmpegManager()
+        self.video_compressor = VideoCompressor()
         self.prefs = USER_PREFS
         self.history = CONV_HISTORY
         self.stats = _HistoryStats(self.history)
