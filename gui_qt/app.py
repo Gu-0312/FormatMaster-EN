@@ -181,11 +181,15 @@ class MainWindow(FluentWindow):
     def _on_batch_done(self):
         """所有任务完成后的钩子：提示音 + 自动打开输出目录。"""
         import os
-        # 提示音
+        # 提示音：优先 Beep 直接蜂鸣（不依赖系统声音方案，方案静音也能听到）；
+        # 失败（无声卡/远程会话）再回退 MessageBeep 系统事件音。
         if self.services.get_pref("notify_sound", True):
             try:
                 import winsound
-                winsound.MessageBeep(winsound.MB_OK)
+                try:
+                    winsound.Beep(880, 180)
+                except Exception:
+                    winsound.MessageBeep(winsound.MB_OK)
             except Exception:
                 pass
         # 自动打开输出目录（取最后一个成功的输出目录）
