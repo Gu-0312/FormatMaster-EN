@@ -6,7 +6,7 @@
 """
 import os
 
-from qfluentwidgets import ComboBox, FluentIcon
+from qfluentwidgets import CheckBox, ComboBox, FluentIcon
 
 from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
@@ -66,7 +66,6 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             hint=tr("越小越精准；若字幕被截断请调大", "Smaller = more precise; enlarge if subtitles get cut off"))
         card.add_form(grid)
 
-        from PySide6.QtWidgets import CheckBox
         self.cb_auto = CheckBox(
             tr("自动检测字幕区域（推荐，适应各种视频布局）",
                "Auto-detect subtitle area (recommended, adapts to any layout)"))
