@@ -23,6 +23,7 @@ LANG_VALUES = ["chi_sim+eng", "chi_sim", "eng", "jpn", "kor", "chi_tra+eng"]
 REGION_VALUES = [tr("底部字幕区（推荐）", "Bottom (recommended)"),
                  tr("顶部字幕区", "Top"),
                  tr("全屏（会连屏幕文字一起识别）", "Full screen (may include on-screen UI text)")]
+HEIGHT_VALUES = ["10%", "15%", "20%", "25%"]
 
 
 class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
@@ -59,7 +60,10 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             hint=tr("chi_sim=中文  eng=英文  jpn=日文", "chi_sim=Chinese  eng=English  jpn=Japanese"))
         self.cb_region = grid.add_field(
             tr("字幕区域", "Subtitle area"), _combo(REGION_VALUES, REGION_VALUES[0]),
-            hint=tr("只识别底部字幕区，避免把屏幕上其他文字当字幕", "OCR the bottom area only to avoid capturing on-screen UI text"))
+            hint=tr("只识别底部字幕区，避免把屏幕上其他文字当字幕", "OCR the subtitle area only to avoid on-screen UI text"))
+        self.cb_height = grid.add_field(
+            tr("区域高度", "Area height"), _combo(HEIGHT_VALUES, "15%"),
+            hint=tr("越小越精准；若字幕被截断请调大", "Smaller = more precise; enlarge if subtitles get cut off"))
         card.add_form(grid)
         lay.addWidget(card)
 
@@ -80,6 +84,7 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             "fps": self.cb_fps.currentText(),
             "lang": self.cb_lang.currentText(),
             "region": self.cb_region.currentText(),
+            "height": self.cb_height.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -96,6 +101,8 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_lang.setCurrentText(str(prefs["lang"]))
         if prefs.get("region") in REGION_VALUES:
             self.cb_region.setCurrentText(str(prefs["region"]))
+        if prefs.get("height") in HEIGHT_VALUES:
+            self.cb_height.setCurrentText(str(prefs["height"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
@@ -109,9 +116,10 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
         region_sel = p.get("region", REGION_VALUES[0])
         region = "bottom" if region_sel == REGION_VALUES[0] else (
             "top" if region_sel == REGION_VALUES[1] else "full")
+        height = float(p.get("height", "15%").replace("%", "")) / 100.0
         return extract_subtitles(
             task.file_path, task.output_path, fps,
-            p.get("lang", "chi_sim+eng"), region, prog)
+            p.get("lang", "chi_sim+eng"), region, height, prog)
 
     def _make_task(self, f):
         params = self.collect_params()
