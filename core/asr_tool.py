@@ -25,8 +25,13 @@ ENGINE_MISSING_MSG = ("语音识别引擎（sherpa-onnx）未安装。请用项�
 
 # 中文流式 ASR 模型（sherpa-onnx 官方 zipformer transducer int8，126MB）
 MODEL_VERSION = "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30"
-MODEL_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
-             "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2")
+# 多源下载（GitHub 官方 + hf-mirror 国内镜像，逐个尝试；用户环境至少一个可达）
+MODEL_URLS = [
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+    "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2",
+    "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/"
+    "resolve/main/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2",
+]
 
 _recognizer = None
 
@@ -71,9 +76,19 @@ def download_model(progress_cb=None):
         if not os.path.isfile(archive):
             if progress_cb:
                 progress_cb(0, "下载语音模型（约 126MB，仅首次）…")
-            tmp = archive + ".part"
-            urllib.request.urlretrieve(MODEL_URL, tmp)
-            os.replace(tmp, archive)
+            last_err = None
+            for url in MODEL_URLS:
+                try:
+                    tmp = archive + ".part"
+                    urllib.request.urlretrieve(url, tmp)
+                    os.replace(tmp, archive)
+                    break
+                except Exception as e:
+                    last_err = e
+                    if progress_cb:
+                        progress_cb(0, f"源 {url.split('/')[2]} 失败，切换备用源…")
+            else:
+                raise RuntimeError(f"所有下载源均失败：{last_err}")
         if progress_cb:
             progress_cb(60, "解压模型…")
         with tarfile.open(archive, "r:bz2") as tf:
