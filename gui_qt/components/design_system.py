@@ -197,12 +197,17 @@ def group_color(name):
 
 
 def group_key_for_name(name):
-    """Resolve a navigation group name to a stable palette key."""
+    """Resolve a navigation group name to a stable palette key.
+
+    按 NAV_GROUPS 顺序显式映射（跳过首页）：转换中心→convert，
+    PDF/视频/音频/图片工具→edit，识别/实用工具→tool，下载→net，管理→manage。
+    """
     from gui_qt.nav_registry import NAV_GROUPS
-    keys = ["convert", "edit", "tool", "net", "manage"]
+    keys = ["convert", "edit", "edit", "edit", "edit",
+            "tool", "tool", "net", "manage"]
     for idx, (group_name, _items) in enumerate(NAV_GROUPS):
-        if group_name == name and 0 < idx <= len(keys):
-            return keys[idx - 1]
+        if group_name == name:
+            return keys[idx - 1] if 0 < idx <= len(keys) else "manage"
     return "manage"
 
 

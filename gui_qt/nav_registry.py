@@ -28,8 +28,11 @@ EN_TEXTS = {
 
 # 分组英文名
 GROUP_EN = {
-    tr("首页", "Home"): "Home", tr("转换中心", "Convert"): "Convert", tr("编辑处理", "Edit"): "Edit",
-    tr("智能工具", "Tools"): "Tools", tr("网络下载", "Download"): "Download", tr("管理中心", "Manage"): "Manage",
+    tr("首页", "Home"): "Home", tr("转换中心", "Convert"): "Convert",
+    tr("PDF工具", "PDF Tools"): "PDF Tools", tr("视频工具", "Video Tools"): "Video Tools",
+    tr("音频工具", "Audio Tools"): "Audio Tools", tr("图片工具", "Image Tools"): "Image Tools",
+    tr("识别工具", "Recognition"): "Recognition", tr("实用工具", "Utilities"): "Utilities",
+    tr("网络下载", "Download"): "Download", tr("管理中心", "Manage"): "Manage",
 }
 
 
@@ -76,22 +79,32 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.image_panel", "ImagePanelPage")),
         dict(key="document", text=tr("文档转换", "Document Convert"), icon=FluentIcon.DOCUMENT,
              factory=_page("gui_qt.panels.doc_panel", "DocPanelPage")),
-        dict(key="gif", text="GIF转换", icon=FluentIcon.MOVIE,
+        dict(key="gif", text=tr("GIF转换", "GIF Convert"), icon=FluentIcon.MOVIE,
              factory=_page("gui_qt.panels.gif_panel", "GifPanelPage")),
     ]),
-    (tr("编辑处理", "Edit"), [
+    (tr("PDF工具", "PDF Tools"), [
         dict(key="pdf", text="PDF处理", icon=FluentIcon.SCROLL,
              factory=_page("gui_qt.panels.pdf_panel", "PdfPanelPage")),
         dict(key="pdf_editor", text=tr("PDF编辑", "PDF Editor"), icon=FluentIcon.LIBRARY,
              factory=_page("gui_qt.panels.pdf_editor_panel", "PdfEditorPanelPage")),
+    ]),
+    (tr("视频工具", "Video Tools"), [
         dict(key="video_edit", text=tr("封面裁剪", "Cover crop"), icon=FluentIcon.EDIT,
              factory=_page("gui_qt.panels.crop_panel", "CropPanelPage")),
         dict(key="video_tools", text=tr("视频处理", "Video Tools"), icon=FluentIcon.SCROLL,
              factory=_page("gui_qt.panels.video_edit_panel", "VideoToolsPanelPage")),
         dict(key="frame_extract", text=tr("视频抽帧", "Extract frames"), icon=FluentIcon.CAMERA,
              factory=_page("gui_qt.panels.video_frame_panel", "VideoFramePanelPage")),
+        dict(key="subtitle", text=tr("字幕提取", "Subtitle"), icon=FluentIcon.LANGUAGE,
+             factory=_page("gui_qt.panels.subtitle_panel", "SubtitlePanelPage")),
+    ]),
+    (tr("音频工具", "Audio Tools"), [
         dict(key="audio_edit", text=tr("音频处理", "Audio Tools"), icon=FluentIcon.MICROPHONE,
              factory=_page("gui_qt.panels.audio_trim_panel", "AudioTrimPanelPage")),
+        dict(key="audio_enhance", text=tr("音频增强", "Audio Enhance"), icon=FluentIcon.SPEAKERS,
+             factory=_page("gui_qt.panels.audio_enhance_panel", "AudioEnhancePanelPage")),
+    ]),
+    (tr("图片工具", "Image Tools"), [
         dict(key="image_compress", text=tr("图片压缩", "Image Compress"), icon=FluentIcon.ZIP_FOLDER,
              factory=_page("gui_qt.panels.compress_img_panel", "CompressImgPanelPage")),
         dict(key="watermark", text=tr("水印处理", "Watermark Tools"), icon=FluentIcon.BRUSH,
@@ -100,18 +113,16 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.id_photo_panel", "IdPhotoPanelPage")),
         dict(key="image_merge", text=tr("图片拼接/相册", "Image Merge"), icon=FluentIcon.ALBUM,
              factory=_page("gui_qt.panels.image_merge_panel", "ImageMergePanelPage")),
-        dict(key="audio_enhance", text=tr("音频增强", "Audio Enhance"), icon=FluentIcon.SPEAKERS,
-             factory=_page("gui_qt.panels.audio_enhance_panel", "AudioEnhancePanelPage")),
-        dict(key="subtitle", text=tr("字幕提取", "Subtitle"), icon=FluentIcon.LANGUAGE,
-             factory=_page("gui_qt.panels.subtitle_panel", "SubtitlePanelPage")),
     ]),
-    (tr("智能工具", "Tools"), [
+    (tr("识别工具", "Recognition"), [
         dict(key="ocr", text=tr("OCR识别", "OCR"), icon=FluentIcon.FONT,
              factory=_page("gui_qt.panels.ocr_panel", "OcrPanelPage")),
         dict(key="table_ocr", text=tr("表格识别", "Table OCR"), icon=FluentIcon.TILES,
              factory=_page("gui_qt.panels.table_ocr_panel", "TableOcrPanelPage")),
         dict(key="format_detect", text=tr("格式检测", "Format Detect"), icon=FluentIcon.SEARCH,
              factory=_page("gui_qt.panels.detect_panel", "DetectPanelPage")),
+    ]),
+    (tr("实用工具", "Utilities"), [
         dict(key="thumbnails", text=tr("视频缩略图", "Video Thumbnails"), icon=FluentIcon.TILES,
              factory=_page("gui_qt.panels.thumbnail_panel", "ThumbnailPanelPage")),
         dict(key="qrcode", text=tr("二维码生成", "QR Generate"), icon=FluentIcon.QRCODE,

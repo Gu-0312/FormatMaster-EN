@@ -36,7 +36,7 @@
 
 每个功能面板遵循 `gui_qt/panels/` 的标准结构（参考 `base_panel.py` 与 `video_panel.py`）：
 
-1. **导航真源**：`gui_qt/nav_registry.py` 的 `NAV_GROUPS`（6 组：首页/转换中心/编辑处理/智能工具/网络下载/管理中心）。每个条目含 `key`、`text`、`icon`、`factory(window, services)`；`_page(mod, cls)` 工厂延迟导入页面类，避免循环依赖。**新增功能必须在此注册**。
+1. **导航真源**：`gui_qt/nav_registry.py` 的 `NAV_GROUPS`（10 组：首页/转换中心/PDF工具/视频工具/音频工具/图片工具/识别工具/实用工具/网络下载/管理中心）。每个条目含 `key`、`text`、`icon`、`factory(window, services)`；`_page(mod, cls)` 工厂延迟导入页面类，避免循环依赖。**新增功能必须在此注册**。
 2. **面板类**：`gui_qt/panels/<key>_panel.py` 中定义页面类，继承 `BaseQtPanel(ScrollArea)`（`gui_qt/panels/base_panel.py`），约定：
    - 类属性 `panel_key`：与 `NAV_GROUPS` 中的 key 一致（唯一导航真源）；
    - `build()`：构建 UI（构造时自动调用）；
