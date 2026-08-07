@@ -107,6 +107,16 @@ def build_navigation(window, services, theme_mgr):
 
         prev_pos = pos
 
+    # ── 管理中心页面（注册到堆栈供右上角按钮切换，但不显示在侧边栏）──
+    for item in nav_registry.ADMIN_ITEMS:
+        page = item["factory"](window, services)
+        if not page.objectName():
+            page.setObjectName(f"page_{item['key']}")
+        pages[item["key"]] = page
+        window.addSubInterface(page, item["icon"], nav_registry.label(item),
+                               NavigationItemPosition.BOTTOM)
+        window.navigationInterface.removeWidget(item["key"])
+
     # ── 键盘快捷键 Ctrl+1~9 切页 ────────────────────────
     _setup_shortcuts(window, pages.keys())
 
