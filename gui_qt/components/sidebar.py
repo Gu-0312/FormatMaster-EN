@@ -21,7 +21,7 @@ from gui_qt.components.theme_manager import MODES
 
 def _admin_divider_qss():
     """管理中心顶部普通分隔线样式：1px 细实线（主题感知，无阴影）。"""
-    color = "rgba(255,255,255,0.10)" if isDarkTheme() else "rgba(0,0,0,0.12)"
+    color = "rgba(255,255,255,0.22)" if isDarkTheme() else "rgba(0,0,0,0.28)"
     return (f"QFrame#adminDivider {{ border: none; "
             f"border-top: 1px solid {color}; background: transparent; }}")
 
