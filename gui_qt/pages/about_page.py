@@ -127,6 +127,35 @@ class AboutPage(ScrollArea):
         cl3.addLayout(btn_row)
         v.addWidget(card3)
 
+        # ── 免责声明 ─────────────────────────────────
+        card4, cl4 = self._make_card()
+        sec_title3 = BodyLabel(tr("免责声明", "Disclaimer"))
+        sec_title3.setStyleSheet(
+            f"font-size: 15px; font-weight: 700; color: {ds.ink()};")
+        cl4.addWidget(sec_title3)
+        cl4.addSpacing(4)
+
+        disclaimer = tr(
+            "1. 本软件按“现状”提供，不附带任何明示或暗示的保证（包括适销性、特定用途适用性）。\n"
+            "2. 使用本软件处理内容时，请确保你拥有相应权利，并遵守当地法律法规及版权规定。\n"
+            "3. 因使用或无法使用本软件而造成的任何直接或间接损失，开发者不承担任何责任。\n"
+            "4. 内置的 FFmpeg / yt-dlp 等第三方组件分别遵循其各自的开源许可。",
+            "1. This software is provided \"as is\", without warranty of any kind, "
+            "express or implied (including merchantability or fitness for a particular purpose).\n"
+            "2. When processing content with this software, ensure you own the rights and "
+            "comply with applicable laws and copyright regulations.\n"
+            "3. The developer shall not be liable for any direct or indirect loss arising "
+            "from the use of, or inability to use, this software.\n"
+            "4. Bundled third-party components such as FFmpeg / yt-dlp are subject to their "
+            "respective open-source licenses.")
+        lbl_disclaimer = CaptionLabel(disclaimer, self)
+        lbl_disclaimer.setWordWrap(True)
+        lbl_disclaimer.setTextFormat(Qt.PlainText)
+        lbl_disclaimer.setStyleSheet(
+            f"font-size: 12px; color: {ds.ink_sec()}; line-height: 1.6;")
+        cl4.addWidget(lbl_disclaimer)
+        v.addWidget(card4)
+
         v.addStretch(1)
 
     # ── 检查更新 ─────────────────────────────────
