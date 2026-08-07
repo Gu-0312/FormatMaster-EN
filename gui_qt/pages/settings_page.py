@@ -9,8 +9,8 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 from qfluentwidgets import (ComboBox, ExpandLayout, FluentIcon,
-                            PushSettingCard, ScrollArea, SettingCard,
-                            SettingCardGroup, SwitchSettingCard)
+                            PrimaryPushButton, PushSettingCard, ScrollArea,
+                            SettingCard, SettingCardGroup, SwitchSettingCard)
 
 from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
@@ -128,11 +128,17 @@ class SettingsPage(ScrollArea):
         self.card_tray.checkedChanged.connect(self._on_tray_changed)
         g.addSettingCard(self.card_tray)
 
-        self.card_outdir = PushSettingCard(
-            self.services.get_pref("default_out_dir", "") or tr("未设置", "Not set"),
+        # 默认输出目录：显式"浏览…"按钮选择目录，路径显示在卡片内容区
+        self.card_outdir = SettingCard(
             FluentIcon.FOLDER, tr("默认输出目录", "Default output folder"),
             tr("自定义目录不存在时会自动创建", "Auto-created if the folder does not exist"), g)
-        self.card_outdir.clicked.connect(self._pick_outdir)
+        _d = self.services.get_pref("default_out_dir", "")
+        self.card_outdir.setContent(_d or tr("未设置", "Not set"))
+        self.btn_browse_outdir = PrimaryPushButton(
+            tr("浏览…", "Browse…"), self.card_outdir)
+        self.btn_browse_outdir.clicked.connect(self._pick_outdir)
+        self.card_outdir.hBoxLayout.addWidget(
+            self.btn_browse_outdir, 0, Qt.AlignRight)
         g.addSettingCard(self.card_outdir)
 
         from gui_qt import i18n
