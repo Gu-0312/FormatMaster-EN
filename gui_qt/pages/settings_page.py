@@ -9,7 +9,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 from qfluentwidgets import (ComboBox, ExpandLayout, FluentIcon,
-                            PrimaryPushButton, PushSettingCard, ScrollArea,
+                            PushButton, PushSettingCard, ScrollArea,
                             SettingCard, SettingCardGroup, SwitchSettingCard)
 
 from gui_qt.i18n import tr
@@ -134,7 +134,7 @@ class SettingsPage(ScrollArea):
             tr("自定义目录不存在时会自动创建", "Auto-created if the folder does not exist"), g)
         _d = self.services.get_pref("default_out_dir", "")
         self.card_outdir.setContent(_d or tr("未设置", "Not set"))
-        self.btn_browse_outdir = PrimaryPushButton(
+        self.btn_browse_outdir = PushButton(
             tr("浏览…", "Browse…"), self.card_outdir)
         self.btn_browse_outdir.clicked.connect(self._pick_outdir)
         self.card_outdir.hBoxLayout.addWidget(
