@@ -67,10 +67,17 @@ def _extract_frames(video, tmp_dir, fps, progress_cb=None, cancel_check=None):
     return frames
 
 
-def _ocr_frames(frames, fps, lang, progress_cb=None, cancel_check=None):
-    """逐帧 OCR，返回 [(start_sec, end_sec, text), ...]（已合并相邻相同文本）。"""
+def _ocr_frames(frames, fps, lang, region="bottom",
+                progress_cb=None, cancel_check=None):
+    """逐帧 OCR，返回 [(start_sec, end_sec, text), ...]（已合并相邻相同文本）。
+
+    region: "bottom" 只识别画面底部字幕区（默认，避免误提屏幕上 UI 文字）、
+            "top" 顶部、"full" 全屏（会连屏幕上的其他文字一起识别）。
+    """
     from core.ocr_tool import _get_engine
     engine = _get_engine()
+    from PIL import Image
+    import numpy as np
     total = len(frames)
     entries = []
     cur_text = ""
@@ -84,7 +91,16 @@ def _ocr_frames(frames, fps, lang, progress_cb=None, cancel_check=None):
         end = (i + 1) / fps
         text = ""
         try:
-            result, _ = engine(fp)
+            img = Image.open(fp).convert("RGB")
+            w, h = img.size
+            if region == "bottom":
+                # 字幕通常位于画面底部 1/4，裁剪后 OCR 更快更准
+                img = img.crop((0, int(h * 0.72), w, h))
+            elif region == "top":
+                img = img.crop((0, 0, w, int(h * 0.28)))
+            arr = np.asarray(img)
+            img.close()
+            result, _ = engine(arr)
             if result:
                 text = "\n".join(item[1] for item in result).strip()
         except Exception:
@@ -109,10 +125,13 @@ def _ocr_frames(frames, fps, lang, progress_cb=None, cancel_check=None):
 
 
 def extract_subtitles(video, output_path, fps=1, lang="chi_sim+eng",
-                      progress_cb=None, cancel_check=None, tmp_dir=None):
+                      region="bottom", progress_cb=None, cancel_check=None,
+                      tmp_dir=None):
     """提取视频硬字幕为 .srt 文件，返回是否成功。
 
     fps: 抽帧率（每秒多少帧），越大字幕时间轴越精确但 OCR 更慢（默认 1）。
+    region: 字幕识别区域——"bottom"（底部，默认，避免误提屏幕 UI 文字）/
+            "top"（顶部）/"full"（全屏，可能连屏幕其他文字一起提取）。
     tmp_dir: 临时目录，默认系统 temp（自动创建/清理）。
     """
     import tempfile
@@ -136,7 +155,7 @@ def extract_subtitles(video, output_path, fps=1, lang="chi_sim+eng",
             return False
         if cancel_check and cancel_check():
             return False
-        entries = _ocr_frames(frames, float(fps) or 1.0, lang,
+        entries = _ocr_frames(frames, float(fps) or 1.0, lang, region,
                               progress_cb, cancel_check)
         if entries is None:
             return False

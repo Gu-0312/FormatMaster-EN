@@ -20,6 +20,9 @@ FPS_VALUES = [tr("0.5 秒/帧（最快）", "0.5s/frame (fast)"),
               tr("1 秒/帧（推荐）", "1s/frame (recommended)"),
               tr("2 秒/帧（最准）", "2s/frame (accurate)")]
 LANG_VALUES = ["chi_sim+eng", "chi_sim", "eng", "jpn", "kor", "chi_tra+eng"]
+REGION_VALUES = [tr("底部字幕区（推荐）", "Bottom (recommended)"),
+                 tr("顶部字幕区", "Top"),
+                 tr("全屏（会连屏幕文字一起识别）", "Full screen (may include on-screen UI text)")]
 
 
 class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
@@ -54,6 +57,9 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_lang = grid.add_field(
             tr("识别语言", "Language"), _combo(LANG_VALUES, "chi_sim+eng"),
             hint=tr("chi_sim=中文  eng=英文  jpn=日文", "chi_sim=Chinese  eng=English  jpn=Japanese"))
+        self.cb_region = grid.add_field(
+            tr("字幕区域", "Subtitle area"), _combo(REGION_VALUES, REGION_VALUES[0]),
+            hint=tr("只识别底部字幕区，避免把屏幕上其他文字当字幕", "OCR the bottom area only to avoid capturing on-screen UI text"))
         card.add_form(grid)
         lay.addWidget(card)
 
@@ -73,6 +79,7 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
         return {
             "fps": self.cb_fps.currentText(),
             "lang": self.cb_lang.currentText(),
+            "region": self.cb_region.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -87,6 +94,8 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_fps.setCurrentText(str(prefs["fps"]))
         if prefs.get("lang") in LANG_VALUES:
             self.cb_lang.setCurrentText(str(prefs["lang"]))
+        if prefs.get("region") in REGION_VALUES:
+            self.cb_region.setCurrentText(str(prefs["region"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
@@ -97,9 +106,12 @@ class SubtitlePanelPage(BaseQtPanel, TaskPanelMixin):
         p = task.params
         fps_sel = p.get("fps", FPS_VALUES[1])
         fps = 2 if fps_sel == FPS_VALUES[0] else (0.5 if fps_sel == FPS_VALUES[2] else 1)
+        region_sel = p.get("region", REGION_VALUES[0])
+        region = "bottom" if region_sel == REGION_VALUES[0] else (
+            "top" if region_sel == REGION_VALUES[1] else "full")
         return extract_subtitles(
             task.file_path, task.output_path, fps,
-            p.get("lang", "chi_sim+eng"), prog)
+            p.get("lang", "chi_sim+eng"), region, prog)
 
     def _make_task(self, f):
         params = self.collect_params()
