@@ -489,8 +489,14 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             return pdf_split(task.file_path, task.output_path, ranges, prog)
         if tr("提取", "Extract") in mode:
             from core.pdf_extract import pdf_extract_pages
-            em = p.get("extract_mode", tr("按范围提取", "By range"))
-            ex_mode = "each" if tr("每页", "Per page") in em else ("selected" if tr("指定", "Custom") in em else "range")
+            # 提取模式判定需兼容中英文选项（"每页一个文件"/"One file per page" 等）
+            em = (p.get("extract_mode", "") or "").lower()
+            if "each" in em or "per page" in em or "每页" in em:
+                ex_mode = "each"
+            elif "selected" in em or "specific" in em or "指定" in em:
+                ex_mode = "selected"
+            else:
+                ex_mode = "range"
             return pdf_extract_pages(task.file_path, task.output_path, ex_mode,
                                      p.get("range", ""), prog)
         if tr("加密", "Encrypt") in mode:
@@ -554,7 +560,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return
 
-        mode = self.cb_mode.currentText()
+        mode = self.cb_mode.currentRouteKey()
         params = self.collect_params()
         if tr("水印", "Watermark") in mode and not params["wm_text"]:
             toast.show_warning(self, tr("水印文字不能为空", "Watermark text cannot be empty"))
