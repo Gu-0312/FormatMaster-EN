@@ -198,10 +198,53 @@ def _apply_alpha(arr, alpha, target_rgb):
     return arr.astype(np.float32) * a + np.asarray(target_rgb, dtype=np.float32) * (1.0 - a)
 
 
+# ── 标准证件照尺寸（像素，300dpi） ──────────────
+# 键为中文名（面板直接用作下拉项），值 (宽, 高) 或 None=原尺寸
+PHOTO_SIZES = {
+    "原尺寸": None,
+    "1寸": (295, 413),
+    "小1寸": (259, 377),
+    "大1寸": (390, 567),
+    "2寸": (413, 579),
+    "3寸": (550, 840),
+}
+
+
+def crop_to_size(pil_img, target, offset=0.0):
+    """按目标比例中心裁剪（垂直偏移可调），再缩放到目标像素。
+
+    offset: -1~1，正=裁切窗口上移（保留更多顶部，人像偏下），负=下移。
+    返回新 PIL 图像；target 为 None 时原样返回。
+    """
+    if target is None:
+        return pil_img
+    tw, th = target
+    W, H = pil_img.size
+    r_src, r_tgt = W / H, tw / th
+    if abs(r_src - r_tgt) < 1e-4:  # 比例一致：直接缩放
+        return pil_img.resize((tw, th), Image.LANCZOS)
+    if r_src > r_tgt:  # 源图更宽：裁左右两侧
+        cw = int(round(H * r_tgt))
+        box = ((W - cw) // 2, 0, (W - cw) // 2 + cw, H)
+    else:  # 源图更高：裁上下，支持垂直偏移
+        ch = int(round(W / r_tgt))
+        max_off = (H - ch) / 2.0
+        cy = int(round((H - ch) / 2.0 + max_off * offset))
+        cy = max(0, min(H - ch, cy))
+        box = (0, cy, W, cy + ch)
+    return pil_img.crop(box).resize((tw, th), Image.LANCZOS)
+
+
 # ── 统一入口 ────────────────────────────────────
 def change_background(input_path, output_path, color=DEFAULT_COLOR,
-                      progress_callback=None, use_ai=True):
-    """换底色。use_ai=True 优先 AI 引擎，失败/异常自动回退色度键。"""
+                      progress_callback=None, use_ai=True,
+                      size=None, offset=0.0):
+    """换底色（可选按标准证件照尺寸裁剪缩放）。
+
+    use_ai=True 优先 AI 引擎，失败/异常自动回退色度键。
+    size: PHOTO_SIZES 的像素元组 (w, h) 或 None 不裁剪；
+    offset: 裁剪窗口垂直偏移 -1~1（正=保留更多顶部）。
+    """
     if color not in BG_COLORS:
         return False
     target = BG_COLORS[color]
@@ -234,6 +277,10 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
         progress_callback(80, "合成新底色…")
     out_arr = _apply_alpha(arr, alpha, target)
     out = Image.fromarray(np.clip(out_arr, 0, 255).astype(np.uint8), "RGB")
+    if size is not None:
+        if progress_callback:
+            progress_callback(85, f"裁剪缩放 {size[0]}×{size[1]}…")
+        out = crop_to_size(out, size, offset)
     try:
         out.save(output_path, quality=95)
     except (OSError, IOError) as e:

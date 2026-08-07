@@ -9,9 +9,10 @@ import tempfile
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QHBoxLayout, QLabel
-from qfluentwidgets import CaptionLabel, CheckBox, ComboBox, FluentIcon, PushButton
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from qfluentwidgets import CaptionLabel, CheckBox, ComboBox, FluentIcon, PushButton, Slider
 
+from core.id_photo import PHOTO_SIZES
 from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
@@ -20,6 +21,14 @@ from gui_qt.widgets import ActionBar, FileListCard, OutputDirRow
 
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".heic", ".heif"}
 BG_VALUES = [tr("蓝底", "Blue"), tr("红底", "Red"), tr("白底", "White")]
+# 证件照尺寸下拉项（显示名与 PHOTO_SIZES 键一一对应）
+SIZE_VALUES = [tr("原尺寸", "Original"),
+               tr("1寸 (295×413)", "1-inch (295×413)"),
+               tr("小1寸 (259×377)", "1-inch small (259×377)"),
+               tr("大1寸 (390×567)", "1-inch large (390×567)"),
+               tr("2寸 (413×579)", "2-inch (413×579)"),
+               tr("3寸 (550×840)", "3-inch (550×840)")]
+_SIZE_KEYS = ["原尺寸", "1寸", "小1寸", "大1寸", "2寸", "3寸"]
 
 # 预览临时输出（系统临时目录，每次覆盖）
 _PREVIEW_OUT = os.path.join(tempfile.gettempdir(), "FormatMaster_idphoto_preview.jpg")
@@ -30,16 +39,18 @@ class _PreviewWorker(QThread):
 
     sig_done = Signal(bool, str)  # (成功, 预览图路径)
 
-    def __init__(self, src, out, color, use_ai, parent=None):
+    def __init__(self, src, out, color, use_ai, size=None, offset=0.0, parent=None):
         super().__init__(parent)
         self._src, self._out = src, out
         self._color, self._use_ai = color, use_ai
+        self._size, self._offset = size, offset
 
     def run(self):
         try:
             from core.id_photo import change_background
             ok = change_background(
-                self._src, self._out, self._color, None, self._use_ai)
+                self._src, self._out, self._color, None, self._use_ai,
+                size=self._size, offset=self._offset)
             self.sig_done.emit(bool(ok), self._out if ok else "")
         except Exception:  # noqa: BLE001 - 预览失败仅提示，不打断流程
             self.sig_done.emit(False, "")
@@ -74,6 +85,27 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_bg = grid.add_field(
             tr("目标底色", "Target color"), _combo(BG_VALUES, tr("蓝底", "Blue")),
             hint=tr("蓝底/红底/白底为证件照标准底色", "Blue/red/white are standard ID photo colors"))
+        self.cb_size = grid.add_field(
+            tr("证件照尺寸", "Photo size"), _combo(SIZE_VALUES, SIZE_VALUES[0]),
+            hint=tr("1寸=2.5×3.5cm、2寸=3.5×5.3cm、3寸=5.5×8.4cm（300dpi）",
+                    "1in=2.5×3.5cm, 2in=3.5×5.3cm, 3in=5.5×8.4cm (300dpi)"))
+        # 裁剪位置（仅选尺寸时有意义）：滑块 -20~20
+        pos_row = QWidget()
+        pos_lay = QHBoxLayout(pos_row)
+        pos_lay.setContentsMargins(0, 0, 0, 0)
+        pos_lay.setSpacing(10)
+        self.sl_offset = Slider(Qt.Horizontal)
+        self.sl_offset.setRange(-20, 20)
+        self.sl_offset.setValue(0)
+        self.sl_offset.setFixedWidth(180)
+        self.lb_offset = CaptionLabel(tr("居中", "Center"))
+        pos_lay.addWidget(self.sl_offset)
+        pos_lay.addWidget(self.lb_offset)
+        pos_lay.addStretch(1)
+        grid.add_field(
+            tr("裁剪位置", "Crop position"), pos_row,
+            hint=tr("偏上保留更多头顶，偏下保留更多下巴", "Shift up to keep more headroom, down for more chin"),
+            colspan=2)
         card.add_form(grid)
         self.cb_ai = CheckBox(
             tr("AI 人像抠图（推荐，干净不误伤衣服眼睛）",
@@ -115,8 +147,13 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         self.btn_preview.clicked.connect(lambda: self._preview_file())
         self.cb_bg.currentTextChanged.connect(lambda _: self._preview_file())
         self.cb_ai.toggled.connect(lambda _: self._preview_file())
+        self.cb_size.currentIndexChanged.connect(self._on_size_changed)
+        self.sl_offset.valueChanged.connect(self._update_offset_label)
+        self.sl_offset.valueChanged.connect(lambda _: self._preview_file())
         self.file_card.files_changed.connect(lambda: self._preview_file())
         self.file_card.file_double_clicked.connect(self._preview_file)
+        # 初始状态：原尺寸时裁剪位置滑块禁用
+        self.sl_offset.setEnabled(self.cb_size.currentIndex() != 0)
 
         self.services.task_manager.register_runner(
             "id_photo", lambda task: self._runner)
@@ -127,6 +164,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         return {
             "bg": self.cb_bg.currentText(),
             "use_ai": self.cb_ai.isChecked(),
+            "size_key": self._size_key(),
+            "offset": self.sl_offset.value() / 100.0,
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -141,11 +180,32 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_bg.setCurrentText(str(prefs["bg"]))
         if "use_ai" in prefs:
             self.cb_ai.setChecked(bool(prefs["use_ai"]))
+        if prefs.get("size_key") in _SIZE_KEYS:
+            self.cb_size.setCurrentIndex(_SIZE_KEYS.index(str(prefs["size_key"])))
+        if "offset" in prefs:
+            self.sl_offset.setValue(int(round(float(prefs["offset"]) * 100)))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
 
     # ── 实时预览 ─────────────────────────────────
+    def _size_key(self) -> str:
+        idx = self.cb_size.currentIndex()
+        return _SIZE_KEYS[idx] if 0 <= idx < len(_SIZE_KEYS) else "原尺寸"
+
+    def _update_offset_label(self, v: int):
+        if v > 0:
+            self.lb_offset.setText(tr(f"偏上 {v}%", f"Up {v}%"))
+        elif v < 0:
+            self.lb_offset.setText(tr(f"偏下 {-v}%", f"Down {-v}%"))
+        else:
+            self.lb_offset.setText(tr("居中", "Center"))
+
+    def _on_size_changed(self, idx: int):
+        # 原尺寸无需裁剪位置
+        self.sl_offset.setEnabled(idx != 0)
+        self._preview_file()
+
     def _preview_file(self, path=None):
         """预览指定文件；缺省取当前选中行，再取列表第一张。"""
         if self._pv_worker and self._pv_worker.isRunning():
@@ -163,7 +223,9 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         self._pv_status_text(tr("预览中…", "Previewing…"))
         self._pv_worker = _PreviewWorker(
             path, _PREVIEW_OUT,
-            self.cb_bg.currentText(), self.cb_ai.isChecked())
+            self.cb_bg.currentText(), self.cb_ai.isChecked(),
+            size=PHOTO_SIZES.get(self._size_key()),
+            offset=self.sl_offset.value() / 100.0)
         self._pv_worker.sig_done.connect(self._on_preview_done)
         self._pv_worker.start()
 
@@ -197,7 +259,9 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         return change_background(
             task.file_path, task.output_path,
             task.params.get("bg", tr("蓝底", "Blue")), prog,
-            use_ai=task.params.get("use_ai", True))
+            use_ai=task.params.get("use_ai", True),
+            size=PHOTO_SIZES.get(task.params.get("size_key", "原尺寸")),
+            offset=task.params.get("offset", 0.0))
 
     def _make_task(self, f):
         params = self.collect_params()
