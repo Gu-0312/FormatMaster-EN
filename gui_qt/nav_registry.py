@@ -143,18 +143,16 @@ NAV_GROUPS = [
         dict(key="m3u8", text=tr("M3U8下载", "M3U8 Download"), icon=FluentIcon.LINK,
              factory=_page("gui_qt.panels.m3u8_panel", "M3u8PanelPage")),
     ]),
-]
-
-# 管理中心：不占功能分组，渲染为侧边栏底部的独立卡片（ADMIN_ITEMS）
-ADMIN_ITEMS = [
-    dict(key="tasks", text=tr("任务中心", "Tasks"), icon=FluentIcon.CHECKBOX,
-         factory=_page("gui_qt.pages.task_page", "TaskPage")),
-    dict(key="history", text=tr("转换历史", "History"), icon=FluentIcon.HISTORY,
-         factory=_page("gui_qt.pages.history_page", "HistoryPage")),
-    dict(key="settings", text=tr("设置", "Settings"), icon=FluentIcon.SETTING,
-         factory=_page("gui_qt.pages.settings_page", "SettingsPage")),
-    dict(key="about", text=tr("关于", "About"), icon=FluentIcon.INFO,
-         factory=_page("gui_qt.pages.about_page", "AboutPage")),
+    (tr("管理中心", "Manage"), [
+        dict(key="tasks", text=tr("任务中心", "Tasks"), icon=FluentIcon.CHECKBOX,
+             factory=_page("gui_qt.pages.task_page", "TaskPage")),
+        dict(key="history", text=tr("转换历史", "History"), icon=FluentIcon.HISTORY,
+             factory=_page("gui_qt.pages.history_page", "HistoryPage")),
+        dict(key="settings", text=tr("设置", "Settings"), icon=FluentIcon.SETTING,
+             factory=_page("gui_qt.pages.settings_page", "SettingsPage")),
+        dict(key="about", text=tr("关于", "About"), icon=FluentIcon.INFO,
+             factory=_page("gui_qt.pages.about_page", "AboutPage")),
+    ]),
 ]
 
 
