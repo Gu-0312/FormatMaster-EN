@@ -139,6 +139,33 @@ def get_user_prefs_path():
     return os.path.join(get_user_data_dir(), "user_prefs.json")
 
 
+def _atomic_write_json(path, data):
+    """健壮的 JSON 原子写：tmp + replace，瞬时占用（多实例/杀软锁定）时
+    重试 3 次，仍失败则降级直接写原文件（避免丢失本次保存）。"""
+    import json
+    import time as _time
+    tmp = path + ".tmp"
+    last_err = None
+    for attempt in range(3):
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, path)
+            return True
+        except OSError as e:
+            last_err = e
+            _time.sleep(0.15 * (attempt + 1))
+    # 降级：直接写原文件（非原子，但能保存数据；目标文件被占用时放弃）
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except OSError as e:
+        last_err = e
+    print(f"[WARN] 保存用户偏好失败（已重试）：{last_err}")
+    return False
+
+
 class UserPrefs:
     def __init__(self):
         self.prefs = {}
@@ -165,14 +192,7 @@ class UserPrefs:
     
     def _save(self):
         path = get_user_prefs_path()
-        try:
-            import json
-            tmp = path + ".tmp"
-            with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(self.prefs, f, indent=2, ensure_ascii=False)
-            os.replace(tmp, path)
-        except Exception as e:
-            print(f"[WARN] 保存用户偏好失败: {e}")
+        _atomic_write_json(path, self.prefs)
     
     def get(self, panel, key, default=None):
         with self._lock:
@@ -227,14 +247,7 @@ class ConversionHistory:
 
     def _save(self):
         path = get_history_path()
-        try:
-            import json
-            tmp = path + ".tmp"
-            with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(self.records, f, indent=2, ensure_ascii=False)
-            os.replace(tmp, path)
-        except Exception as e:
-            print(f"[WARN] 保存转换历史失败: {e}")
+        _atomic_write_json(path, self.records)
 
     def add(self, record: dict):
         """添加一条历史记录"""
