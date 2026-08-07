@@ -8,8 +8,8 @@
 - 键盘快捷键 Ctrl+1~9 切页
 - 右键菜单：收藏/固定/关闭
 """
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import Qt, QPoint, QRect, QRectF
+from PySide6.QtGui import QAction, QColor, QCursor, QKeySequence, QPainter
 from PySide6.QtWidgets import QMenu
 from qfluentwidgets import (FluentIcon, NavigationItemPosition,
                             TransparentToolButton)
@@ -17,6 +17,64 @@ from qfluentwidgets import (FluentIcon, NavigationItemPosition,
 from gui_qt import nav_registry
 from gui_qt.i18n import tr
 from gui_qt.components.theme_manager import MODES
+
+
+def _patch_compact_nav_paint():
+    """让导航项图标/文字更紧凑（monkey-patch NavigationPushButton.paintEvent）。
+
+    qfluentwidgets 库内硬编码：图标 x=11.5、文字 left=44（Fluent 标准间距）。
+    本项目整体收窄后留白仍宽，故把图标左移到 7、文字起点压到 32，
+    使导航项内容紧凑、右侧留白最小。仅修改绘制常量，逻辑与原版一致。
+    """
+    try:
+        import qfluentwidgets.components.navigation.navigation_widget as _nw
+        from qfluentwidgets.common.color import autoFallbackThemeColor
+        from qfluentwidgets.common.config import isDarkTheme
+        from qfluentwidgets.common.icon import drawIcon
+
+        _orig_paint = _nw.NavigationPushButton.paintEvent
+
+        def _compact_paint(self, e):
+            painter = QPainter(self)
+            painter.setRenderHints(
+                QPainter.Antialiasing | QPainter.TextAntialiasing |
+                QPainter.SmoothPixmapTransform)
+            painter.setPen(Qt.NoPen)
+            if self.isPressed:
+                painter.setOpacity(0.7)
+            if not self.isEnabled():
+                painter.setOpacity(0.4)
+            c = 255 if isDarkTheme() else 0
+            m = self._margins()
+            pl, pr = m.left(), m.right()
+            globalRect = QRect(self.mapToGlobal(QPoint()), self.size())
+            if self._canDrawIndicator():
+                painter.setBrush(QColor(c, c, c, 6 if self.isEnter else 10))
+                painter.drawRoundedRect(self.rect(), 5, 5)
+                painter.setBrush(autoFallbackThemeColor(
+                    self.lightIndicatorColor, self.darkIndicatorColor))
+                painter.drawRoundedRect(self.indicatorRect(), 1.5, 1.5)
+            elif ((self.isEnter and globalRect.contains(QCursor.pos()))
+                  or self.isAboutSelected) and self.isEnabled():
+                painter.setBrush(QColor(c, c, c, 6 if self.isAboutSelected else 10))
+                painter.drawRoundedRect(self.rect(), 5, 5)
+            # 紧凑：图标 11.5 → 7，文字 44 → 32
+            drawIcon(self._icon, painter, QRectF(7 + pl, 10, 16, 16))
+            if self.isCompacted:
+                return
+            painter.setFont(self.font())
+            painter.setPen(self.textColor())
+            left = 32 + pl if not self.icon().isNull() else pl + 10
+            painter.drawText(
+                QRectF(left, 0, self.width() - 13 - left - pr,
+                       self.height()), Qt.AlignVCenter, self.text())
+
+        _nw.NavigationPushButton.paintEvent = _compact_paint
+    except Exception:  # noqa: BLE001 - 补丁失败不阻塞启动（回退默认间距）
+        pass
+
+
+_patch_compact_nav_paint()
 
 
 def build_navigation(window, services, theme_mgr):
@@ -90,8 +148,8 @@ def build_navigation(window, services, theme_mgr):
     panel.bottomLayout.setSpacing(1)
     panel.scrollLayout.setSpacing(1)
     panel.expandAni.setDuration(200)  # 展开/折叠动画 200ms
-    # 展开宽度 322 → 280：侧边栏整体收窄，减少文字右侧留白
-    nav.setExpandWidth(280)
+    # 展开宽度 322 → 200：配合导航项紧凑绘制（图标/文字左移），留白最小化
+    nav.setExpandWidth(180)
 
     return pages
 
