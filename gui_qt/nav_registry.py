@@ -82,6 +82,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.doc_panel", "DocPanelPage")),
         dict(key="gif", text=tr("GIF转换", "GIF Convert"), icon=FluentIcon.MOVIE,
              factory=_page("gui_qt.panels.gif_panel", "GifPanelPage")),
+        dict(key="scene", text=tr("场景化转换", "Scene Convert"), icon=FluentIcon.CAMERA,
+             factory=_page("gui_qt.panels.scene_panel", "ScenePanelPage")),
     ]),
     (tr("PDF工具", "PDF Tools"), [
         dict(key="pdf", text="PDF处理", icon=FluentIcon.SCROLL,
@@ -100,6 +102,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.video_frame_panel", "VideoFramePanelPage")),
         dict(key="subtitle", text=tr("字幕提取", "Subtitle"), icon=FluentIcon.LANGUAGE,
              factory=_page("gui_qt.panels.subtitle_panel", "SubtitlePanelPage")),
+        dict(key="video_unwarp", text=tr("视频反挤压", "Unwarp Video"), icon=FluentIcon.MEDIA,
+             factory=_page("gui_qt.panels.video_unwarp_panel", "VideoUnwarpPanelPage")),
     ]),
     (tr("音频工具", "Audio Tools"), [
         dict(key="audio_edit", text=tr("音频处理", "Audio Tools"), icon=FluentIcon.MICROPHONE,
@@ -116,6 +120,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.id_photo_panel", "IdPhotoPanelPage")),
         dict(key="image_merge", text=tr("图片拼接/相册", "Image Merge"), icon=FluentIcon.ALBUM,
              factory=_page("gui_qt.panels.image_merge_panel", "ImageMergePanelPage")),
+        dict(key="phantom", text=tr("幻影坦克", "Phantom Tank"), icon=FluentIcon.HIDE,
+             factory=_page("gui_qt.panels.phantom_panel", "PhantomPanelPage")),
     ]),
     (tr("识别工具", "Recognition"), [
         dict(key="ocr", text=tr("OCR识别", "OCR"), icon=FluentIcon.FONT,
@@ -124,6 +130,8 @@ NAV_GROUPS = [
              factory=_page("gui_qt.panels.table_ocr_panel", "TableOcrPanelPage")),
         dict(key="format_detect", text=tr("格式检测", "Format Detect"), icon=FluentIcon.SEARCH,
              factory=_page("gui_qt.panels.detect_panel", "DetectPanelPage")),
+        dict(key="mediainfo", text=tr("媒体信息", "Media Info"), icon=FluentIcon.INFO,
+             factory=_page("gui_qt.panels.mediainfo_panel", "MediaInfoPanelPage")),
     ]),
     (tr("实用工具", "Utilities"), [
         dict(key="thumbnails", text=tr("视频缩略图", "Video Thumbnails"), icon=FluentIcon.TILES,

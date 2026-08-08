@@ -25,6 +25,18 @@ def _duration_of(path):
     return 0.0
 
 
+def _has_audio_stream(path):
+    """视频是否含音频流（filter_complex 引用 [0:a] 前必须确认）。"""
+    try:
+        info = get_ffprobe_raw(path)
+        if info and info.get("streams"):
+            return any(s.get("codec_type") == "audio"
+                       for s in info["streams"])
+    except Exception:
+        pass
+    return False
+
+
 def _run(args, duration, label, progress_cb, cancel_check=None):
     """启动 ffmpeg 并读取进度，返回 bool。"""
     ffmpeg = get_ffmpeg_path()
@@ -48,14 +60,29 @@ def _run(args, duration, label, progress_cb, cancel_check=None):
 
 
 def clip_video(input_path, output_path, start_sec=None, end_sec=None,
-               progress_cb=None, cancel_check=None):
+               progress_cb=None, cancel_check=None, vf=None):
     """截取视频片段。start_sec/end_sec 为秒数（None 表示不限）。
 
     流复制优先（快），若失败自动降级为重编码。
+    vf: 视频滤镜串（如 "transpose=1,hflip" / "eq=brightness=0.1"），
+        非空时直接走重编码路径（流复制无法应用滤镜）。
     """
     duration = _duration_of(input_path)
     seg = (end_sec or duration) - (start_sec or 0.0)
     seg = max(seg, 1.0)
+
+    # 带滤镜 → 必须重编码
+    if vf:
+        args = []
+        if start_sec:
+            args += ["-ss", str(float(start_sec))]
+        args += ["-i", input_path]
+        if end_sec:
+            args += ["-to", str(float(end_sec))]
+        args += ["-vf", vf, "-c:v", "libx264", "-preset", "fast",
+                 "-c:a", "aac", "-map_metadata", "0", output_path]
+        return _run(args, seg, "剪辑中", progress_cb, cancel_check)
+
     args = []
     if start_sec:
         args += ["-ss", str(float(start_sec))]
@@ -144,14 +171,19 @@ def change_speed(input_path, output_path, rate, progress_cb=None,
     if rate <= 0:
         rate = 1.0
     duration = _duration_of(input_path) / rate or 1.0
-    args = ["-i", input_path,
-            "-filter_complex",
-            f"[0:v]setpts=PTS/{rate}[v];[0:a]atempo={max(rate, 0.5)}[a]"
-            if 0.5 <= rate <= 2.0 else
-            f"[0:v]setpts=PTS/{rate}[v];[0:a]atempo={rate}[a]",
-            "-map", "[v]", "-map", "[a]",
-            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac",
-            "-map_metadata", "0", output_path]
+    # 无音轨视频不能引用 [0:a]（否则 FFmpeg 报流不存在）
+    has_audio = _has_audio_stream(input_path)
+    if has_audio:
+        fc = (f"[0:v]setpts=PTS/{rate}[v];[0:a]atempo={max(rate, 0.5)}[a]"
+              if 0.5 <= rate <= 2.0 else
+              f"[0:v]setpts=PTS/{rate}[v];[0:a]atempo={rate}[a]")
+        maps = ["-map", "[v]", "-map", "[a]"]
+    else:
+        fc = f"[0:v]setpts=PTS/{rate}[v]"
+        maps = ["-map", "[v]"]
+    args = ["-i", input_path, "-filter_complex", fc, *maps,
+            "-c:v", "libx264", "-preset", "fast",
+            "-c:a", "aac", "-map_metadata", "0", output_path]
     return _run(args, duration, "变速处理中", progress_cb, cancel_check)
 
 

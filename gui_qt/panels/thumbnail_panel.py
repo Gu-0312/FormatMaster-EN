@@ -64,7 +64,22 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         self.action_bar = ActionBar(tr("开始生成", "Generate"))
         lay.addWidget(self.action_bar)
 
+        # 结果网格：完成后显示生成的缩略图网格图
+        from gui_qt.components.visual_widgets import FrameGrid
+        self.thumb_grid = FrameGrid()
+        self.thumb_grid.setFixedHeight(86)
+        lay.addWidget(self.thumb_grid)
+
         self._wire_tasks()
+
+    # ── 结果刷新 ────────────────────────────────
+    def _on_state(self, task_id, state):
+        super()._on_state(task_id, state)
+        if state != tm.SUCCESS:
+            return
+        task = self.services.task_manager.get_task(task_id)
+        if task and os.path.isfile(task.output_path):
+            self.thumb_grid.set_images([task.output_path])
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:

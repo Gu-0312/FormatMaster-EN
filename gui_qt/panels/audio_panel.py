@@ -238,6 +238,8 @@ class AudioPanelPage(BaseQtPanel):
 
     def _on_state(self, task_id, state):
         row = self._task_rows.get(task_id)
+        if not row:
+            return
         if row:
             _file, idx = row
             if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):

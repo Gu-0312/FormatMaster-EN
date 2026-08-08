@@ -91,13 +91,15 @@ class TaskPanelMixin:
 
     def _on_state(self, task_id, state):
         row = self._task_rows.get(task_id)
-        if row:
-            _file, idx = row
-            if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
-                # 终态：移除行内进度条，改为显示状态文字（成功/失败/取消）
-                self.file_card.set_row_progress(idx, -1,
-                                                tm.state_text(state))
-            self.file_card.set_row_state(idx, tm.state_text(state))
+        if not row:
+            # 非本面板提交的任务：不弹通知（多个面板共享 TaskManager）
+            return
+        _file, idx = row
+        if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
+            # 终态：移除行内进度条，改为显示状态文字（成功/失败/取消）
+            self.file_card.set_row_progress(idx, -1,
+                                            tm.state_text(state))
+        self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
         if state == tm.SUCCESS and task:
             toast.show_success(self, tr("处理完成：{}", "Done: {}").format(os.path.basename(task.file_path)))

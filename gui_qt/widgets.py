@@ -182,6 +182,7 @@ class FileListCard(Card):
     def files(self):
         return [self.table.item(r, 0).text() for r in range(self.table.rowCount())]
 
+
     def clear_files(self):
         if self.table.rowCount() == 0:
             return
@@ -203,6 +204,36 @@ class FileListCard(Card):
             self.table.removeRow(row)
             self._refresh_count()
             self.files_changed.emit()
+
+    def reorder(self, new_order):
+        """按新路径顺序重建表格行（保持各行原有大小/方向列）。
+
+        用于可视化拖拽排序后同步文件顺序；new_order 为完整路径列表。
+        """
+        cur = self.files()
+        if list(new_order) == cur:
+            return
+        rows = {}
+        for r, path in enumerate(cur):
+            rows[path] = {
+                "size": (self.table.item(r, 1).text()
+                         if self.table.item(r, 1) else ""),
+                "dir": (self.table.item(r, 2).text()
+                        if self.table.item(r, 2) else ""),
+                "state": (self.table.item(r, 3).text()
+                          if self.table.item(r, 3) else ""),
+            }
+        self.table.setRowCount(0)
+        for path in new_order:
+            info = rows.get(path, {"size": "", "dir": "", "state": ""})
+            self._add_row(path)
+            r = self.table.rowCount() - 1
+            for c, key in ((1, "size"), (2, "dir"), (3, "state")):
+                item = self.table.item(r, c)
+                if item:
+                    item.setText(info[key])
+        self._refresh_count()
+        self.files_changed.emit()
 
     # ── 交互：Delete 键 / 右键菜单 ───────────────
     def _on_key(self, e):

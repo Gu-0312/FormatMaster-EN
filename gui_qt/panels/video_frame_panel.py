@@ -6,8 +6,10 @@
 """
 import os
 
-from qfluentwidgets import (ComboBox, FluentIcon)
+from PySide6.QtWidgets import QHBoxLayout, QWidget
+from qfluentwidgets import (ComboBox, FluentIcon, PushButton)
 
+from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -55,6 +57,21 @@ class VideoFramePanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_form(grid)
         lay.addWidget(card)
 
+        # 取景器入口：预览 + 时间轴定位，一键导出单帧
+        picker_row = QWidget()
+        h = QHBoxLayout(picker_row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        self.btn_picker = PushButton(
+            FluentIcon.CAMERA, tr("打开取景器", "Open Frame Picker"))
+        self.btn_picker.setToolTip(
+            tr("在独立窗口中预览视频、拖动时间轴定位，一键导出当前帧",
+               "Preview video, drag the timeline, export any frame"))
+        self.btn_picker.clicked.connect(self._open_picker)
+        h.addWidget(self.btn_picker)
+        h.addStretch(1)
+        lay.addWidget(picker_row)
+
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         lay.addWidget(self.out_row)
@@ -62,10 +79,47 @@ class VideoFramePanelPage(BaseQtPanel, TaskPanelMixin):
         self.action_bar = ActionBar(tr("开始抽帧", "Extract"))
         lay.addWidget(self.action_bar)
 
+        # 帧网格预览：完成后多行显示抽出的帧（点击可看）
+        from gui_qt.components.visual_widgets import FrameGrid
+        self.frame_grid = FrameGrid()
+        self.frame_grid.set_cell_size(110, 74)
+        lay.addWidget(self.frame_grid)
+
         # 注册 runner 工厂：持久化恢复的任务可在此面板上下文重建执行器
         self.services.task_manager.register_runner(
             "frame_extract", lambda task: self._runner)
         self._wire_tasks()
+
+    # ── 帧网格刷新 ──────────────────────────────
+    def _on_state(self, task_id, state):
+        super()._on_state(task_id, state)
+        if state != tm.SUCCESS:
+            return
+        task = self.services.task_manager.get_task(task_id)
+        if not task:
+            return
+        import glob
+        out_dir = os.path.dirname(task.output_path)
+        paths = sorted(glob.glob(os.path.join(out_dir, "frame_*")))
+        if paths:
+            self.frame_grid.set_images(paths)
+
+    # ── 取景器 ──────────────────────────────────
+    def _open_picker(self):
+        """打开独立取景器；导出的帧刷新网格预览。"""
+        files = self.file_card.files()
+        if not files:
+            from gui_qt.components import toast
+            toast.show_warning(self, tr("请先添加要抽帧的视频",
+                                        "Add a video first"))
+            return
+        from gui_qt.components.frame_picker import FramePickerDialog
+        dlg = FramePickerDialog(
+            files[0], out_dir=self.out_row.resolve_dir(files[0]), parent=self)
+        dlg.exec()
+        paths = dlg.export_paths()
+        if paths:
+            self.frame_grid.set_images(paths)
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:

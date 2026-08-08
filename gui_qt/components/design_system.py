@@ -12,7 +12,7 @@
 """
 from gui_qt.i18n import tr
 from PySide6.QtCore import (QEasingCurve, QPointF, QPropertyAnimation,
-                            Qt, QRectF)
+                            Qt, QRectF, QTimer)
 from PySide6.QtGui import (QBrush, QColor, QFont, QLinearGradient, QPainter,
                             QPen, QPainterPath)
 from PySide6.QtWidgets import (QApplication, QGraphicsDropShadowEffect,
@@ -22,6 +22,13 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, TitleLabel,
                             isDarkTheme, setThemeColor)
 
 # ─────────────────────────────────────────────────────
+#  令牌边界（重要）
+# ─────────────────────────────────────────────────────
+# 本文件 LIGHT / DARK 是 Qt 界面唯一色彩/样式真源。
+# app/theme.py 为 tkinter 遗留层（已无代码引用，仅 build.py 打包保留），
+# 禁止作为新样式来源；新面板/新组件一律从本模块取令牌，不得硬编码颜色。
+
+# ─────────────────────────────────────────────────────
 #  圆角规范（全站统一两档）
 # ─────────────────────────────────────────────────────
 # RADIUS_CARD  = 12   卡片/表面类（面板、表格、列表、日志框、ActionBar）
@@ -29,6 +36,19 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, TitleLabel,
 # 小元素保留：滚动条 8、进度条 4、工具提示 6、图标方块按需
 RADIUS_CARD = 12
 RADIUS_CTRL = 8
+
+# ─────────────────────────────────────────────────────
+#  字体层级（全站统一；不引入外部字体文件，用字重/字号制造层次）
+# ─────────────────────────────────────────────────────
+FONT_BODY = "Microsoft YaHei UI"          # 正文（中文友好，系统自带）
+FONT_MONO = "Cascadia Code, Consolas, Microsoft YaHei UI"  # 代码/路径/日志
+# 字号阶梯（px）
+FONT_DISPLAY = 27    # Hero 主标题
+FONT_H1 = 20         # 页面大标题
+FONT_H2 = 16         # 区块/卡片标题
+FONT_BODY_SZ = 13    # 正文默认
+FONT_CAPTION = 12    # 辅助说明/状态
+
 
 # ─────────────────────────────────────────────────────
 #  色彩令牌
@@ -120,6 +140,8 @@ GROUP_COLORS = {
     "video":   ("#0284C7", "#E0F2FE"),
     "image":   ("#0FA47A", "#DDF5EC"),
     "doc":     ("#D98324", "#FEF1DE"),
+    "ocr":     ("#DB2777", "#FCE7F3"),
+    "utility": ("#6366F1", "#E0E7FF"),
 }
 GROUP_COLORS_DARK = {
     "media":  ("#8B8CF8", "#252747"),
@@ -132,6 +154,8 @@ GROUP_COLORS_DARK = {
     "video":   ("#38BDF8", "#082F49"),
     "image":   ("#2FC99A", "#0D2A20"),
     "doc":     ("#F0A63A", "#2A1A0A"),
+    "ocr":     ("#F472B6", "#3B0D24"),
+    "utility": ("#818CF8", "#1E1B4B"),
 }
 
 
@@ -180,6 +204,7 @@ def ink_dis():
     return tokens()["ink_dis"]
 
 
+
 def prism_colors():
     """当前主题的棱镜渐变色列表。"""
     return PRISM_DARK if isDarkTheme() else PRISM_LIGHT
@@ -199,12 +224,13 @@ def group_color(name):
 def group_key_for_name(name):
     """Resolve a navigation group name to a stable palette key.
 
-    按 NAV_GROUPS 顺序显式映射（跳过首页）：转换中心→convert，
-    PDF/视频/音频/图片工具→edit，识别/实用工具→tool，下载→net，管理→manage。
+    按 NAV_GROUPS 顺序显式映射（跳过首页，idx1..9 → keys 0..8）：
+    转换中心→convert、PDF工具→doc、视频工具→video、音频工具→audio、
+    图片工具→image、识别工具→ocr、实用工具→utility、下载→net、管理→manage。
     """
     from gui_qt.nav_registry import NAV_GROUPS
-    keys = ["convert", "edit", "edit", "edit", "edit",
-            "tool", "tool", "net", "manage"]
+    keys = ["convert", "doc", "video", "audio", "image",
+            "ocr", "utility", "net", "manage"]
     for idx, (group_name, _items) in enumerate(NAV_GROUPS):
         if group_name == name:
             return keys[idx - 1] if 0 < idx <= len(keys) else "manage"
@@ -881,7 +907,7 @@ class _HeroPipeline(QWidget):
                    QPointF(xs[0] + card_w // 2, ys[1] - 1))
 
         # 四个格式卡片
-        font = QFont("Microsoft YaHei UI", 11)
+        font = QFont(FONT_BODY, 11)
         font.setBold(True)
         p.setFont(font)
         for i, (x, y) in enumerate(((xs[0], ys[0]), (xs[1], ys[0]),
@@ -943,6 +969,12 @@ class HeroBanner(QWidget):
         self._orb2 = QPointF(0, 0)
         self._orb3 = QPointF(0, 0)
 
+        # 棱镜流动动效：色标微移 + 光斑缓慢漂移（ambient 动画，可见时运行）
+        self._t = 0.0
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(33)  # ~30fps
+        self._anim_timer.timeout.connect(self._on_anim_tick)
+
         # 背景为固定深色渐变，文字必须恒为白色。qfluentwidgets 主题切换会
         # 重置其控件的样式表，导致浅色模式下 TitleLabel/CaptionLabel 变回
         # 默认深色文字。themeChangedFinished 在 qfluentwidgets 控件刷新
@@ -978,6 +1010,7 @@ class HeroBanner(QWidget):
         self.subtitle_label.setText(subtitle)
 
     def paintEvent(self, e):
+        import math
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect()
@@ -986,25 +1019,48 @@ class HeroBanner(QWidget):
         path.addRoundedRect(QRectF(rect), 16, 16)
         painter.setClipPath(path)
 
-        # 棱镜渐变背景
+        t = self._t
+        # 棱镜渐变背景：色标随 t 微移（幅度 4%），形成缓慢流动感
         grad = QLinearGradient(0, 0, rect.width(), 0)
+        s = math.sin(t) * 0.04
         grad.setColorAt(0.0, QColor("#4444C7"))
-        grad.setColorAt(0.35, QColor("#7C3AED"))
-        grad.setColorAt(0.65, QColor("#C026D3"))
+        grad.setColorAt(0.35 + s, QColor("#7C3AED"))
+        grad.setColorAt(0.65 + s * 0.6, QColor("#C026D3"))
         grad.setColorAt(1.0, QColor("#DB2777"))
         painter.fillRect(rect, grad)
 
-        # 装饰光斑
+        # 装饰光斑：位置随 t 缓慢漂移（低调、有生命感）
         painter.setPen(Qt.NoPen)
+        w, h = rect.width(), rect.height()
         painter.setBrush(QColor(255, 255, 255, 20))
-        painter.drawEllipse(QPointF(rect.width() * 0.88, 18), 76, 76)
+        painter.drawEllipse(
+            QPointF(w * (0.88 + 0.02 * math.sin(t)), 18 + 6 * math.cos(t * 1.3)),
+            76, 76)
         painter.setBrush(QColor(255, 255, 255, 12))
-        painter.drawEllipse(QPointF(rect.width() * 0.96, rect.height() - 14),
-                            54, 54)
+        painter.drawEllipse(
+            QPointF(w * (0.96 + 0.015 * math.cos(t * 0.9)), h - 14 + 5 * math.sin(t * 0.7)),
+            54, 54)
         painter.setBrush(QColor(255, 255, 255, 10))
-        painter.drawEllipse(QPointF(rect.width() * 0.52, -10), 46, 46)
+        painter.drawEllipse(
+            QPointF(w * (0.52 - 0.03 * math.sin(t * 0.8)), -10 + 4 * math.cos(t)),
+            46, 46)
 
         painter.end()
+
+    def _on_anim_tick(self):
+        """驱动流动：更新相位并重绘。"""
+        self._t += 0.02
+        self.update()
+
+    def showEvent(self, e):
+        """可见时才运行动画，避免后台空转耗电。"""
+        super().showEvent(e)
+        if not self._anim_timer.isActive():
+            self._anim_timer.start()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._anim_timer.stop()
 
     def update_orb_positions(self):
         w = self.width()

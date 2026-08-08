@@ -62,12 +62,28 @@ class ImageMergePanelPage(BaseQtPanel, TaskPanelMixin):
         self.out_row.bind_file_list(self.file_card)
         lay.addWidget(self.out_row)
 
+        # 拼版预览：多行缩略图，可拖动图片换位（实时同步文件顺序）
+        from gui_qt.components.visual_widgets import FrameGrid
+        self.merge_grid = FrameGrid()
+        self.merge_grid.set_cell_size(120, 84)
+        lay.addWidget(self.merge_grid)
+        self.file_card.files_changed.connect(self._refresh_grid)
+        self.merge_grid.order_changed.connect(self._on_grid_reorder)
+
         self.action_bar = ActionBar(tr("开始处理", "Start"))
         lay.addWidget(self.action_bar)
 
         self.services.task_manager.register_runner(
             "image_merge", lambda task: self._runner)
         self._wire_tasks()
+
+    def _refresh_grid(self):
+        """文件变化 → 刷新拼版预览网格。"""
+        self.merge_grid.set_images(self.file_card.files())
+
+    def _on_grid_reorder(self, new_order):
+        """拖拽换位 → 同步文件列表顺序（拼接按此顺序输出）。"""
+        self.file_card.reorder(new_order)
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:

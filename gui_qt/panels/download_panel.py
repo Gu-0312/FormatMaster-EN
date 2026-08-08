@@ -118,22 +118,27 @@ class DownloadPanelPage(BaseQtPanel):
         lay.addWidget(card)
 
         # 设置区
+        from gui_qt.components.form_widgets import CollapsibleSection
         set_card = FormSection(tr("下载设置", "Download settings"), FluentIcon.DOWNLOAD)
-        grid = FormGrid(columns=3)
+        adv = CollapsibleSection(
+            tr("高级设置", "Advanced"),
+            hint=tr("Cookie / 代理 / 限速 / 请求头 / 命名 / 音频 / 字幕",
+                    "Cookie / proxy / speed / headers / naming / audio / subtitles"))
+        adv_grid = FormGrid(columns=3)
 
-        self.ed_cookie = grid.add_field(
+        self.ed_cookie = adv_grid.add_field(
             "Cookie", self._line_edit(200, ""),
             hint=tr("登录 Cookie，用于访问受限资源", "Login cookie for restricted content"))
-        self.ed_proxy = grid.add_field(
+        self.ed_proxy = adv_grid.add_field(
             tr("代理", "Proxy"), self._line_edit(150, ""),
             hint=tr("HTTP/HTTPS 代理地址", "HTTP/HTTPS proxy"))
-        self.cb_speed = grid.add_field(
+        self.cb_speed = adv_grid.add_field(
             tr("限速 MB/s", "Speed limit MB/s"), self._combo(SPEED_VALUES, tr("不限", "Unlimited")),
             hint=tr("下载速度上限，不限为 0", "Download speed limit, 0 = unlimited"))
-        self.ed_headers = grid.add_field(
+        self.ed_headers = adv_grid.add_field(
             "Header", self._line_edit(0, "Key:Val,Key:Val"),
             hint=tr("自定义请求头，逗号分隔", "Custom headers, comma separated"))
-        self.ed_template = grid.add_field(
+        self.ed_template = adv_grid.add_field(
             tr("文件名模板", "Filename template"), self._line_edit(200, "留空=默认"),
             hint=tr("输出文件名模板，留空使用默认", "Output name template, blank = default"))
         r3 = QHBoxLayout()
@@ -151,8 +156,9 @@ class DownloadPanelPage(BaseQtPanel):
         r3.addStretch(1)
         r3_box = QWidget()
         r3_box.setLayout(r3)
-        grid.add_field("", r3_box, colspan=1)
-        set_card.add_form(grid)
+        adv_grid.add_field("", r3_box, colspan=1)
+        adv.add_layout(adv_grid)
+        set_card.add_widget(adv)
         lay.addWidget(set_card)
 
         # 保存目录

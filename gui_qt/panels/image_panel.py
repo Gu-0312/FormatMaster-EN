@@ -58,10 +58,10 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
         self._wire_tasks()
 
     def _build_params_card(self):
-        from gui_qt.components.form_widgets import FormSection, FormGrid
+        from gui_qt.components.form_widgets import (FormSection, FormGrid,
+                                                    CollapsibleSection)
 
         sec = FormSection(tr("转换参数", "Convert settings"), FluentIcon.SETTING)
-        grid = FormGrid(columns=2)
 
         def _combo(items, default):
             cb = ComboBox()
@@ -69,31 +69,41 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             cb.setCurrentText(default)
             return cb
 
-        self.cb_fmt = grid.add_field(
+        # 主参数（直接可见）
+        main_grid = FormGrid(columns=2)
+        self.cb_fmt = main_grid.add_field(
             tr("目标格式", "Target format"), _combo(list(SUPPORTED_IMAGE), "PNG"),
             hint=tr("输出图片格式", "Output image format"))
-        self.cb_q = grid.add_field(
+        self.cb_q = main_grid.add_field(
             tr("质量", "Quality"), _combo(QUALITY_VALUES, tr("95（高质量）", "95 (high)")),
             hint=tr("压缩质量，数值越低文件越小", "Compress quality, lower = smaller file"))
-        self.cb_sz = grid.add_field(
+        self.cb_sz = main_grid.add_field(
             tr("缩放", "Scale"), _combo(SIZE_VALUES, tr("原始大小", "Original size")))
-        self.cb_rotate = grid.add_field(
-            tr("旋转", "Rotate"), _combo(ROTATE_VALUES, "0°"))
-        self.cb_crop = grid.add_field(
-            tr("裁剪", "Crop"), _combo(CROP_VALUES, tr("原始比例", "Original ratio")))
-        self.cb_wm_pos = grid.add_field(
-            tr("水印位置", "Watermark position"), _combo(WATERMARK_POS_VALUES, tr("右下角", "Bottom right")))
+        sec.add_form(main_grid)
 
-        self.wm_edit = grid.add_field(
+        # 高级设置（渐进式披露：默认折叠）
+        adv = CollapsibleSection(
+            tr("高级设置", "Advanced"),
+            hint=tr("旋转 / 裁剪 / 水印 / 灰度 / 隐私（通常无需调整）",
+                    "Rotate / crop / watermark / grayscale / privacy (usually leave as-is)"))
+        adv_grid = FormGrid(columns=2)
+        self.cb_rotate = adv_grid.add_field(
+            tr("旋转", "Rotate"), _combo(ROTATE_VALUES, "0°"))
+        self.cb_crop = adv_grid.add_field(
+            tr("裁剪", "Crop"), _combo(CROP_VALUES, tr("原始比例", "Original ratio")))
+        self.cb_wm_pos = adv_grid.add_field(
+            tr("水印位置", "Watermark position"), _combo(WATERMARK_POS_VALUES, tr("右下角", "Bottom right")))
+        self.wm_edit = adv_grid.add_field(
             tr("水印文字", "Watermark text"), LineEdit(), colspan=1,
             hint=tr("留空则不添加水印", "blank = no watermark"))
         self.wm_edit.setPlaceholderText(tr("留空则不添加水印", "blank = no watermark"))
+        adv.add_layout(adv_grid)
 
         self.cb_gray = CheckBox(tr("转为黑白（灰度）", "Convert to grayscale"))
-        sec.add_widget(self.cb_gray)
+        adv.add_widget(self.cb_gray)
         self.cb_strip = CheckBox(tr("清除 EXIF 隐私信息（拍摄设备/GPS）", "Strip EXIF privacy data (camera/GPS)"))
-        sec.add_widget(self.cb_strip)
-        sec.add_form(grid)
+        adv.add_widget(self.cb_strip)
+        sec.add_widget(adv)
         return sec
 
     # ── 参数/偏好 ────────────────────────────────

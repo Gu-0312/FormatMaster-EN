@@ -67,6 +67,13 @@ class VideoCompressPanelPage(BaseQtPanel):
         self.bar_total = self.action_bar.bar_total
         self.status_label = self.action_bar.status_label
 
+        # 压缩前后大小对比条（添加文件即显示源大小；完成后显示前后对比）
+        from gui_qt.components.visual_widgets import SizeCompareBar
+        self.size_bar = SizeCompareBar()
+        self.size_bar.setFixedHeight(76)
+        lay.addWidget(self.size_bar)
+        self.file_card.files_changed.connect(self._refresh_size_preview)
+
         self.btn_go.clicked.connect(self._start)
         self.btn_cancel.clicked.connect(self._cancel_all)
 
@@ -74,6 +81,19 @@ class VideoCompressPanelPage(BaseQtPanel):
         mgr.sig_progress.connect(self._on_progress)
         mgr.sig_state.connect(self._on_state)
         self._task_rows = {}  # task_id -> (file_path, row)
+
+    def _refresh_size_preview(self):
+        """添加文件 → 立即显示第一个视频的源大小（压缩后为待处理）。"""
+        files = self.file_card.files()
+        if not files:
+            self.size_bar.clear()
+            return
+        try:
+            self.size_bar.set_sizes(os.path.getsize(files[0]), 0,
+                                    tr("原始", "Original"),
+                                    tr("压缩后", "Compressed"))
+        except OSError:  # noqa: BLE001
+            self.size_bar.clear()
 
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
@@ -217,6 +237,8 @@ class VideoCompressPanelPage(BaseQtPanel):
 
     def _on_state(self, task_id, state):
         row = self._task_rows.get(task_id)
+        if not row:
+            return
         if row:
             _file, idx = row
             if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
@@ -224,6 +246,15 @@ class VideoCompressPanelPage(BaseQtPanel):
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
         if state == tm.SUCCESS and task:
+            # 刷新压缩前后大小对比
+            try:
+                if os.path.isfile(task.file_path) and os.path.isfile(task.output_path):
+                    self.size_bar.set_sizes(
+                        os.path.getsize(task.file_path),
+                        os.path.getsize(task.output_path),
+                        tr("原始", "Original"), tr("压缩后", "Compressed"))
+            except OSError:  # noqa: BLE001 - 大小读取失败不影响流程
+                pass
             toast.show_success(self, tr("压缩完成：{}", "Compressed: {}").format(
                 os.path.basename(task.file_path)))
         elif state == tm.FAILED and task:

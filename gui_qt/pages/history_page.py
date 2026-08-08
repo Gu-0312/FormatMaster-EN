@@ -83,6 +83,17 @@ class HistoryPage(ScrollArea):
             stats_row.addWidget(c, 1)
         v.addLayout(stats_row)
 
+        # ── 图表区：近 14 天趋势 + 类型分布 ──────────
+        from gui_qt.components.visual_widgets import TrendChart, TypeChart
+        charts_row = QHBoxLayout()
+        charts_row.setSpacing(12)
+        self.chart_trend = TrendChart()
+        self.chart_type = TypeChart()
+        for c in (self.chart_trend, self.chart_type):
+            c.setFixedHeight(160)
+            charts_row.addWidget(c, 1)
+        v.addLayout(charts_row)
+
         # ── 工具栏（搜索 + 筛选）──────────────────
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
@@ -221,6 +232,29 @@ class HistoryPage(ScrollArea):
         self.stat_ok.set_value(ok)
         self.stat_fail.set_value(fail)
         self.stat_today.set_value(today_n)
+        self._update_charts(records)
+
+    def _update_charts(self, records):
+        """刷新趋势图（近 14 天）与类型分布图。"""
+        import datetime as _dt
+        from collections import Counter
+        days, ok_c, fail_c = [], [], []
+        today = _dt.date.today()
+        ok_counter, fail_counter = Counter(), Counter()
+        for r in records:
+            ds_ = str(r.get("time", ""))[:10]
+            if r.get("status") == "success":
+                ok_counter[ds_] += 1
+            else:
+                fail_counter[ds_] += 1
+        for i in range(13, -1, -1):
+            d = (today - _dt.timedelta(days=i)).isoformat()
+            days.append(d[5:])
+            ok_c.append(ok_counter.get(d, 0))
+            fail_c.append(fail_counter.get(d, 0))
+        self.chart_trend.set_data(days, ok_c, fail_c)
+        type_counter = Counter(str(r.get("type", "未知")) for r in records)
+        self.chart_type.set_data(type_counter.most_common(7))
 
     def _clear(self):
         if self.table.rowCount() == 0:

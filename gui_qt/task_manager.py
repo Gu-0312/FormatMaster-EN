@@ -60,6 +60,7 @@ class Task:
     canceller: object = None  # 取消时调用的无参函数（如 converter.cancel）
     history_type: str = ""    # 历史记录类型文案，空则不记录
     history_target: str = ""
+    ended_at: float = 0.0     # 终态时间戳（batch 失败汇总限定本次用）
     # 失败重试
     retry_count: int = 0      # 已重试次数
     max_retries: int = 0      # 最大重试次数（0=不重试）
@@ -67,13 +68,14 @@ class Task:
     runner_key: str = ""      # runner 重建标识（持久化恢复后按 key 重建，空=不可重建）
 
 
-def make_output_path(file_path: str, out_dir: str, ext: str) -> str:
+def make_output_path(file_path: str, out_dir: str, ext: str, name: str = None) -> str:
     """生成输出路径：目标目录 + 源文件名新扩展名，自动避开同名冲突。
 
+    name: 可选自定义主文件名（不含扩展名），缺省用源文件名。
     与 tkinter 版 _go 的行为对齐：源目同路径时追加 _1；
     已存在时追加 _N 计数。目录不存在时由调用方在任务启动前创建。
     """
-    nm = os.path.splitext(os.path.basename(file_path))[0]
+    nm = name if name else os.path.splitext(os.path.basename(file_path))[0]
     output_path = os.path.join(out_dir or os.path.dirname(file_path), nm + ext)
     if output_path.lower() == os.path.abspath(file_path).lower():
         output_path = os.path.splitext(output_path)[0] + "_1" + ext
@@ -309,6 +311,8 @@ class TaskManager(QObject):
 
     def _set_state(self, task, state):
         task.state = state
+        if state in (SUCCESS, FAILED, CANCELLED):
+            task.ended_at = time.time()   # 终态时间，供 batch 失败统计限定本次
         self.sig_state.emit(task.task_id, state)
         self._check_batch_done()
         self.save_snapshot()
@@ -388,6 +392,7 @@ class TaskManager(QObject):
         br = params.get("br", tr("自动", "Auto"))
         fps = params.get("fps", tr("原始帧率", "Original FPS"))
         last = {"pct": 0, "ts": time.time()}
+        th = {"ts": 0.0, "msg": ""}   # UI 节流状态（~12fps）
 
         def prog(pct, msg):
             # 暂停冻结：ffmpeg 无法原生暂停，回调内轮询等待（进程随管道阻塞而停摆）
@@ -406,7 +411,15 @@ class TaskManager(QObject):
                     task.speed = speed
                 last["pct"], last["ts"] = pct, now
             task.progress = max(0, pct)
-            self.sig_progress.emit(task.task_id, max(0, pct), f"{fn}  {msg}", speed)
+            # UI 节流：终态/错误/阶段消息变化强制刷新，其余合并到 ~12fps，
+            # 避免 FFmpeg 高频进度回调淹没 UI 线程（界面卡顿的直接来源）
+            now_e = time.time()
+            if (pct < 0 or pct >= 100 or msg != th["msg"]
+                    or now_e - th["ts"] >= 0.08):
+                self.sig_progress.emit(task.task_id, max(0, pct),
+                                       f"{fn}  {msg}", speed)
+                th["ts"] = now_e
+                th["msg"] = msg
 
         try:
             ok = self.services.video_conv.convert(
@@ -467,6 +480,8 @@ class TaskManager(QObject):
                 self._record_history(task, False)
                 return
 
+        th = {"ts": 0.0, "msg": ""}   # UI 节流状态（~12fps）
+
         def prog(pct, msg):
             # 与视频任务一致的暂停冻结 / 取消拦截语义
             while task.state == PAUSED:
@@ -474,7 +489,14 @@ class TaskManager(QObject):
             if task.state == CANCELLED:
                 raise InterruptedError(tr("已取消", "Cancelled"))
             task.progress = max(0, pct)
-            self.sig_progress.emit(task.task_id, max(0, pct), f"{fn}  {msg}", "")
+            # UI 节流（同视频分支）：终态/阶段消息变化强制刷新，其余 ~12fps
+            now_e = time.time()
+            if (pct < 0 or pct >= 100 or msg != th["msg"]
+                    or now_e - th["ts"] >= 0.08):
+                self.sig_progress.emit(task.task_id, max(0, pct),
+                                       f"{fn}  {msg}", "")
+                th["ts"] = now_e
+                th["msg"] = msg
 
         try:
             ok = bool(task.runner(task, prog))

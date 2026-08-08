@@ -71,11 +71,12 @@ class VideoPanelPage(BaseQtPanel):
 
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
+        from qfluentwidgets import ComboBox as Cb
+        from PySide6.QtWidgets import QHBoxLayout as HLAY, QWidget as QW
 
         sec = FormSection(tr("转换参数", "Convert settings"), FluentIcon.SETTING)
 
-        # 预设模板选择器
-        from qfluentwidgets import ComboBox as Cb
+        # 快速预设（一键填充，主路径）
         preset_row = FormGrid(columns=1)
         self.cb_preset_tpl = Cb()
         self.cb_preset_tpl.addItems(list(VIDEO_CONVERT_PRESETS.keys()))
@@ -85,31 +86,56 @@ class VideoPanelPage(BaseQtPanel):
                              hint=tr("选择预设自动填充下方参数", "Pick a preset to fill parameters"))
         sec.add_form(preset_row)
 
-        grid = FormGrid(columns=2)
-
-        self.cb_fmt = grid.add_field(
+        # 主参数（最常见，直接可见，渐进式披露的主路径）
+        main_grid = FormGrid(columns=2)
+        self.cb_fmt = main_grid.add_field(
             tr("目标格式", "Target format"), self._combo(list(SUPPORTED_VIDEO), "MP4"),
             hint=tr("输出容器格式（如 MP4 / AVI / MKV）", "Output container (e.g. MP4 / AVI / MKV)"))
-        self.cb_codec = grid.add_field(
-            tr("编码器", "Encoder"), self._combo(list(VIDEO_CODECS), tr("默认", "Default")),
-            hint=tr("视频编码标准，H.265 压缩率更高", "Video codec, H.265 compresses better"))
-        self.cb_preset = grid.add_field(
-            tr("质量预设", "Quality preset"), self._combo(list(VIDEO_PRESETS), tr("原始质量", "Original quality")))
-        self.cb_res = grid.add_field(
+        self.cb_res = main_grid.add_field(
             tr("分辨率", "Resolution"), self._combo(list(RESOLUTIONS), tr("原始分辨率", "Original resolution")))
-        self.cb_fps = grid.add_field(
-            tr("帧率", "Frame rate"), self._combo(FPS_VALUES, tr("原始帧率", "Original FPS")))
-        self.cb_br = grid.add_field(
-            tr("码率", "Bitrate"), self._combo(BR_VALUES, tr("自动", "Auto")),
-            hint=tr("自动由编码器决定，或手动指定", "Auto (encoder default) or manual"))
-        self.cb_hw = grid.add_field(
-            tr("硬件加速", "HW acceleration"), self._combo(self._hw_options(), tr("自动", "Auto")),
-            hint=tr("NVIDIA / AMD / Intel 显卡加速编码", "NVIDIA / AMD / Intel GPU accelerated encoding"))
-        sec.add_form(grid)
+        sec.add_form(main_grid)
 
         self.cb_copy = CheckBox(tr("直接复制流（不重新编码，速度最快）", "Copy stream directly (no re-encode, fastest)"))
         self.cb_copy.toggled.connect(self._on_copy_toggled)
         sec.add_widget(self.cb_copy)
+
+        # 高级设置（渐进式披露：默认折叠，降低认知负载）
+        adv_head = QW()
+        adv_h = HLAY(adv_head)
+        adv_h.setContentsMargins(0, 0, 0, 0)
+        adv_h.setSpacing(8)
+        self.btn_adv = PushButton(FluentIcon.SETTING, tr("高级设置 ▸", "Advanced ▸"))
+        self.btn_adv.setCheckable(True)
+        self.btn_adv.clicked.connect(self._toggle_advanced)
+        adv_h.addWidget(self.btn_adv)
+        adv_hint = CaptionLabel(
+            tr("编码器 / 质量 / 帧率 / 码率 / 硬件加速 / 字幕（通常无需调整）",
+               "Encoder / quality / FPS / bitrate / HW accel / subtitle (usually leave as-is)"))
+        adv_hint.setStyleSheet(
+            f"font-size: 12px; color: {ds.ink_sec()}; border: none; background: transparent;")
+        adv_h.addWidget(adv_hint)
+        adv_h.addStretch(1)
+        sec.add_widget(adv_head)
+
+        self.adv_wrap = QW()
+        adv_v = QVBoxLayout(self.adv_wrap)
+        adv_v.setContentsMargins(0, 0, 0, 0)
+        adv_v.setSpacing(12)
+        adv_grid = FormGrid(columns=2)
+        self.cb_codec = adv_grid.add_field(
+            tr("编码器", "Encoder"), self._combo(list(VIDEO_CODECS), tr("默认", "Default")),
+            hint=tr("视频编码标准，H.265 压缩率更高", "Video codec, H.265 compresses better"))
+        self.cb_preset = adv_grid.add_field(
+            tr("质量预设", "Quality preset"), self._combo(list(VIDEO_PRESETS), tr("原始质量", "Original quality")))
+        self.cb_fps = adv_grid.add_field(
+            tr("帧率", "Frame rate"), self._combo(FPS_VALUES, tr("原始帧率", "Original FPS")))
+        self.cb_br = adv_grid.add_field(
+            tr("码率", "Bitrate"), self._combo(BR_VALUES, tr("自动", "Auto")),
+            hint=tr("自动由编码器决定，或手动指定", "Auto (encoder default) or manual"))
+        self.cb_hw = adv_grid.add_field(
+            tr("硬件加速", "HW acceleration"), self._combo(self._hw_options(), tr("自动", "Auto")),
+            hint=tr("NVIDIA / AMD / Intel 显卡加速编码", "NVIDIA / AMD / Intel GPU accelerated encoding"))
+        adv_v.addLayout(adv_grid)
 
         # 字幕烧录
         self.btn_sub = PushButton(FluentIcon.DOCUMENT, tr("选择字幕文件", "Pick subtitle file"))
@@ -118,18 +144,24 @@ class VideoPanelPage(BaseQtPanel):
         self._lbl_sub = CaptionLabel(tr("未选择字幕", "No subtitle"), self)
         self._lbl_sub.setStyleSheet(
             f"font-size: 12px; color: {ds.ink_sec()};")
-        from PySide6.QtWidgets import QHBoxLayout as HLAY
         sub_row = HLAY()
         sub_row.setSpacing(8)
         sub_row.addWidget(self.btn_sub)
         sub_row.addWidget(self._lbl_sub, 1)
         sub_row.addStretch(1)
-        from PySide6.QtWidgets import QWidget as QW
         sub_wrap = QW()
         sub_wrap.setLayout(sub_row)
-        sec.add_widget(sub_wrap)
+        adv_v.addWidget(sub_wrap)
 
+        sec.add_widget(self.adv_wrap)
+        self.adv_wrap.setVisible(False)
         return sec
+
+    def _toggle_advanced(self, checked):
+        """展开 / 收起高级设置（渐进式披露）。"""
+        self.adv_wrap.setVisible(checked)
+        self.btn_adv.setText(
+            tr("高级设置 ▾", "Advanced ▾") if checked else tr("高级设置 ▸", "Advanced ▸"))
 
     def _combo(self, items, default):
         cb = ComboBox()
@@ -306,6 +338,8 @@ class VideoPanelPage(BaseQtPanel):
 
     def _on_state(self, task_id, state):
         row = self._task_rows.get(task_id)
+        if not row:
+            return
         if row:
             _file, idx = row
             if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):

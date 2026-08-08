@@ -75,22 +75,29 @@ class QrcodePanelPage(BaseQtPanel):
         lay.addWidget(sec)
 
         # 外观设置
+        from gui_qt.components.form_widgets import CollapsibleSection
         sec_style = FormSection(tr("外观设置", "Appearance"), FluentIcon.PALETTE)
         g2 = FormGrid(columns=4)
-
         self.cb_size = g2.add_field(
             tr("尺寸", "Size"), self._combo(SIZE_VALUES, "400"),
             hint=tr("二维码像素尺寸", "QR pixel size"))
-        self.cb_border = g2.add_field(
+        sec_style.add_form(g2)
+        adv = CollapsibleSection(
+            tr("高级设置", "Advanced"),
+            hint=tr("边距 / 前景色 / 背景色（通常无需调整）",
+                    "Margin / foreground / background (usually leave as-is)"))
+        adv_grid = FormGrid(columns=4)
+        self.cb_border = adv_grid.add_field(
             tr("边距", "Margin"), self._combo(BORDER_VALUES, "4"),
             hint=tr("二维码空白边距", "QR margin"))
-        self.ed_fg = g2.add_field(
+        self.ed_fg = adv_grid.add_field(
             tr("前景色", "Foreground"), self._make_color_edit(DEFAULT_FG),
             hint=tr("二维码图案颜色", "QR foreground color"))
-        self.ed_bg = g2.add_field(
+        self.ed_bg = adv_grid.add_field(
             tr("背景色", "Background"), self._make_color_edit(DEFAULT_BG),
             hint=tr("二维码背景颜色", "QR background color"))
-        sec_style.add_form(g2)
+        adv.add_layout(adv_grid)
+        sec_style.add_widget(adv)
         lay.addWidget(sec_style)
 
         # 预览区

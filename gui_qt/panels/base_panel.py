@@ -7,7 +7,9 @@
 面板只通过 services（QtServices）获取业务能力，不直接依赖主窗口逻辑。
 Prism 风格：大留白内容区，统一面板标题样式。
 """
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QLineEdit, QSlider,
+                               QSpinBox, QVBoxLayout, QWidget)
 from PySide6.QtGui import QFont
 from qfluentwidgets import ScrollArea, SubtitleLabel
 
@@ -39,19 +41,55 @@ class BaseQtPanel(ScrollArea):
         self.build()
         self.content_layout.addStretch(1)
         self.apply_prefs(self._load_prefs())
-        # 应用"默认输出目录"偏好（设置中心配置；仅当面板尚未选择自定义时生效，
-        # 不覆盖用户在面板内恢复的自定义目录）
+        # 应用"默认输出目录"偏好（设置中心配置）：仅兜底，绝不改变
+        # 面板当前的"与源文件同目录"选择；只在用户已选"自定义目录"
+        # 且路径为空时，用全局默认目录作为初始值。
         self._apply_default_out_dir()
+        # 通用实时记忆：面板内控件变化 → 防抖自动保存（所有面板生效）
+        self._install_auto_prefs()
+
+    def _install_auto_prefs(self):
+        """自动监听面板内常见输入控件变化，防抖保存 collect_prefs()。
+
+        覆盖 QComboBox / QCheckBox / QSlider / QLineEdit / QSpinBox；
+        500ms 防抖避免滑块拖动等高频事件频繁写盘；任何面板无需额外接线。
+        """
+        self._prefs_timer = QTimer(self)
+        self._prefs_timer.setSingleShot(True)
+        self._prefs_timer.setInterval(500)
+        self._prefs_timer.timeout.connect(self.save_prefs)
+        for w in self.findChildren(QComboBox):
+            w.currentIndexChanged.connect(lambda *_: self._schedule_prefs_save())
+        for w in self.findChildren(QCheckBox):
+            w.toggled.connect(lambda *_: self._schedule_prefs_save())
+        for w in self.findChildren(QSlider):
+            w.valueChanged.connect(lambda *_: self._schedule_prefs_save())
+        for w in self.findChildren(QLineEdit):
+            w.textChanged.connect(lambda *_: self._schedule_prefs_save())
+        for w in self.findChildren(QSpinBox):
+            w.valueChanged.connect(lambda *_: self._schedule_prefs_save())
+
+    def _schedule_prefs_save(self):
+        """防抖：参数变化后 500ms 自动保存到 user_prefs.json（实时记忆）。"""
+        timer = getattr(self, "_prefs_timer", None)
+        if timer is not None:
+            timer.start()
 
     def _apply_default_out_dir(self):
-        """读取设置中心的"默认输出目录"，应用到本面板的 OutputDirRow。"""
+        """读取设置中心的"默认输出目录"。
+
+        规则：绝不改变面板当前的"与源文件同目录"选择（输出始终跟随
+        源文件所在目录）；仅当面板已选"自定义目录"且路径为空时，
+        用全局默认目录兜底作为初始值。用户手动设置的自定义路径优先。
+        """
         try:
             import os
             if not hasattr(self, "out_row"):
                 return
+            if self.out_row.mode() != self.out_row.MODE_CUSTOM:
+                return  # 保持"与源文件同目录"不变
             d = self.services.get_pref("default_out_dir", "")
-            if d and os.path.isdir(d) and \
-                    self.out_row.mode() == self.out_row.MODE_SAME:
+            if d and os.path.isdir(d) and not self.out_row.path():
                 self.out_row.set_state(self.out_row.MODE_CUSTOM, d)
         except Exception:  # noqa: BLE001 - 偏好应用失败不影响面板
             pass

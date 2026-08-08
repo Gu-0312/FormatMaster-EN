@@ -5,7 +5,8 @@
 """
 import os
 
-from qfluentwidgets import CaptionLabel, ComboBox, FluentIcon
+from PySide6.QtWidgets import QHBoxLayout, QWidget
+from qfluentwidgets import CaptionLabel, ComboBox, FluentIcon, PushButton
 
 from core.tools import image_compress
 from gui_qt.i18n import tr
@@ -48,6 +49,21 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         sec.add_form(grid)
         lay.addWidget(sec)
 
+        # 画布编辑器入口
+        canvas_row = QWidget()
+        h = QHBoxLayout(canvas_row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        self.btn_canvas = PushButton(
+            FluentIcon.PHOTO, tr("打开画布编辑器", "Open Canvas Editor"))
+        self.btn_canvas.setToolTip(
+            tr("画布式拖拽裁剪框、水印定位、压缩质量实时预览",
+               "Drag crop box, place watermark, live compress preview"))
+        self.btn_canvas.clicked.connect(self._open_canvas)
+        h.addWidget(self.btn_canvas)
+        h.addStretch(1)
+        lay.addWidget(canvas_row)
+
         out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
@@ -64,6 +80,19 @@ class CompressImgPanelPage(BaseQtPanel, TaskPanelMixin):
         cb.addItems(items)
         cb.setCurrentText(default)
         return cb
+
+    # ── 画布编辑器（独立窗口）───────────────────
+    def _open_canvas(self):
+        files = self.file_card.files()
+        if not files:
+            from gui_qt.components import toast
+            toast.show_warning(self, tr("请先添加要编辑的图片",
+                                        "Add an image first"))
+            return
+        from gui_qt.components.image_canvas import ImageCanvasDialog
+        dlg = ImageCanvasDialog(
+            files[0], out_dir=self.out_row.resolve_dir(files[0]), parent=self)
+        dlg.exec()
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:

@@ -179,31 +179,79 @@ class MainWindow(FluentWindow):
         self._set_nav_enabled(not busy)
 
     def _on_batch_done(self):
-        """所有任务完成后的钩子：提示音 + 自动打开输出目录。"""
+        """所有任务完成后的钩子：提示音（成功/失败不同）+ 失败汇总通知 + 自动打开输出目录。"""
         import os
-        # 提示音：优先 Beep 直接蜂鸣（不依赖系统声音方案，方案静音也能听到）；
-        # 失败（无声卡/远程会话）再回退 MessageBeep 系统事件音。
+        import time
+        from gui_qt.task_manager import FAILED
+        mgr = self.task_manager
+        # 只统计本次 batch（近期 60 秒内）失败的，避免把历史失败任务一起误报
+        now = time.time()
+        failed = [t for t in mgr.all_tasks()
+                  if t.state == FAILED and now - getattr(t, "ended_at", 0) < 60]
+        if not failed:
+            # 本批无失败：仅成功提示音，不弹失败通知
+            if self.services.get_pref("notify_sound", True):
+                self._play_done_sound(failed)
+            self._open_last_output_dir(mgr)
+            return
+        # 提示音：全部成功 → 完成"叮"声；有失败 → 错误系统音。
+        # Windows 系统事件音异步播放，逐级回退到系统默认提示音。
         if self.services.get_pref("notify_sound", True):
-            try:
-                import winsound
+            self._play_done_sound(failed)
+        # 失败汇总通知（有失败时弹红色提示，提醒查看任务中心）
+        try:
+            from gui_qt.components import toast
+            toast.show_error(
+                self, tr("有 {} 个任务失败，请到任务中心查看",
+                          "{} tasks failed, check the task center").format(
+                              len(failed)))
+        except Exception:  # noqa: BLE001 - 通知失败不影响流程
+            pass
+        self._open_last_output_dir(mgr)
+
+    def _play_done_sound(self, failed):
+        """Windows 系统事件音（异步、逐级回退）。"""
+        try:
+            import winsound
+            aliases = (["SystemHand", "SystemAsterisk",
+                        "SystemExclamation"] if failed else
+                       ["SystemNotification", "SystemAsterisk",
+                        "SystemExclamation"])
+
+            def _play():
                 try:
-                    winsound.Beep(880, 180)
-                except Exception:
-                    winsound.MessageBeep(winsound.MB_OK)
+                    for alias in aliases:
+                        try:
+                            winsound.PlaySound(
+                                alias,
+                                winsound.SND_ALIAS | winsound.SND_ASYNC)
+                            return
+                        except Exception:  # noqa: BLE001 - 单别名失败继续
+                            continue
+                    winsound.MessageBeep(
+                        winsound.MB_ICONERROR if failed else winsound.MB_OK)
+                except Exception:  # noqa: BLE001 - 全部失败则静音
+                    pass
+
+            _play()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _open_last_output_dir(self, mgr):
+        """自动打开最后一个成功的输出目录（设置开启时）。"""
+        import os
+        if not self.services.get_pref("open_dir_on_done", False):
+            return
+        last_out = ""
+        for t in mgr.all_tasks():
+            if t.state == "success" and t.output_path:
+                last_out = os.path.dirname(t.output_path)
+        if last_out and os.path.isdir(last_out):
+            try:
+                os.startfile(last_out)
             except Exception:
                 pass
-        # 自动打开输出目录（取最后一个成功的输出目录）
-        if self.services.get_pref("open_dir_on_done", False):
-            mgr = self.task_manager
-            last_out = ""
-            for t in mgr.all_tasks():
-                if t.state == "success" and t.output_path:
-                    last_out = os.path.dirname(t.output_path)
-            if last_out and os.path.isdir(last_out):
-                try:
-                    os.startfile(last_out)
-                except Exception:
-                    pass
+
 
     def _set_nav_enabled(self, enabled):
         """启用/禁用侧边导航栏所有导航项及当前面板的交互控件。"""

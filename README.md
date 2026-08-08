@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)](https://microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.3.5-orange.svg)]()
+[![Release](https://img.shields.io/badge/Release-v1.3.6-orange.svg)]()
 
 ---
 
@@ -46,6 +46,11 @@
 | 🚫 Video De-logo | Remove corner watermarks with FFmpeg delogo (auto-clamped region) |
 | 💾 Task Queue Persistence | Interrupted tasks restored after restart, one-click retry |
 | 🔁 Retry Failed Tasks | Re-queue failed / cancelled tasks directly from Task Center |
+| 🎭 Phantom Tank | Encode two images into one: light bg shows one, dark bg shows another (make/decode) |
+| 📊 Media Info | Inspect container, codec, resolution, bitrate & streams (MediaInfo style) |
+| 🎬 Unwarp Video | Fix squashed/stretched aspect ratio (auto SAR repair or manual target ratio) |
+| ⚡ Scene Convert | One-click by usage: Douyin / WeChat / Mail / Bilibili / archive… (8 scenes) |
+| 📋 Clipboard Watch+ | Independent target type & format + screenshot actions (save / OCR / save+OCR) |
 | 🌐 Bilingual UI | Full Chinese / English switching across navigation, panels, toasts & task hints |
 
 ---
@@ -368,6 +373,11 @@ FormatMaster/
 | ✂ 视频处理 | 剪辑片段、多文件合并、字幕烧录、变速（0.5x-2.0x） |
 | ☐ 表格识别 | 图片表格 OCR → CSV / Excel 输出 |
 | 📁 文件夹监视 | 监视目录自动转换新文件（视频→MP4 / 音频→MP3 / 图片→PNG） |
+| 🎭 幻影坦克 | 一张图片白底显示一张、黑底显示另一张（制作 / 解密） |
+| 📊 媒体信息 | 容器 / 编码器 / 分辨率 / 码率 / 音视频流详情检测 |
+| 🎬 视频反挤压 | 修复画面被压扁拉长（自动修 SAR / 手动目标比例） |
+| ⚡ 场景化转换 | 按使用场景一键处理：抖音 / 微信 / 邮件 / B站 等 8 场景 |
+| 📋 剪贴板监视增强 | 独立目标类型与格式 + 截图动作（保存 / OCR / 保存并OCR） |
 | 🖱 文件右键菜单 | Windows 右键「用格式大师转换」一键打开 |
 | 🌐 中英双语 | 简体中文 / English 界面语言切换 |
 
@@ -661,6 +671,15 @@ FormatMaster/
 ---
 
 ### 📝 更新日志
+
+#### v1.3.6 (2026-08-08)
+- 🎭 新增幻影坦克：一张图片白底显示一张、黑底显示另一张（制作 / 解密，numpy 透明通道编码）
+- 🎬 新增视频反挤压：修复画面被压扁拉长（自动按 DAR 修 SAR 流复制 / 手动目标比例重编码）
+- 📊 新增媒体信息：容器 / 编码器 / 分辨率 / 帧率 / 码率 / 音视频流详情（MediaInfo 风格）
+- ⚡ 新增场景化转换：8 个使用场景（抖音 / 微信 / 邮件 / 公众号 / B站 / 网课 / 存档 / 极速）一键自动匹配参数
+- 📋 剪贴板监视增强：独立目标类型与格式选择 + 截图动作（仅保存 / OCR 识别 / 保存并 OCR）
+- 🐛 修复转换失败通知误报：跨面板不再误弹通知、批量完成只统计本次失败（历史失败任务不再误报）
+- 🐛 修复剪贴板监视输出目录浏览不显示、无音轨视频变速失败等问题
 
 #### v1.3.5 (2026-08-06)
 - 🌐 全站中英双语：导航/面板/按钮/下拉选项/任务提示 400+ 文案双语化

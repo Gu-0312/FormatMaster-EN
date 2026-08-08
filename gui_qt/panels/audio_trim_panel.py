@@ -7,11 +7,12 @@ import os
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QWidget
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PushButton)
 
 from gui_qt.i18n import tr
+from gui_qt import task_manager as tm
 from gui_qt.components.form_widgets import FormSection, FormGrid
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -174,6 +175,12 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         btn_refresh = PushButton(tr("刷新波形", "Refresh wave"))
         btn_refresh.clicked.connect(self._refresh_waveform)
         time_row.addWidget(btn_refresh)
+        btn_editor = PushButton(
+            FluentIcon.HEADPHONE, tr("打开波形编辑器", "Open Waveform Editor"))
+        btn_editor.setToolTip(
+            tr("在独立窗口中可视化编辑入/出点", "Edit in/out visually in a standalone window"))
+        btn_editor.clicked.connect(self._open_wave_editor)
+        time_row.addWidget(btn_editor)
         card.add_widget(time_wrap)
 
         # 淡入淡出
@@ -202,6 +209,30 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
 
         self._wave_worker = None
         self._wire_tasks()
+
+    # ── 波形编辑器（独立窗口）────────────────────
+    def _open_wave_editor(self):
+        files = self.file_card.files()
+        if not files:
+            from gui_qt.components import toast
+            toast.show_warning(self, tr("请先添加要裁剪的音频",
+                                        "Add an audio file first"))
+            return
+        from gui_qt.components.audio_editor import WaveformEditorDialog
+        dlg = WaveformEditorDialog(
+            files[0],
+            start=parse_time(self.ed_start.text()) or 0.0,
+            end=parse_time(self.ed_end.text()),
+            parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            st, et = dlg.clip_range()
+            if st is not None:
+                self.ed_start.setText(f"{st:.2f}")
+            if et is not None and et > 0:
+                self.ed_end.setText(f"{et:.2f}")
+            self._marks_changed()
+            # 波形编辑器「开始转换」：直接提交裁剪任务
+            self._submit_files()
 
     # ── 波形加载 ─────────────────────────────────
     def _on_files_changed(self):

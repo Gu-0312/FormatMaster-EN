@@ -131,7 +131,7 @@ class FFmpegProgressReader:
                 continue
 
             if self.duration > 0:
-                pct = min(99, int(current * 100 / self.duration))
+                pct = min(100, int(current * 100 / self.duration))
                 now = _time.time()
                 if progress_callback and (pct != last_pct or now - last_update >= self.update_interval):
                     eta_str = ""
@@ -141,12 +141,18 @@ class FFmpegProgressReader:
                             mm, ss = divmod(int(remain), 60)
                             hh, mm = divmod(mm, 60)
                             eta_str = f" 剩{hh}:{mm:02d}:{ss:02d}" if hh > 0 else f" 剩{mm}:{ss:02d}"
-                    progress_callback(pct, f"{label} {pct}%{eta_str}")
+                    if pct >= 100:
+                        # FFmpeg 编码完成后还有写文件索引/收尾阶段，
+                        # 进度提前到 100% 并提示收尾，避免"卡在 99%"的错觉
+                        msg = f"{label} 完成，正在写入文件…"
+                    else:
+                        msg = f"{label} {pct}%{eta_str}"
+                    progress_callback(pct, msg)
                     last_pct = pct
                     last_update = now
             else:
                 if progress_callback:
-                    pct = min(99, int(current) % 100)
+                    pct = min(100, int(current) % 100)
                     progress_callback(pct, f"处理中... ({int(current)}s)")
 
         if proc.returncode == 0:

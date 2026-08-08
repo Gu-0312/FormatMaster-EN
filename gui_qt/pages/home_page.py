@@ -177,25 +177,59 @@ class HomePage(QWidget):
         self._refresh_tasks()
 
     def _refresh_stats(self):
-        today = datetime.date.today().isoformat()
-        total = ok = fail = 0
-        if self.stats:
-            d = self.stats.get_range(today, today)
-            for day_records in d.values():
-                for rec in day_records:
-                    total += 1
-                    if rec.get("status") == "success":
-                        ok += 1
-                    else:
-                        fail += 1
-        self.stat_today.set_value(tr("{} 个", "{} items").format(total))
-        self.stat_saved.set_value("--")  # 需要磁盘节省统计，暂不展示
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+
+        def _day_count(day):
+            """返回 (总数, 成功数)。"""
+            total = ok = 0
+            if self.stats:
+                d = self.stats.get_range(day, day)
+                for recs in d.values():
+                    for rec in recs:
+                        total += 1
+                        if rec.get("status") == "success":
+                            ok += 1
+            return total, ok
+
+        t_total, t_ok = _day_count(today.isoformat())
+        y_total, y_ok = _day_count(yesterday.isoformat())
+
+        # 今日转换文件（较昨日：昨日为 0 用绝对值，否则用百分比）
+        self.stat_today.set_value(tr("{} 个", "{} items").format(t_total))
+        if y_total <= 0:
+            if t_total > 0:
+                self.stat_today.set_delta(
+                    tr("较昨日 +{} 个", "vs yesterday +{} items").format(t_total))
+            else:
+                self.stat_today.set_delta(tr("与昨日持平", "same as yesterday"))
+        else:
+            pct = (t_total - y_total) / y_total * 100
+            self.stat_today.set_delta(
+                tr("较昨日 {:+.0f}%", "vs yesterday {:+.0f}%").format(pct))
+
+        # 节省空间（历史未记录体积，暂不统计）
+        self.stat_saved.set_value("--")
+        self.stat_saved.set_delta("--")
+
+        # 成功率（较昨日：百分点差）
+        t_rate = t_ok / t_total * 100 if t_total else None
+        y_rate = y_ok / y_total * 100 if y_total else None
         self.stat_rate.set_value(
-            f"{ok / total * 100:.1f} %" if total else "--")
+            f"{t_rate:.1f} %" if t_rate is not None else "--")
+        if t_rate is None or y_rate is None:
+            self.stat_rate.set_delta("--")
+        else:
+            diff = t_rate - y_rate
+            self.stat_rate.set_delta(
+                tr("较昨日 {:+.1f} 个百分点", "vs yesterday {:+.1f} pt").format(diff))
+
+        # 累计运行（本次会话时长）
         try:
             self.stat_uptime.set_value(self.services.uptime_str())
         except Exception:
             pass
+        self.stat_uptime.set_delta(tr("本次运行", "this session"))
 
     def _refresh_tasks(self):
         try:

@@ -185,11 +185,11 @@ def _alpha_chroma(arr):
     sigma = max(8.0, best_std)
     t_full = float(np.clip(2.6 * sigma, 22.0, 80.0))
     t_soft = float(np.clip(5.0 * sigma, 60.0, 160.0))
-    # 3. 距离 → alpha 渐变（背景=1，人像=0，便于后面合成时反转：alpha(前景)=1-a）
+    # 3. 距离 → alpha 渐变：距背景色越远越可能是前景
+    #    alpha: 1=前景保留原图，0=背景换底色（与 AI 引擎语义一致）
     diff = f - bg
     dist = np.sqrt((diff * diff).sum(axis=2))
-    alpha_bg = np.clip((dist - t_full) / max(t_soft - t_full, 1.0), 0.0, 1.0)  # 0=背景
-    a = 1.0 - alpha_bg  # 1=前景
+    a = np.clip((dist - t_full) / max(t_soft - t_full, 1.0), 0.0, 1.0)
     # 4. 形态学清理 + 边缘羽化
     a_img = Image.fromarray((a * 255).astype(np.uint8), "L")
     a_img = a_img.filter(ImageFilter.MaxFilter(3))  # 抹平前景内暗斑噪点
@@ -208,11 +208,17 @@ def _apply_alpha(arr, alpha, target_rgb):
 # 键为中文名（面板直接用作下拉项），值 (宽, 高) 或 None=原尺寸
 PHOTO_SIZES = {
     "原尺寸": None,
-    "1寸": (295, 413),
-    "小1寸": (259, 377),
-    "大1寸": (390, 567),
-    "2寸": (413, 579),
-    "3寸": (550, 840),
+    "小1寸": (259, 377),       # 2.2×3.2cm  驾驶证
+    "1寸": (295, 413),          # 2.5×3.5cm  身份证
+    "大1寸": (390, 567),        # 3.3×4.8cm  护照/港澳通行证
+    "小2寸": (413, 531),        # 3.5×4.5cm  港澳通行证/日本签证
+    "2寸": (413, 579),          # 3.5×4.9cm  学位证/简历照
+    "大2寸": (413, 626),        # 3.5×5.3cm  签证照
+    "3寸": (550, 840),          # 4.7×7.1cm
+    "美签照": (601, 601),       # 5.1×5.1cm  美国签证
+    "4寸": (898, 1205),         # 7.6×10.2cm
+    "5寸": (1051, 1500),        # 8.9×12.7cm
+    "6寸": (1205, 1795),        # 10.2×15.2cm
 }
 
 
@@ -265,17 +271,23 @@ def _get_alpha(arr, progress_callback=None, use_ai=True):
 
 def change_background(input_path, output_path, color=DEFAULT_COLOR,
                       progress_callback=None, use_ai=True,
-                      size=None, offset=0.0):
+                      size=None, offset=0.0, dpi=300, quality=95):
     """换底色（可选按标准证件照尺寸裁剪缩放）。
 
-    color: BG_COLORS 的键（蓝底/红底/白底/灰底/绿底/黑底）或 TRANSPARENT_KEY（透明 PNG）；
+    color: BG_COLORS 的键、TRANSPARENT_KEY（透明 PNG）或任意 RGB 元组 (r,g,b)；
     use_ai=True 优先 AI 引擎，失败/异常自动回退色度键。
     size: PHOTO_SIZES 的像素元组 (w, h) 或 None 不裁剪；
-    offset: 裁剪窗口垂直偏移 -1~1（正=保留更多顶部）。
+    offset: 裁剪窗口垂直偏移 -1~1（正=保留更多顶部）；
+    dpi: 输出 DPI（写入图像元数据，决定打印物理尺寸）；quality: JPG 质量 1~100。
     """
-    if color != TRANSPARENT_KEY and color not in BG_COLORS:
+    if color == TRANSPARENT_KEY:
+        target = None
+    elif isinstance(color, (tuple, list)) and len(color) == 3:
+        target = tuple(max(0, min(255, int(round(c)))) for c in color)
+    elif color in BG_COLORS:
+        target = BG_COLORS[color]
+    else:
         return False
-    target = BG_COLORS.get(color)  # 透明时为 None
     try:
         img = Image.open(input_path).convert("RGB")
     except (OSError, IOError):
@@ -302,7 +314,10 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
             progress_callback(85, f"裁剪缩放 {size[0]}×{size[1]}…")
         out = crop_to_size(out, size, offset)
     try:
-        out.save(output_path, quality=95)
+        save_kw = {"dpi": (int(dpi), int(dpi))}
+        if str(output_path).lower().endswith((".jpg", ".jpeg")):
+            save_kw["quality"] = int(quality)
+        out.save(output_path, **save_kw)
     except (OSError, IOError) as e:
         if progress_callback:
             progress_callback(-1, f"保存失败：{e}")
@@ -312,4 +327,203 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
     if progress_callback:
         progress_callback(100, f"完成（{engine}）")
     return True
+
+
+# ── 自定义尺寸（像素换算，300dpi） ──────────────
+DPI = 300
+
+
+def size_to_px(w, h, unit="px"):
+    """将用户自定义尺寸换算为像素元组 (宽, 高)。
+
+    unit: "px" 像素 / "cm" 厘米 / "inch" 英寸；按 DPI 换算。
+    入参非法或非正返回 None。
+    """
+    try:
+        fw, fh = float(w), float(h)
+    except (TypeError, ValueError):
+        return None
+    if fw <= 0 or fh <= 0:
+        return None
+    if unit == "inch":
+        fw, fh = fw * DPI, fh * DPI
+    elif unit == "cm":
+        fw, fh = fw / 2.54 * DPI, fh / 2.54 * DPI
+    return int(round(fw)), int(round(fh))
+
+
+# ── 证照预设套餐（类型 → 尺寸键 + 底色键） ──────
+CARD_PRESETS = {
+    "身份证":     {"size": "1寸",   "bg": "白底"},
+    "驾照":       {"size": "小1寸", "bg": "白底"},
+    "护照":       {"size": "大1寸", "bg": "白底"},
+    "港澳通行证": {"size": "小2寸", "bg": "蓝底"},
+    "简历/学位证": {"size": "2寸",   "bg": "蓝底"},
+    "签证通用":    {"size": "大2寸", "bg": "白底"},
+    "美国签证":    {"size": "美签照", "bg": "白底"},
+}
+
+# ── 冲印相纸（物理尺寸 宽×高 cm） ───────────────
+PAPER_SIZES = {
+    "4寸": (7.6, 10.2),
+    "5寸": (8.9, 12.7),
+    "6寸": (10.2, 15.2),
+}
+
+
+# ── 头部比例参考线（仅预览辅助，不写入输出） ───
+def draw_head_guides(pil_img, color=(220, 30, 30)):
+    """在最终比例图上绘制标准头部占比参考框。
+
+    头顶距上边约 10%，头部高度约占照片高度 65%，头部宽度约占 55%。
+    仅用于辅助裁剪定位，预览显示，不写入正式输出。
+    """
+    try:
+        from PIL import ImageDraw
+    except ImportError:
+        return pil_img
+    img = pil_img.convert("RGB").copy()
+    W, H = img.size
+    top = int(H * 0.10)
+    head_h = int(H * 0.65)
+    head_w = int(W * 0.55)
+    x0 = (W - head_w) // 2
+    y1 = min(top + head_h, H - int(H * 0.05))
+    d = ImageDraw.Draw(img)
+    d.rectangle([x0, top, x0 + head_w, y1], outline=color, width=2)
+    # 头顶基准线
+    d.line([x0, top, x0 + head_w, top], fill=color, width=1)
+    return img
+
+
+# ── 一键冲印排版 ────────────────────────────────
+def layout_print(pil_img, paper_wh, dpi=300, margin_mm=3.0, gap_mm=2.0):
+    """将单张证件照平铺到相纸上，返回白底排版图（RGB）。
+
+    paper_wh: 相纸物理尺寸 (宽cm, 高cm)，如 6寸=(10.2, 15.2)；
+    margin_mm/gap_mm: 边距/间距（毫米）。自动计算行列并居中排布。
+    """
+    from PIL import Image
+    paper_w = int(round(paper_wh[0] / 2.54 * dpi))
+    paper_h = int(round(paper_wh[1] / 2.54 * dpi))
+    m = int(round(margin_mm / 25.4 * dpi))
+    g = int(round(gap_mm / 25.4 * dpi))
+    sw, sh = pil_img.size
+    avail_w, avail_h = paper_w - 2 * m, paper_h - 2 * m
+    cols = max(1, (avail_w + g) // (sw + g))
+    rows = max(1, (avail_h + g) // (sh + g))
+    if cols * sw + (cols - 1) * g > avail_w:
+        cols = max(1, cols - 1)
+    if rows * sh + (rows - 1) * g > avail_h:
+        rows = max(1, rows - 1)
+    used_w = cols * sw + (cols - 1) * g
+    used_h = rows * sh + (rows - 1) * g
+    ox, oy = (paper_w - used_w) // 2, (paper_h - used_h) // 2
+    paper = Image.new("RGB", (paper_w, paper_h), (255, 255, 255))
+    for r in range(rows):
+        for c in range(cols):
+            x = ox + c * (sw + g)
+            y = oy + r * (sh + g)
+            paper.paste(pil_img, (x, y))
+    return paper
+
+
+def layout_print_multi(paper_wh, cells, dpi=300, margin_mm=3.0, gap_mm=2.0):
+    """多尺寸混排：一张相纸排多种尺寸的证件照，返回白底 RGB 图。
+
+    paper_wh: 相纸物理尺寸 (宽cm, 高cm)，如 6寸=(10.2, 15.2)；
+    cells: [(PIL Image, count), ...]，每种尺寸排 count 张；
+    每种尺寸内部按接近方形的行列排布，块之间按行贪心放置、居中。
+    """
+    from PIL import Image
+    paper_w = int(round(paper_wh[0] / 2.54 * dpi))
+    paper_h = int(round(paper_wh[1] / 2.54 * dpi))
+    m = int(round(margin_mm / 25.4 * dpi))
+    g = int(round(gap_mm / 25.4 * dpi))
+    avail_w, avail_h = paper_w - 2 * m, paper_h - 2 * m
+
+    # 每种尺寸 → 块（内部行列尽量接近方形）
+    blocks = []
+    for img, count in cells:
+        sw, sh = img.size
+        if count <= 0 or sw <= 0 or sh <= 0:
+            continue
+        best = (count, 1)
+        for cols in range(1, count + 1):
+            rows = (count + cols - 1) // cols
+            if abs(cols - rows) < abs(best[0] - best[1]):
+                best = (cols, rows)
+        cols, rows = best
+        bw = cols * sw + (cols - 1) * g
+        bh = rows * sh + (rows - 1) * g
+        blocks.append((bw, bh, img, count, cols, rows))
+    if not blocks:
+        return Image.new("RGB", (paper_w, paper_h), (255, 255, 255))
+
+    paper = Image.new("RGB", (paper_w, paper_h), (255, 255, 255))
+    cx, cy, row_h = m, m, 0
+    for bw, bh, img, count, cols, rows in blocks:
+        if bw > avail_w or bh > avail_h:
+            continue  # 单块超出相纸则跳过该种
+        if cx + bw > m + avail_w:  # 换行
+            cx = m
+            cy += row_h + g
+            row_h = 0
+        if cy + bh > m + avail_h:  # 相纸已满
+            break
+        for i in range(count):
+            r, c = divmod(i, cols)
+            x = cx + c * (img.width + g)
+            y = cy + r * (img.height + g)
+            paper.paste(img, (x, y))
+        cx += bw + g
+        row_h = max(row_h, bh)
+    return paper
+
+
+# ── 合规自检 ────────────────────────────────────
+def check_compliance(img_path, size=None, offset=0.0, use_ai=True,
+                     progress_callback=None):
+    """证件照合规自检：基于人像前景蒙版检测头部位置与占比。
+
+    size: 目标像素 (w, h) 或 None（原尺寸）；offset: 裁剪偏移。
+    返回 dict：ok、head_top_pct（头顶距上边%）、person_h_pct（人像高占比%）、
+    person_w_pct、issues（问题列表）；处理失败返回 None。
+    """
+    try:
+        img = Image.open(img_path).convert("RGB")
+    except (OSError, IOError):
+        return None
+    arr = np.asarray(img, dtype=np.uint8)
+    alpha, _ = _get_alpha(arr, progress_callback, use_ai)
+    if size is not None:
+        a_img = Image.fromarray((alpha * 255).astype(np.uint8), "L")
+        a_img = crop_to_size(a_img, size, offset)
+        alpha = np.asarray(a_img, dtype=np.float32) / 255.0
+    mask = alpha > 0.5
+    H, W = mask.shape
+    if H <= 0 or W <= 0 or not mask.any():
+        return {"ok": False, "issues": ["未检测到人像，无法自检"]}
+    rows = np.where(mask.any(axis=1))[0]
+    cols = np.where(mask.any(axis=0))[0]
+    top, bottom = int(rows[0]), int(rows[-1])
+    head_top_pct = round(top / H * 100)
+    person_h_pct = round((bottom - top) / H * 100)
+    person_w_pct = round((cols[-1] - cols[0]) / W * 100)
+    issues = []
+    if head_top_pct < 5:
+        issues.append("头顶距上边缘过近（{}%），可能被裁切，建议裁剪位置偏下".format(head_top_pct))
+    elif head_top_pct > 15:
+        issues.append("头顶距上边缘过远（{}%），人像偏小，建议裁剪位置偏上".format(head_top_pct))
+    if person_h_pct < 60:
+        issues.append("人像偏小（高度占 {}%），建议裁剪位置偏上或放大".format(person_h_pct))
+    elif person_h_pct > 95:
+        issues.append("人像过大（高度占 {}%），可能超出取景，建议裁剪位置偏下".format(person_h_pct))
+    return {
+        "ok": not issues,
+        "head_top_pct": head_top_pct,
+        "person_h_pct": person_h_pct,
+        "person_w_pct": person_w_pct,
+        "issues": issues,
+    }
 

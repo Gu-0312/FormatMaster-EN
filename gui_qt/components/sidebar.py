@@ -7,16 +7,37 @@
 - 底部主题切换入口（浅色/深色/跟随系统主题循环切换）
 - 键盘快捷键 Ctrl+1~9 切页
 - 右键菜单：收藏/固定/关闭
+- 全局功能搜索（Ctrl+K / 顶部搜索按钮）
+- 最近使用 / 收藏 动态置顶组
 """
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF
 from PySide6.QtGui import QAction, QColor, QCursor, QKeySequence, QPainter
 from PySide6.QtWidgets import QFrame, QMenu
 from qfluentwidgets import (FluentIcon, NavigationItemPosition,
-                            TransparentToolButton, isDarkTheme)
+                            isDarkTheme)
 
 from gui_qt import nav_registry
 from gui_qt.i18n import tr
-from gui_qt.components.theme_manager import MODES
+from gui_qt.components import design_system as ds
+
+
+def _style_nav_header(header, label):
+    """分组小标题着色：复用 ds.group_color 色系，增强分组辨识。
+
+    NavigationItemHeader 用 paintEvent 自绘文字，不走样式表——
+    必须设置 lightTextColor / darkTextColor 属性（亮/暗主题两套色）。
+    """
+    try:
+        key = ds.group_key_for_name(label)
+        light = ds.GROUP_COLORS.get(key, ("",))[0]
+        dark = ds.GROUP_COLORS_DARK.get(key, ("",))[0]
+    except Exception:  # noqa: BLE001 - 取色失败保持默认
+        light = dark = ""
+    if light:
+        header.lightTextColor = QColor(light)
+    if dark:
+        header.darkTextColor = QColor(dark)
+    header.update()
 
 
 def _admin_divider_qss():
@@ -74,10 +95,15 @@ def _patch_compact_nav_paint():
                   or self.isAboutSelected) and self.isEnabled():
                 painter.setBrush(QColor(c, c, c, 6 if self.isAboutSelected else 10))
                 painter.drawRoundedRect(self.rect(), 5, 5)
+            # 折叠模式：图标水平居中于 40x36 按钮内，与底部主题按钮对齐
+            if self.isCompacted:
+                iw = 16
+                ix = (self.width() - iw) // 2
+                iy = (self.height() - iw) // 2
+                drawIcon(self._icon, painter, QRectF(ix, iy, iw, iw))
+                return
             # 紧凑：图标 11.5 → 7，文字 44 → 32
             drawIcon(self._icon, painter, QRectF(5 + pl, 10, 16, 16))
-            if self.isCompacted:
-                return
             painter.setFont(self.font())
             painter.setPen(self.textColor())
             left = 26 + pl if not self.icon().isNull() else pl + 7
@@ -109,9 +135,11 @@ def build_navigation(window, services, theme_mgr):
         if idx > 0 and pos == prev_pos:
             nav.addSeparator(pos)
 
-        # 分组小标题（首页不显示）
+        # 分组小标题（首页不显示；应用分组色系，增强分组辨识）
         if idx > 0:
-            nav.addItemHeader(nav_registry.group_label(group), pos)
+            g_label = nav_registry.group_label(group)
+            header = nav.addItemHeader(g_label, pos)
+            _style_nav_header(header, g_label)
 
         for item in items:
             page = item["factory"](window, services)
@@ -125,38 +153,6 @@ def build_navigation(window, services, theme_mgr):
 
     # ── 键盘快捷键 Ctrl+1~9 切页 ────────────────────────
     _setup_shortcuts(window, pages.keys())
-
-    # ── 主题切换入口（导航底部）──────────────────────
-    theme_btn = TransparentToolButton(FluentIcon.BRIGHTNESS, nav)
-    theme_btn.isSelectable = False
-    theme_btn.setToolTip(tr("主题", "Theme") + f": {theme_mgr.current_mode()}")
-    theme_btn.setFixedSize(40, 40)
-
-    def _cycle_theme():
-        # 立即切换，不延迟：此前 QTimer 150ms 延迟导致连点时
-        # current_mode() 仍是旧值、模式被跳过（tr("点两次才切换", "Click twice to switch")），
-        # 且切换体感迟缓。
-        cur = theme_mgr.current_mode()
-        nxt = MODES[(MODES.index(cur) + 1) % len(MODES)] \
-            if cur in MODES else MODES[0]
-        theme_btn.setToolTip(tr("主题", "Theme") + f": {nxt}")
-        _do_theme_switch(theme_mgr, nxt, theme_btn)
-
-    def _do_theme_switch(theme_mgr, mode, btn):
-        theme_mgr.set_mode(mode)
-        btn.setToolTip(tr("主题", "Theme") + f": {theme_mgr.current_mode()}")
-        # 分割线颜色随主题刷新（亮色黑投影/暗色白微光）
-        try:
-            admin_divider.setStyleSheet(_admin_divider_qss())
-        except Exception:  # noqa: BLE001 - 刷新失败不影响主题切换
-            pass
-
-    theme_btn.clicked.connect(_cycle_theme)
-    nav.addWidget(routeKey="theme_toggle", widget=theme_btn,
-                   position=NavigationItemPosition.BOTTOM)
-
-    # ── 右键菜单：收藏/固定/关闭 ──────────────────────
-    _setup_context_menu(window, pages)
 
     # 暴露切换函数供外部调用（如首页快捷卡片）
     window._switch_to = lambda key: pages.get(key) and window.switchTo(pages[key])
@@ -176,6 +172,13 @@ def build_navigation(window, services, theme_mgr):
     admin_divider = _make_admin_divider()
     panel.vBoxLayout.insertWidget(
         panel.vBoxLayout.indexOf(panel.bottomLayout), admin_divider)
+    # 主题变化（设置中心切换）时刷新分割线颜色：亮色黑投影/暗色白微光
+    try:
+        from qfluentwidgets import qconfig
+        qconfig.themeChanged.connect(
+            lambda: admin_divider.setStyleSheet(_admin_divider_qss()))
+    except Exception:  # noqa: BLE001 - 信号绑定失败不影响启动
+        pass
 
     return pages
 
@@ -194,30 +197,3 @@ def _setup_shortcuts(window, keys):
             lambda _, k=key: window.pages.get(k)
             and window.switchTo(window.pages[k]))
         window.addAction(act)
-
-
-def _setup_context_menu(window, pages):
-    """给导航界面添加右键菜单：收藏/固定/关闭。"""
-    nav = window.navigationInterface
-    nav.setContextMenuPolicy(Qt.CustomContextMenu)
-
-    def _show_menu(pos):
-        widget = nav.childAt(pos)
-        if not widget:
-            return
-        route_key = widget.objectName().replace("page_", "")
-        if route_key not in pages:
-            return
-        menu = QMenu(window)
-        fav_act = menu.addAction(FluentIcon.HEART, tr("收藏", "Favorite"))
-        pin_act = menu.addAction(FluentIcon.PIN, tr("固定到顶部", "Pin to top"))
-        close_act = menu.addAction(FluentIcon.CLOSE, tr("关闭", "Close"))
-        act = menu.exec(nav.mapToGlobal(pos))
-        if act == fav_act:
-            pass  # TODO: 收藏
-        elif act == pin_act:
-            nav.setItemPosition(route_key, NavigationItemPosition.TOP)
-        elif act == close_act:
-            nav.removeWidget(route_key)
-
-    nav.customContextMenuRequested.connect(_show_menu)

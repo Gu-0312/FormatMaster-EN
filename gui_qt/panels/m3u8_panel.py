@@ -132,8 +132,9 @@ class M3u8PanelPage(BaseQtPanel):
         lay.addLayout(nrow)
 
         # 下载设置
+        from gui_qt.components.form_widgets import CollapsibleSection
         set_card = FormSection(tr("下载设置", "Download settings"), FluentIcon.SETTING)
-        grid = FormGrid(columns=3)
+        grid = FormGrid(columns=2)
 
         self.cb_threads = grid.add_field(
             tr("并发线程", "Concurrent threads"), self._combo(THREADS_VALUES, "16"),
@@ -141,27 +142,40 @@ class M3u8PanelPage(BaseQtPanel):
         self.cb_format = grid.add_field(
             tr("输出格式", "Output format"), self._combo(FORMAT_VALUES, "mp4"),
             hint=tr("输出视频容器格式", "Output video container"))
-        self.cb_speed = grid.add_field(
+        set_card.add_form(grid)
+
+        adv = CollapsibleSection(
+            tr("高级设置", "Advanced"),
+            hint=tr("限速 / Cookie / 代理 / 请求头 / 断点续传 / 字幕 / 通知",
+                    "Speed / cookie / proxy / headers / resume / subtitles / notify"))
+        adv_grid = FormGrid(columns=2)
+        self.cb_speed = adv_grid.add_field(
             tr("限速 MB/s", "Speed limit MB/s"), self._combo(SPEED_VALUES, tr("不限", "Unlimited")),
             hint=tr("下载速度上限，不限为 0", "Download speed limit, 0 = unlimited"))
-        self.ed_cookie = grid.add_field(
+        self.ed_cookie = adv_grid.add_field(
             "Cookie", self._line_edit(180, ""),
             hint=tr("登录 Cookie，用于访问受限资源", "Login cookie for restricted content"))
-        self.ed_proxy = grid.add_field(
+        self.ed_proxy = adv_grid.add_field(
             tr("代理", "Proxy"), self._line_edit(180, "如 http://127.0.0.1:7890"),
             hint=tr("HTTP/HTTPS 代理地址", "HTTP/HTTPS proxy"))
-        self.ed_headers = grid.add_field(
+        self.ed_headers = adv_grid.add_field(
             tr("自定义Header", "Custom headers"), self._line_edit(0, "Key:Value,Key:Value"),
             hint=tr("自定义请求头，逗号分隔", "Custom headers, comma separated"))
+        adv.add_layout(adv_grid)
         sec_grid_box = QWidget()
         chk_lay = QHBoxLayout(sec_grid_box)
         chk_lay.setContentsMargins(0, 0, 0, 0)
         self.cb_resume = CheckBox(tr("断点续传", "Resume download"))
         self.cb_resume.setChecked(True)
+        self.cb_download_sub = CheckBox(tr("同时下载字幕", "Also download subtitles"))
+        self.cb_notify = CheckBox(tr("完成通知", "Notify when done"))
+        self.cb_notify.setChecked(True)
         chk_lay.addWidget(self.cb_resume)
+        chk_lay.addWidget(self.cb_download_sub)
+        chk_lay.addWidget(self.cb_notify)
         chk_lay.addStretch(1)
-        grid.add_field("", sec_grid_box, colspan=1)
-        set_card.add_form(grid)
+        adv.add_widget(sec_grid_box)
+        set_card.add_widget(adv)
         lay.addWidget(set_card)
 
         # 下载队列
@@ -201,17 +215,6 @@ class M3u8PanelPage(BaseQtPanel):
         ql.addLayout(qbtn)
         q_card.add_widget(q_body)
         lay.addWidget(q_card)
-
-        # 选项
-        orow = QHBoxLayout()
-        orow.setSpacing(16)
-        self.cb_download_sub = CheckBox(tr("同时下载字幕", "Also download subtitles"))
-        self.cb_notify = CheckBox(tr("完成通知", "Notify when done"))
-        self.cb_notify.setChecked(True)
-        orow.addWidget(self.cb_download_sub)
-        orow.addWidget(self.cb_notify)
-        orow.addStretch(1)
-        lay.addLayout(orow)
 
         # 底部操作栏（ActionBar + 打开输出文件夹）
         bar_row = QHBoxLayout()

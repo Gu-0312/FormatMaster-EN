@@ -4,6 +4,7 @@
 - FormSection：带图标的卡片区块（标题 + 内容）
 - FormGrid：等宽参数网格（label 在上 / 控件在下，悬停高亮提示）
 - FormItem：单个参数项（图标 + 标签 + 控件 + 悬停提示）
+- CollapsibleSection：渐进式披露折叠区（▸/▾ 标题按钮 + 可展开内容）
 
 风格：左对齐标签、等宽控件、区块内分组、hover 提示图标，
 与首页 Prism 视觉语言一致。
@@ -11,7 +12,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
-from qfluentwidgets import CaptionLabel, IconWidget
+from qfluentwidgets import CaptionLabel, FluentIcon, IconWidget, PushButton
 
 from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
@@ -119,3 +120,58 @@ class FormRow(QHBoxLayout):
             "border: none; background: transparent;")
         self.addWidget(lbl)
         self.addWidget(control, 1)
+
+
+class CollapsibleSection(QWidget):
+    """渐进式披露折叠区：▸/▾ 标题按钮 + 可展开内容容器。
+
+    用法：
+        adv = CollapsibleSection(tr("高级设置", "Advanced"),
+                                 hint=tr("通常无需调整", "Usually leave as-is"))
+        adv.add_layout(FormGrid(...))   # 或 adv.add_widget(widget)
+        card.add_widget(adv)
+    默认折叠；点击标题按钮展开/收起。业务逻辑不变（控件仍在，仅视觉隐藏）。
+    """
+
+    def __init__(self, title, hint="", parent=None):
+        super().__init__(parent)
+        self._title = str(title)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(8)
+
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(8)
+        self.btn = PushButton(FluentIcon.SETTING, f"{self._title} ▸")
+        self.btn.setCheckable(True)
+        self.btn.clicked.connect(self._toggle)
+        head.addWidget(self.btn)
+        if hint:
+            h = CaptionLabel(str(hint))
+            h.setStyleSheet(
+                f"font-size: 12px; color: {ds.ink_sec()};"
+                "border: none; background: transparent;")
+            head.addWidget(h)
+        head.addStretch(1)
+        v.addLayout(head)
+
+        self.content = QWidget()
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(12)
+        self.content.hide()
+        v.addWidget(self.content)
+
+    def add_widget(self, w):
+        self.content_layout.addWidget(w)
+
+    def add_layout(self, layout):
+        self.content_layout.addLayout(layout)
+
+    def set_expanded(self, on):
+        self.content.setVisible(on)
+        self.btn.setText(f"{self._title} {'▾' if on else '▸'}")
+
+    def _toggle(self, checked):
+        self.set_expanded(bool(checked))
