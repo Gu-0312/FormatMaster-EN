@@ -4,9 +4,15 @@
 FFmpeg 命令与 tkinter 版 _run_task_general 的 gif 分支一致：
 -vf fps=..,scale=..:flags=lanczos -loop 0，-progress pipe:1 解析进度。
 """
+import http.server
 import os
+import socket
 import subprocess
+import threading
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon)
 
 from gui_qt import task_manager as tm
@@ -73,6 +79,33 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
 
         self.action_bar = ActionBar(tr("开始转换", "Convert"))
         lay.addWidget(self.action_bar)
+
+        # 扫码下载区域（GIF生成后显示）
+        self.qr_area = QWidget()
+        qr_layout = QVBoxLayout(self.qr_area)
+        qr_layout.setContentsMargins(0, 12, 0, 0)
+        qr_layout.setSpacing(8)
+
+        # 标题
+        self.qr_title = CaptionLabel(tr("扫码下载", "Scan to download"))
+        self.qr_title.setStyleSheet("font-size: 14px; font-weight: 600;")
+        qr_layout.addWidget(self.qr_title)
+
+        # 二维码图片
+        self.qr_label = QLabel()
+        self.qr_label.setAlignment(Qt.AlignCenter)
+        self.qr_label.setFixedSize(180, 180)
+        qr_layout.addWidget(self.qr_label, 0, Qt.AlignCenter)
+
+        # 下载链接
+        self.qr_link = CaptionLabel("")
+        self.qr_link.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.qr_link.setStyleSheet("font-size: 12px; color: #64748B;")
+        qr_layout.addWidget(self.qr_link)
+
+        self.qr_area.hide()  # 默认隐藏
+        lay.addWidget(self.qr_area)
+
         self._proc_holder = {}   # 串行队列下共享当前 ffmpeg 进程句柄
         self._wire_tasks()
 
@@ -166,12 +199,76 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
                 except (ValueError, IndexError, TypeError):
                     pass
         self._proc_holder["p"] = None
+        # GIF生成成功后显示二维码
+        if proc.returncode == 0:
+            url, server = self._start_qr_server(task.output_path)
+            if url:
+                self._show_qr_code(url)
         return proc.returncode == 0
 
     def _cancel_proc(self):
         proc = self._proc_holder.get("p")
         if proc is not None:
             proc.terminate()
+
+    def _start_qr_server(self, gif_path):
+        """启动临时HTTP服务器供手机下载GIF"""
+        # 获取本机IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        except Exception:
+            ip = "127.0.0.1"
+        finally:
+            s.close()
+
+        # 随机端口
+        port = 8888
+
+        # 创建HTTP服务器
+        handler = lambda *args: http.server.SimpleHTTPRequestHandler(
+            *args, directory=os.path.dirname(gif_path))
+
+        try:
+            server = http.server.HTTPServer(("0.0.0.0", port), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            # 生成下载链接
+            filename = os.path.basename(gif_path)
+            url = f"http://{ip}:{port}/{filename}"
+
+            return url, server
+        except Exception as e:
+            print(f"Failed to start QR server: {e}")
+            return None, None
+
+    def _show_qr_code(self, url):
+        """显示二维码"""
+        try:
+            import qrcode
+
+            # 生成二维码
+            qr = qrcode.QRCode(version=1, box_size=10, border=2)
+            qr.add_data(url)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            # 转换为QPixmap
+            img = img.convert("RGBA")
+            data = img.tobytes("raw", "RGBA")
+            qimg = QImage(data, img.width, img.height, QImage.Format_RGBA8888)
+            pixmap = QPixmap.fromImage(qimg)
+
+            # 显示
+            self.qr_label.setPixmap(pixmap.scaled(
+                180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.qr_link.setText(url)
+            self.qr_area.show()
+
+        except Exception as e:
+            print(f"Failed to generate QR code: {e}")
 
     def _make_task(self, f):
         params = self.collect_params()
