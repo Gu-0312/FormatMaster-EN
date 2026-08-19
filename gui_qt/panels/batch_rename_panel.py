@@ -116,7 +116,7 @@ class BatchRenamePanelPage(BaseQtPanel):
             return None, tr("请填写命名模板", "Fill in the name template")
         from core.tools import build_rename_plan
         try:
-            plan = build_rename_plan(files, pattern, **_rule_args(self))
+            plan = build_rename_plan(files, pattern, **self._rule_args())
         except Exception as exc:  # noqa: BLE001 - 正则非法等
             return None, tr("规则错误：{}", "Rule error: {}").format(exc)
         return plan, None
@@ -148,7 +148,7 @@ class BatchRenamePanelPage(BaseQtPanel):
         from core.tools import batch_rename
         ok = batch_rename(
             [src for src, _n, _p in plan],
-            self.ed_pattern.text().strip(), **_rule_args(self))
+            self.ed_pattern.text().strip(), **self._rule_args())
         if ok:
             toast.show_success(self, tr("已重命名 {} 个文件", "Renamed {} files").format(len(ok)))
         else:

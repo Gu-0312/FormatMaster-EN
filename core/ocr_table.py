@@ -606,7 +606,6 @@ def _parse_table_html(html):
 
 def _rebuild_table_with_rapidtable(engine, image_path, bbox, items, dpi):
     """对单个表格区域用 RapidTable 重建结构；失败/退化返回 None（调用方兜底）。"""
-    import numpy as np
     x0, y0, x1, y1 = [int(round(v)) for v in bbox]
     pad = 6
     x0 = max(0, x0 - pad)

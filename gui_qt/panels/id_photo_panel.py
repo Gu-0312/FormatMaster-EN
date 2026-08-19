@@ -19,6 +19,7 @@ from core.id_photo import (PHOTO_SIZES, TRANSPARENT_KEY, size_to_px,
                            CARD_PRESETS, PAPER_SIZES, draw_head_guides,
                            layout_print, check_compliance)
 from gui_qt import task_manager as tm
+from gui_qt.components import toast
 from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -667,7 +668,6 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
                 tr("请先点击「预览效果」生成单张照片", "Run Preview first"))
             return None
         from PIL import Image
-        from core.id_photo import layout_print
         paper_key = _PAPER_KEYS[self.cb_layout_paper.currentIndex()]
         paper = PAPER_SIZES.get(paper_key, PAPER_SIZES["A6"])
         try:
@@ -744,7 +744,7 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
 
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
-        from core.id_photo import change_background, layout_print
+        from core.id_photo import change_background
         from PIL import Image
         params = task.params
         bg = params.get("bg", "蓝底")

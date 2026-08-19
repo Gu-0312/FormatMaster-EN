@@ -139,7 +139,6 @@ class DocMiscMixin:
 
     def _txt_to_md(self, inp, out, cb):
         if cb: cb(30, "转换中...")
-        import shutil
         shutil.copy2(inp, out)
         if cb: cb(100, "转换完成")
         return True

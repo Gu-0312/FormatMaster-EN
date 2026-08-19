@@ -110,7 +110,7 @@ class _SvgNavIcon:
 
     def _render(self, dark):
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QIcon, QPainter, QPixmap
+        from PySide6.QtGui import QPainter, QPixmap
         from PySide6.QtSvg import QSvgRenderer
         try:
             with open(self._svg_path, encoding="utf-8") as f:
@@ -128,7 +128,6 @@ class _SvgNavIcon:
             p.end()
             return QIcon(pm)
         except Exception:  # noqa: BLE001 - 渲染失败回退静态图标
-            from PySide6.QtGui import QIcon
             return QIcon(self._svg_path)
 
 

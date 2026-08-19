@@ -199,7 +199,6 @@ def test_chat_devices_expire():
 
 # ── 全格式预览（文本 / PDF） ──────────────────
 def test_chat_preview_text_and_pdf():
-    import os
     srv, _ = _make_srv()
     c = TestClient(srv._app)
     # 文本：写入 chat_dir 内的 .txt 并登记为 file 消息

@@ -359,7 +359,6 @@ class _SendHandler(http.server.SimpleHTTPRequestHandler):
         if not paths:
             self.send_error(400)
             return
-        import io
         try:
             with io.BytesIO() as bio:
                 with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as zf:
