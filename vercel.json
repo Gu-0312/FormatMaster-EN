@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "build": {
+    "ignoreCommand": "exit 0"
+  },
+  "github": {
+    "silent": true
+  }
+}

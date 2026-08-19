@@ -27,6 +27,7 @@ Thumbs.db
 *~
 data/
 *.json
+!vercel.json
 assets/*.ico
 bin/
 .trae/.mimocode/
