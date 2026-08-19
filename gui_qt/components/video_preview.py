@@ -10,8 +10,11 @@ import os
 from PySide6.QtCore import Qt, QRectF, QTimer, QUrl
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtWidgets import QSizePolicy, QWidget
-from qfluentwidgets import FluentIcon
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QSizePolicy,
+                               QVBoxLayout, QWidget)
+from qfluentwidgets import FluentIcon, PushButton
+
+from gui_qt.i18n import tr
 
 
 # 播放器错误码 → 可读文案
@@ -201,10 +204,10 @@ class VideoPlayerWidget(QWidget):
         ctrl = QHBoxLayout()
         ctrl.setSpacing(6)
         self.btn_play = TransparentToolButton(FluentIcon.PLAY, self)
-        self.btn_play.setToolTip("播放 / 暂停")
+        self.btn_play.setToolTip(tr("播放 / 暂停", "Play / Pause"))
         self.btn_play.setFixedSize(30, 30)
         self.btn_stop = TransparentToolButton(FluentIcon.CANCEL, self)
-        self.btn_stop.setToolTip("停止")
+        self.btn_stop.setToolTip(tr("停止", "Stop"))
         self.btn_stop.setFixedSize(26, 26)
         ctrl.addWidget(self.btn_play)
         ctrl.addWidget(self.btn_stop)
@@ -443,3 +446,42 @@ class VideoPlayerWidget(QWidget):
         self.lb_rate.setText(text)
         self.lb_rate.setStyleSheet(
             f"font-size: 11px; color: #FF6B6B; background: transparent;")
+
+
+class VideoPreviewDialog(QDialog):
+    """视频预览对话框：复用 VideoPlayerWidget（播放/暂停/进度/倍速）。
+
+    供面板「预览视频」按钮弹窗使用（如视频压缩页）。
+    """
+
+    def __init__(self, path="", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("视频预览", "Video preview"))
+        self.resize(780, 580)
+        self.setMinimumSize(520, 400)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(8)
+        self.player_widget = VideoPlayerWidget(self)
+        self.player_widget.setMinimumHeight(320)
+        lay.addWidget(self.player_widget, 1)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.btn_close = PushButton(tr("关闭", "Close"))
+        self.btn_close.clicked.connect(self.close)
+        row.addWidget(self.btn_close)
+        lay.addLayout(row)
+
+        if path:
+            self.open_video(path)
+
+    def open_video(self, path):
+        self.player_widget.set_source(path, autoplay=True)
+
+    def closeEvent(self, e):
+        try:
+            self.player_widget.shutdown()
+        except RuntimeError:
+            pass
+        super().closeEvent(e)

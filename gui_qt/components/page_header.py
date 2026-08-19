@@ -39,12 +39,12 @@ class PageHeader(QWidget):
         v.setSpacing(2)
         self.title_label = SubtitleLabel(title)
         self.title_label.setStyleSheet(
-            f"font-size: 18px; font-weight: 700; color: {ds.ink()};")
+            f"font-size: 18px; font-weight: 700;")
         v.addWidget(self.title_label)
         if subtitle:
             self.subtitle_label = CaptionLabel(subtitle)
             self.subtitle_label.setStyleSheet(
-                f"font-size: 12px; color: {ds.ink_sec()};")
+                f"font-size: 12px;")
             v.addWidget(self.subtitle_label)
         else:
             self.subtitle_label = None

@@ -8,6 +8,7 @@
 import os
 
 from PySide6.QtCore import QSize, Qt, QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog,
                                QFormLayout, QHBoxLayout, QListWidget,
@@ -36,7 +37,7 @@ def _pil_to_pixmap(pil_img):
     return QPixmap.fromImage(qimg)
 
 
-class _ThumbWorker(QThread):
+class _ThumbWorker(SafeWorker):
     """后台逐页渲染缩略图，通过信号回传 PIL.Image（主线程转 QPixmap）。"""
 
     sig_thumb = Signal(int, object)  # (行号, PIL.Image)
@@ -47,7 +48,7 @@ class _ThumbWorker(QThread):
         self._editor = editor
         self._is_stale = is_stale
 
-    def run(self):
+    def work(self):
         try:
             n = self._editor.page_count
             for i in range(n):
@@ -61,6 +62,7 @@ class _ThumbWorker(QThread):
                     self.sig_thumb.emit(i, img)
         finally:
             self.sig_done.emit()
+
 
 
 class _PageGrid(QListWidget):

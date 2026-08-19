@@ -7,6 +7,7 @@ import os
 
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox)
 
+from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
 from gui_qt.panels.base_panel import BaseQtPanel
 from gui_qt.panels.task_mixin import TaskPanelMixin
@@ -120,7 +121,8 @@ class ThumbnailPanelPage(BaseQtPanel, TaskPanelMixin):
         params = self.collect_params()
         nm = os.path.splitext(os.path.basename(f))[0]
         out_dir = self.out_row.resolve_dir(f)
-        out_path = os.path.join(out_dir, nm + "_thumbnails.png")
+        # 统一走 make_output_path：应用冲突策略（自动改名/覆盖）+ 源目同路径保护
+        out_path = tm.make_output_path(f, out_dir, ".png", name=nm + "_thumbnails")
         return dict(
             name=f"{tr('缩略图墙', 'Thumbnail wall')} - {os.path.basename(f)}",
             task_type="thumbnail", file_path=f, output_path=out_path,

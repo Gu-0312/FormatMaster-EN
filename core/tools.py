@@ -10,9 +10,9 @@ def _check_pymupdf_available():
     返回 (bool, str)：(是否可用, 错误信息)
     """
     try:
-        import fitz
+        import pymupdf
         # 触发实际加载，避免仅是模块存在但运行时失败
-        _ = fitz.__doc__
+        _ = pymupdf.__doc__
         return True, ""
     except ImportError as e:
         return False, f"PyMuPDF 未安装或打包后丢失：{e}"
@@ -31,8 +31,8 @@ def pdf_encrypt(input_path, output_path, open_password=None, owner_password=None
     ok, err = _check_pymupdf_available()
     if not ok:
         raise RuntimeError(f"PDF 加密不可用：{err}")
-    import fitz
-    doc = fitz.open(input_path)
+    import pymupdf
+    doc = pymupdf.open(input_path)
     
     if doc.needs_pass:
         if open_password:
@@ -46,12 +46,12 @@ def pdf_encrypt(input_path, output_path, open_password=None, owner_password=None
     if progress_cb:
         progress_cb(30, "正在加密…")
     
-    perm = int(fitz.PDF_PERM_ACCESSIBILITY | fitz.PDF_PERM_PRINT | 
-               fitz.PDF_PERM_COPY | fitz.PDF_PERM_ANNOTATE)
+    perm = int(pymupdf.PDF_PERM_ACCESSIBILITY | pymupdf.PDF_PERM_PRINT | 
+               pymupdf.PDF_PERM_COPY | pymupdf.PDF_PERM_ANNOTATE)
     
-    encrypt_meth = fitz.PDF_ENCRYPT_AES_256
+    encrypt_meth = pymupdf.PDF_ENCRYPT_AES_256
     if encryption_method == "AES-128":
-        encrypt_meth = fitz.PDF_ENCRYPT_AES_128
+        encrypt_meth = pymupdf.PDF_ENCRYPT_AES_128
     
     doc.save(output_path, encryption=encrypt_meth, user_pw=open_password, 
              owner_pw=owner_password, permissions=perm)
@@ -67,8 +67,8 @@ def pdf_decrypt(input_path, output_path, password, progress_cb=None):
     ok, err = _check_pymupdf_available()
     if not ok:
         raise RuntimeError(f"PDF 解密不可用：{err}")
-    import fitz
-    doc = fitz.open(input_path)
+    import pymupdf
+    doc = pymupdf.open(input_path)
     
     if doc.needs_pass:
         if not doc.authenticate(password):
@@ -77,7 +77,7 @@ def pdf_decrypt(input_path, output_path, password, progress_cb=None):
     if progress_cb:
         progress_cb(30, "正在解密…")
     
-    doc.save(output_path, encryption=fitz.PDF_ENCRYPT_NONE)
+    doc.save(output_path, encryption=pymupdf.PDF_ENCRYPT_NONE)
     doc.close()
     
     if progress_cb:
@@ -90,9 +90,9 @@ def pdf_is_encrypted(input_path):
     ok, _ = _check_pymupdf_available()
     if not ok:
         return False
-    import fitz
+    import pymupdf
     try:
-        doc = fitz.open(input_path)
+        doc = pymupdf.open(input_path)
         result = doc.needs_pass
         doc.close()
         return result
@@ -105,11 +105,11 @@ def pdf_compress(input_path, output_path, target_dpi=150, quality=80, progress_c
     ok, err = _check_pymupdf_available()
     if not ok:
         raise RuntimeError(f"PDF 压缩不可用：{err}")
-    import fitz
+    import pymupdf
     from PIL import Image
     import io
 
-    doc = fitz.open(input_path)
+    doc = pymupdf.open(input_path)
     total_pages = len(doc)
     
     for i in range(total_pages):
@@ -277,7 +277,8 @@ def image_compress(input_path, output_path, quality=80, max_size=None, progress_
     if progress_cb:
         progress_cb(20, "打开图片…")
     try:
-        img = Image.open(input_path)
+        with Image.open(input_path) as _f:
+            img = _f.copy()
     except FileNotFoundError:
         if progress_cb:
             progress_cb(-1, "错误：找不到图片文件")
@@ -351,15 +352,107 @@ def image_compress(input_path, output_path, quality=80, max_size=None, progress_
     return True
 
 
+def image_compress_to_size(input_path, output_path, target_kb,
+                           progress_cb=None, min_quality=25):
+    """把图片压到「不超过 target_kb」，自动调质量/分辨率（二分迭代）。
+
+    - 先降 JPEG/WebP quality（85 → 每次 -10），仍超再等比缩小分辨率
+      （0.85x 阶梯），直到 ≤ target_kb 或达到下限（尽力而为）。
+    - PNG 无 quality，直接走分辨率阶梯。
+    返回 (ok, msg, final_size)；final_size 为最终字节数。
+    """
+    try:
+        with Image.open(input_path) as _f:
+            img = _f.copy()
+    except Exception:
+        if progress_cb:
+            progress_cb(-1, "错误：无法打开图片")
+        return False, "无法打开图片", 0
+
+    ext = os.path.splitext(output_path)[1].lower()
+    # 统一转 RGB 以便 quality 生效（JPG/WebP；PNG 也转 RGB 简化，透明丢失可接受）
+    if img.mode in ("RGBA", "P", "CMYK"):
+        try:
+            img = img.convert("RGB")
+        except Exception:
+            pass
+    elif img.mode not in ("RGB", "L"):
+        try:
+            img = img.convert("RGB")
+        except Exception:
+            pass
+
+    import io
+    target = max(1, int(target_kb)) * 1024
+
+    def _size_of(im, q):
+        buf = io.BytesIO()
+        kw = {}
+        if ext in (".jpg", ".jpeg"):
+            kw = {"quality": q, "optimize": True}
+        elif ext == ".webp":
+            kw = {"quality": q}
+        else:
+            kw = {"optimize": True}
+        im.save(buf, format="JPEG" if ext in (".jpg", ".jpeg")
+                else ("WEBP" if ext == ".webp" else "PNG"), **kw)
+        return buf.getvalue()
+
+    if progress_cb:
+        progress_cb(30, "迭代压缩…")
+
+    quality = 85
+    scale = 1.0
+    best_data = None
+    for _ in range(24):   # 最多 24 轮
+        w = max(2, int(img.width * scale))
+        h = max(2, int(img.height * scale))
+        im = img.resize((w, h), Image.LANCZOS) if scale < 1.0 else img
+        try:
+            data = _size_of(im, quality)
+        except Exception:
+            break
+        if len(data) <= target:
+            best_data = data
+            break
+        # 记录当前最接近目标的
+        if best_data is None or len(data) < len(best_data):
+            best_data = data
+        if ext in (".jpg", ".jpeg", ".webp") and quality > min_quality:
+            quality -= 10          # 先降质量
+            quality = max(min_quality, quality)
+        else:
+            scale *= 0.85          # 质量到底再降分辨率
+            if scale < 0.30:
+                break
+    img.close()
+
+    if best_data is None:
+        if progress_cb:
+            progress_cb(-1, "错误：压缩失败")
+        return False, "压缩失败", 0
+
+    try:
+        with open(output_path, "wb") as f:
+            f.write(best_data)
+    except OSError:
+        if progress_cb:
+            progress_cb(-1, "错误：无法写入输出文件")
+        return False, "写入失败", 0
+    if progress_cb:
+        progress_cb(100, "压缩完成")
+    return True, "压缩完成", len(best_data)
+
+
 # ═══════════════════════════════════════════════
 #  PDF 批量水印 & 页码
 # ═══════════════════════════════════════════════
 
 def pdf_add_watermark(input_path, output_path, text, pos="右下角",
                       opacity=0.3, rotation=0, progress_cb=None):
-    import fitz
+    import pymupdf
     if progress_cb: progress_cb(10, "打开PDF...")
-    doc = fitz.open(input_path)
+    doc = pymupdf.open(input_path)
     positions = {
         "左上角": (0.05, 0.05), "右上角": (0.65, 0.05),
         "左下角": (0.05, 0.85), "右下角": (0.65, 0.85),
@@ -374,7 +467,7 @@ def pdf_add_watermark(input_path, output_path, text, pos="右下角",
         x = r.x0 + r.width * rx
         y = r.y0 + r.height * ry
         annot = page.add_freetext_annot(
-            fitz.Rect(x, y, x + r.width * 0.3, y + r.height * 0.1),
+            pymupdf.Rect(x, y, x + r.width * 0.3, y + r.height * 0.1),
             text, fontsize=max(12, r.width / 50), fontname="helv",
             text_color=0.5, fill_color=None, border_width=0,
         )
@@ -391,9 +484,9 @@ def pdf_add_watermark(input_path, output_path, text, pos="右下角",
 
 def pdf_add_page_numbers(input_path, output_path, start=1, pos="底部居中",
                          fmt="{n}", progress_cb=None):
-    import fitz
+    import pymupdf
     if progress_cb: progress_cb(10, "打开PDF...")
-    doc = fitz.open(input_path)
+    doc = pymupdf.open(input_path)
     positions = {
         "底部居中": (0.5, 0.95), "底部左对齐": (0.05, 0.95),
         "底部右对齐": (0.85, 0.95), "顶部居中": (0.5, 0.03),
@@ -407,7 +500,7 @@ def pdf_add_page_numbers(input_path, output_path, start=1, pos="底部居中",
         num = start + i
         text = fmt.replace("{n}", str(num))
         page.insert_text(
-            fitz.Point(r.x0 + r.width * rx, r.y0 + r.height * ry),
+            pymupdf.Point(r.x0 + r.width * rx, r.y0 + r.height * ry),
             text, fontname="helv", fontsize=10, color=(0.4, 0.4, 0.4),
         )
     if progress_cb: progress_cb(95, "保存...")
@@ -420,6 +513,63 @@ def pdf_add_page_numbers(input_path, output_path, start=1, pos="底部居中",
 # ═══════════════════════════════════════════════
 #  批量重命名
 # ═══════════════════════════════════════════════
+def build_rename_plan(file_list, pattern, start_num=1, output_dir=None,
+                      search_text="", replace_text="", case="none",
+                      regex_pattern="", regex_replace=""):
+    """计算重命名方案（dry-run，不改动磁盘）。
+
+    返回 [(src_path, new_name, new_path), ...]，供预览与执行共用——
+    保证「预览看到的名字」与「真正改成的名字」完全一致。
+    """
+    plan = []
+    for i, fp in enumerate(file_list):
+        d = output_dir if output_dir else os.path.dirname(fp)
+        name = os.path.splitext(os.path.basename(fp))[0]
+        ext = os.path.splitext(fp)[1]
+        date_str = time_str = ""
+        folder_str = os.path.basename(os.path.dirname(fp))
+        try:
+            mtime = os.path.getmtime(fp)
+            dt = __import__('datetime').datetime.fromtimestamp(mtime)
+            date_str = dt.strftime("%Y%m%d")
+            time_str = dt.strftime("%H%M%S")
+        except Exception:
+            date_str = "00000000"
+            time_str = "000000"
+
+        n = start_num + i
+        fmt = pattern.replace("{name}", name).replace("{ext}", ext) \
+                     .replace("{date}", date_str)
+        fmt = fmt.replace("{time}", time_str).replace("{folder}", folder_str)
+
+        def _fmt_n(m):
+            spec = m.group(1).lstrip(":") if m.group(1) else ""
+            return format(n, spec) if spec else str(n)
+        fmt = re.sub(r'\{n(:.*?)?\}', _fmt_n, fmt)
+
+        new_name = fmt + ext if not fmt.endswith(ext) else fmt
+
+        if search_text:
+            new_name = new_name.replace(search_text, replace_text)
+        if regex_pattern:
+            try:
+                new_name = re.sub(regex_pattern, regex_replace, new_name)
+            except Exception:
+                pass
+        if case in ("upper", "lower", "title"):
+            _body, _ext = os.path.splitext(new_name)
+            if case == "upper":
+                _body = _body.upper()
+            elif case == "lower":
+                _body = _body.lower()
+            elif case == "title":
+                _body = _body.title()
+            new_name = _body + _ext
+
+        plan.append((fp, new_name, os.path.join(d, new_name)))
+    return plan
+
+
 def batch_rename(file_list, pattern, start_num=1, progress_cb=None, output_dir=None,
                  search_text="", replace_text="", case="none",
                  regex_pattern="", regex_replace=""):
@@ -439,63 +589,19 @@ def batch_rename(file_list, pattern, start_num=1, progress_cb=None, output_dir=N
     """
     total = len(file_list)
     renamed = []
-
-    for i, fp in enumerate(file_list):
+    plan = build_rename_plan(
+        file_list, pattern, start_num=start_num, output_dir=output_dir,
+        search_text=search_text, replace_text=replace_text, case=case,
+        regex_pattern=regex_pattern, regex_replace=regex_replace)
+    for i, (fp, _new_name, new_path) in enumerate(plan):
         if progress_cb:
             progress_cb(int(i * 90 / max(total, 1)), f"重命名 {i+1}/{total}…")
-        d = output_dir if output_dir else os.path.dirname(fp)
-        name = os.path.splitext(os.path.basename(fp))[0]
-        ext = os.path.splitext(fp)[1]
-        date_str = ""
-        time_str = ""
-        folder_str = os.path.basename(os.path.dirname(fp))
-        try:
-            mtime = os.path.getmtime(fp)
-            date_str = __import__('datetime').datetime.fromtimestamp(mtime).strftime("%Y%m%d")
-            time_str = __import__('datetime').datetime.fromtimestamp(mtime).strftime("%H%M%S")
-        except Exception:
-            date_str = "00000000"
-            time_str = "000000"
-
-        # 格式化序号
-        n = start_num + i
-        fmt = pattern.replace("{name}", name).replace("{ext}", ext).replace("{date}", date_str)
-        fmt = fmt.replace("{time}", time_str).replace("{folder}", folder_str)
-        # 处理 {n:03d} 这种格式
-        def _fmt_n(m):
-            spec = m.group(1).lstrip(":") if m.group(1) else ""
-            if spec:
-                return format(n, spec)
-            return str(n)
-        fmt = re.sub(r'\{n(:.*?)?\}', _fmt_n, fmt)
-
-        new_name = fmt + ext if not fmt.endswith(ext) else fmt
-
-        if search_text:
-            new_name = new_name.replace(search_text, replace_text)
-
-        if regex_pattern:
-            try:
-                new_name = __import__('re').sub(regex_pattern, regex_replace, new_name)
-            except Exception:
-                pass
-
-        if case in ("upper", "lower", "title"):
-            # 大小写转换只作用于文件名主体，保留扩展名原样
-            # （用户通常不想让 photo.jpg → photo.JPG）
-            _body, _ext = os.path.splitext(new_name)
-            if case == "upper":
-                _body = _body.upper()
-            elif case == "lower":
-                _body = _body.lower()
-            elif case == "title":
-                _body = _body.title()
-            new_name = _body + _ext
-
-        new_path = os.path.join(d, new_name)
         if new_path != fp and not os.path.exists(new_path):
-            os.rename(fp, new_path)
-            renamed.append((fp, new_path))
+            try:
+                os.rename(fp, new_path)
+                renamed.append((fp, new_path))
+            except OSError:
+                continue
 
     if progress_cb:
         progress_cb(100, f"重命名完成  {len(renamed)} 个文件")

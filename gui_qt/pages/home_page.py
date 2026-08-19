@@ -20,9 +20,20 @@ from gui_qt.components import design_system as ds
 from gui_qt.components.stat_card_new import StatCard
 from gui_qt.components.quick_function_row import QuickFunctionRow
 from gui_qt.components.recent_tasks_table import RecentTasksTable
-from gui_qt.components.tips_card import TipsCard
+from gui_qt.components.tool_status_card import ToolStatusCard
 from gui_qt.components.system_info_card import SystemInfoCard
 from gui_qt.components.open_source_card import OpenSourceCard
+
+
+def _fmt_bytes(n):
+    """字节数 → 可读文本（B / KB / MB / GB）。"""
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 ** 2:
+        return f"{n / 1024:.1f} KB"
+    if n < 1024 ** 3:
+        return f"{n / 1024 ** 2:.1f} MB"
+    return f"{n / 1024 ** 3:.1f} GB"
 
 
 class HomePage(QWidget):
@@ -30,9 +41,9 @@ class HomePage(QWidget):
 
     def __init__(self, window, services, parent=None):
         super().__init__(parent)
-        self.window = window
+        self.main_window = window
         self.services = services
-        self.stats = services.get("stats")
+        self.stats = services.stats
 
         self.scroll = ScrollArea(self)
         self.scroll.setWidgetResizable(True)
@@ -135,9 +146,10 @@ class HomePage(QWidget):
             lambda: self._nav_to("history"))
         self.recent_tasks.btn_clear.clicked.connect(self._clear_tasks)
         lv.addWidget(self.recent_tasks, 1)
+        self._wire_task_badge()
 
-        self.tips = TipsCard()
-        lv.addWidget(self.tips)
+        self.tool_status = ToolStatusCard()
+        lv.addWidget(self.tool_status)
         h.addWidget(left, 7)
 
         # 右栏：系统信息 + 开源项目
@@ -158,9 +170,31 @@ class HomePage(QWidget):
         v.addWidget(split)
 
     def _nav_to(self, key):
-        page = self.window.pages.get(key)
+        page = self.main_window.pages.get(key)
         if page:
-            self.window.switchTo(page)
+            self.main_window.switchTo(page)
+
+    # ── 首页「最近任务」进行中数徽章（InfoBadge）──
+    def _wire_task_badge(self):
+        """连接 TaskManager 状态信号 → 实时刷新徽章。"""
+        try:
+            mgr = self.services.task_manager
+            mgr.sig_state.connect(self._refresh_active_badge)
+            self._refresh_active_badge()
+        except Exception:  # noqa: BLE001 - 徽章接线失败不影响首页
+            pass
+
+    def _refresh_active_badge(self, *args):
+        """进行中任务数（等待/运行/暂停），0 时隐藏徽章。"""
+        try:
+            n = 0
+            for task in self.services.task_manager.all_tasks():
+                if task.state in ("waiting", "running", "paused"):
+                    n += 1
+            self.recent_tasks.badge_active.setText(str(n))
+            self.recent_tasks.badge_active.setVisible(n > 0)
+        except Exception:  # noqa: BLE001 - 徽章刷新失败不影响首页
+            pass
 
     def _clear_tasks(self):
         try:
@@ -208,9 +242,31 @@ class HomePage(QWidget):
             self.stat_today.set_delta(
                 tr("较昨日 {:+.0f}%", "vs yesterday {:+.0f}%").format(pct))
 
-        # 节省空间（历史未记录体积，暂不统计）
-        self.stat_saved.set_value("--")
-        self.stat_saved.set_delta("--")
+        # 节省空间（历史记录 saved_bytes 累计，源文件 - 输出文件）
+        total_saved = 0
+        today_saved = 0
+        yesterday_saved = 0
+        try:
+            for r in self.services.history.get_all():
+                saved = int(r.get("saved_bytes", 0) or 0)
+                total_saved += saved
+                day = str(r.get("time", ""))[:10]
+                if day == today.isoformat():
+                    today_saved += saved
+                elif day == yesterday.isoformat():
+                    yesterday_saved += saved
+        except Exception:
+            pass
+        self.stat_saved.set_value(_fmt_bytes(total_saved))
+        if total_saved <= 0:
+            self.stat_saved.set_delta("--")
+        elif today_saved > 0:
+            self.stat_saved.set_delta(
+                tr("今日 +{}", "today +{}").format(_fmt_bytes(today_saved)))
+        else:
+            self.stat_saved.set_delta(
+                tr("较昨日 {}", "vs yesterday {}").format(
+                    _fmt_bytes(max(0, today_saved - yesterday_saved))))
 
         # 成功率（较昨日：百分点差）
         t_rate = t_ok / t_total * 100 if t_total else None
@@ -240,11 +296,36 @@ class HomePage(QWidget):
 
     def showEvent(self, e):
         self._refresh_all()
+        # 系统信息采集（PowerShell 子进程 1~3 秒）首次延迟到预热窗口之后：
+        # 启动早期 prewarm 会在主线程 import pymupdf（pdf_editor 页），其 GC
+        # 回收 C 扩展对象与后台 subprocess 读取线程并发时曾触发 access violation
+        # （PyMuPDF GC 竞态）。错开 4 秒后，pymupdf 已完成加载与缓存，风险消除。
+        if not getattr(self, "_sysinfo_refreshed", False):
+            self._sysinfo_refreshed = True
+            try:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(4000, self._refresh_sysinfo)
+            except Exception:  # noqa: BLE001 - 延迟启动失败立即采集
+                self._refresh_sysinfo()
+        else:
+            try:
+                self.sysinfo.refresh()  # 缓存秒回，不重新跑子进程
+            except Exception:  # noqa: BLE001
+                pass
+        # 切回首页时刷新工具状态（FFmpeg/yt-dlp/OCR/插件数量等），
+        # 使插件增删、工具状态变化后无需手动点「刷新」即可看到最新。
+        # scan_plugins 模块加载后有缓存（常态 ~11ms），不会造成卡顿。
         try:
-            self.sysinfo.refresh()
-        except Exception:
+            self.tool_status.refresh()
+        except Exception:  # noqa: BLE001
             pass
         super().showEvent(e)
+
+    def _refresh_sysinfo(self):
+        try:
+            self.sysinfo.refresh()
+        except Exception:  # noqa: BLE001 - 采集失败不影响首页
+            pass
 
     def save_prefs(self):
         pass

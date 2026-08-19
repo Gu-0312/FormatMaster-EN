@@ -3,13 +3,14 @@
 搜索 + 筛选 + 统计概览：顶部统计卡（总数/成功/失败/今日），
 工具栏含搜索框、类型与结果筛选，表格展示记录。
 """
+import os
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView,
-                               QTableWidget, QTableWidgetItem, QVBoxLayout,
-                               QWidget)
+                               QVBoxLayout, QWidget)
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon, LineEdit,
-                            PushButton, ScrollArea)
+                            PillPushButton, PushButton, ScrollArea, TableView)
 
 from gui_qt.components import toast
 from gui_qt.components import design_system as ds
@@ -18,8 +19,38 @@ from gui_qt.components.empty_state import EmptyState
 from gui_qt.i18n import tr
 from gui_qt.components.page_header import PageHeader
 
-_COLS = ["时间", tr("类型", "Type"), "源文件", tr("目标格式", "Target format"), "结果"]
+_COLS = ["时间", tr("类型", "Type"), "源文件", tr("输出文件", "Output file"), "结果"]
 _RESULTS = [tr("全部", "All"), tr("成功", "Success"), tr("失败", "Failed")]
+
+# 当前导航中仍存在的功能类型白名单：历史记录里已删除功能的旧类型
+# （如 LUT 调色、语音转字幕）不再显示在筛选下拉中。新增功能在此登记。
+_ACTIVE_TYPES = {
+    # 转换中心
+    tr("视频转换", "Video Convert"), tr("音频转换", "Audio Convert"),
+    tr("图片转换", "Image Convert"), tr("文档转换", "Doc Convert"),
+    tr("GIF 转换", "GIF Convert"), tr("场景化转换", "Scene Convert"),
+    tr("图像裁剪", "Image Crop"), tr("视频转 GIF", "Video to GIF"),
+    tr("场景化处理", "Scene Process"),
+    # PDF
+    tr("PDF 处理", "PDF Tools"), tr("PDF 编辑", "PDF Edit"),
+    # 视频工具
+    tr("封面裁剪", "Cover Crop"), tr("视频处理", "Video Tools"),
+    tr("视频压缩", "Video Compress"), tr("视频抽帧", "Frame Extract"),
+    tr("字幕提取", "Subtitle"), tr("视频反挤压", "Unwarp"),
+    # 音频工具
+    tr("音频处理", "Audio Tools"), tr("音频增强", "Audio Enhance"),
+    tr("音频裁剪", "Audio Cut"),
+    # 图片工具
+    tr("图片压缩", "Image Compress"), tr("图片水印", "Image Watermark"),
+    tr("证件照换底色", "ID Photo"), tr("图片拼接", "Image Merge"),
+    # 识别工具
+    tr("OCR 识别", "OCR"), tr("表格识别", "Table OCR"),
+    # 实用工具
+    tr("视频缩略图", "Video Thumbnails"), tr("哈希校验", "Hash Check"),
+    tr("文件夹监视", "Folder Watch"), tr("文件安全", "File Security"),
+    # 网络下载
+    tr("视频下载", "Video Download"), tr("M3U8 下载", "M3U8 Download"),
+}
 
 
 class _StatChip(Card):
@@ -39,7 +70,7 @@ class _StatChip(Card):
         v.addWidget(self.value_label)
         self.title_label = CaptionLabel(title, self)
         self.title_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_sec()};"
+            f"font-size: 11px;"
             "border: none; background: transparent;")
         v.addWidget(self.title_label)
 
@@ -53,7 +84,7 @@ class HistoryPage(ScrollArea):
     def __init__(self, window, services, parent=None):
         super().__init__(parent)
         self.setObjectName("history")
-        self.window = window
+        self.main_window = window
         self.services = services
         self._all_records = []
         self.setWidgetResizable(True)
@@ -108,15 +139,31 @@ class HistoryPage(ScrollArea):
         self.type_combo.currentTextChanged.connect(self._refresh)
         toolbar.addWidget(self.type_combo)
 
-        self.result_combo = ComboBox(self)
-        self.result_combo.addItems(_RESULTS)
-        self.result_combo.currentTextChanged.connect(self._refresh)
-        toolbar.addWidget(self.result_combo)
+        # 结果筛选 → PillPushButton 标签组（全部/成功/失败）
+        self._result_val = tr("全部", "All")
+        self.result_pills = []
+        for label in _RESULTS:
+            pill = PillPushButton(label, self)
+            pill.setCheckable(True)
+            pill.clicked.connect(
+                lambda _=False, lab=label: self._on_result_pill(lab))
+            toolbar.addWidget(pill)
+            self.result_pills.append(pill)
+        self.result_pills[0].setChecked(True)
 
         self.count_label = CaptionLabel("")
         self.count_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+            f"font-size: 12px;")
         toolbar.addWidget(self.count_label)
+
+        # 数据大屏（ECharts 交互图表，QtWebEngine 渲染）
+        self.btn_dashboard = PushButton(FluentIcon.PIE_SINGLE,
+                                        tr("数据大屏", "Dashboard"))
+        self.btn_dashboard.setToolTip(
+            tr("近 30 天转换趋势与类型分布（交互图表）",
+               "30-day trend & type distribution (interactive)"))
+        self.btn_dashboard.clicked.connect(self._open_dashboard)
+        toolbar.addWidget(self.btn_dashboard)
 
         self.btn_clear = PushButton(FluentIcon.DELETE, tr("清空历史", "Clear history"))
         self.btn_clear.clicked.connect(self._clear)
@@ -132,16 +179,20 @@ class HistoryPage(ScrollArea):
             btn_clicked=lambda: self._goto("video")))
         v.addWidget(self.empty_widget, 1)
 
-        # ── 表格 ───────────────────────────────────
-        self.table = QTableWidget(0, len(_COLS))
-        self.table.setHorizontalHeaderLabels(_COLS)
-        self.table.verticalHeader().setVisible(False)
+        # ── 表格（qfw TableView + 排序模型）────────
+        self._model = QStandardItemModel(0, len(_COLS))
+        self._model.setHorizontalHeaderLabels(_COLS)
+        self.table = TableView(self)
+        self.table.setModel(self._model)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
         self.table.verticalHeader().setDefaultSectionSize(38)
+        self.table.verticalHeader().setVisible(False)
+        # 点击表头排序（QStandardItemModel 内置 sort）
+        self.table.setSortingEnabled(True)
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -153,12 +204,19 @@ class HistoryPage(ScrollArea):
         self._load_types()
         self._refresh()
 
+    def _on_result_pill(self, label):
+        """Pill 互斥：只保留当前选中的高亮，并刷新。"""
+        for pill in self.result_pills:
+            pill.setChecked(pill.text() == label)
+        self._result_val = label
+        self._refresh()
+
     def _load_types(self):
-        """从历史记录收集类型列表填充筛选下拉。"""
+        """从历史记录收集类型填充筛选下拉，仅保留当前仍存在的功能。"""
         seen = []
         for r in self.services.history.get_all():
             t = r.get("type", "")
-            if t and t not in seen:
+            if t and t not in seen and t in _ACTIVE_TYPES:
                 seen.append(t)
         self.type_combo.blockSignals(True)
         self.type_combo.clear()
@@ -170,7 +228,7 @@ class HistoryPage(ScrollArea):
         """按搜索词 + 类型 + 结果筛选记录。"""
         kw = self.search_edit.text().strip().lower()
         type_f = self.type_combo.currentText()
-        result_f = self.result_combo.currentText()
+        result_f = self._result_val
         out = []
         for r in self._all_records:
             if kw:
@@ -194,15 +252,19 @@ class HistoryPage(ScrollArea):
         self._update_stats(records)
         filtered = self._filtered()
 
-        self.table.setRowCount(0)
+        # 排序状态下清空会丢失排序状态：先禁用排序再重建
+        self.table.setSortingEnabled(False)
+        self._model.removeRows(0, self._model.rowCount())
         for r in filtered:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
             status = tr("成功", "Success") if r.get("status") == "success" else tr("失败", "Failed")
+            out_name = os.path.basename(str(r.get("output_path", "")))
+            tgt = out_name or r.get("target", "")
             values = [r.get("time", ""), r.get("type", ""),
-                      r.get("source", ""), r.get("target", ""), status]
+                      r.get("source", ""), tgt, status]
+            items = []
             for c, val in enumerate(values):
-                item = QTableWidgetItem(str(val))
+                item = QStandardItem(str(val))
+                item.setEditable(False)
                 if c == 4:
                     t = ds.tokens()
                     fg = t["success"] if status == tr("成功", "Success") else t["error"]
@@ -212,7 +274,9 @@ class HistoryPage(ScrollArea):
                     item.setFont(font)
                 elif c == 0:
                     item.setForeground(QColor(ds.ink_sec()))
-                self.table.setItem(row, c, item)
+                items.append(item)
+            self._model.appendRow(items)
+        self.table.setSortingEnabled(True)
 
         shown = len(filtered)
         total = len(records)
@@ -256,19 +320,70 @@ class HistoryPage(ScrollArea):
         type_counter = Counter(str(r.get("type", "未知")) for r in records)
         self.chart_type.set_data(type_counter.most_common(7))
 
-    def _clear(self):
-        if self.table.rowCount() == 0:
+    def _open_dashboard(self):
+        """ECharts 交互数据大屏：近 30 天趋势 + 类型分布。"""
+        from collections import Counter
+        import datetime as _dt
+        records = self.services.history.get_all()
+        if not records:
+            from gui_qt.components import toast
+            toast.show_info(self, tr("暂无转换记录", "No conversion records"))
             return
+        today = _dt.date.today()
+        ok_c, fail_c = Counter(), Counter()
+        type_c = Counter(str(r.get("type", "未知")) for r in records)
+        for r in records:
+            d = str(r.get("time", ""))[:10]
+            if r.get("status") == "success":
+                ok_c[d] += 1
+            else:
+                fail_c[d] += 1
+        days, ok_l, fail_l = [], [], []
+        for i in range(29, -1, -1):
+            d = (today - _dt.timedelta(days=i)).isoformat()
+            days.append(d[5:])
+            ok_l.append(ok_c.get(d, 0))
+            fail_l.append(fail_c.get(d, 0))
+        types, counts = [], []
+        for t, c in type_c.most_common(7):
+            types.append(t)
+            counts.append(c)
+        from gui_qt.components.echarts_view import EchartsStatsDialog
+        dlg = EchartsStatsDialog(self.window())
+        if not dlg.available():
+            from gui_qt.components import toast
+            toast.show_warning(self, tr("数据大屏不可用", "Dashboard unavailable"))
+            dlg.deleteLater()
+            return
+        dlg.set_data(days, ok_l, fail_l, types, counts)
+        dlg.exec()
+
+    def _clear(self):
+        if self._model.rowCount() == 0:
+            return
+        # 危险操作二次确认（qfw MessageBox：yesButton.clicked 在 accept 前同步触发）
+        from qfluentwidgets import MessageBox
+        box = MessageBox(
+            tr("清空历史记录？", "Clear all history?"),
+            tr("将删除全部转换记录，此操作不可撤销。",
+               "This deletes all records and cannot be undone."),
+            self)
+        box.yesButton.setText(tr("清空", "Clear"))
+        box.cancelButton.setText(tr("取消", "Cancel"))
+        box.yesButton.clicked.connect(self._do_clear)
+        box.exec()
+
+    def _do_clear(self):
         self.services.history.clear()
         self._load_types()
         self._refresh()
         toast.show_success(self, tr("历史记录已清空", "History cleared"))
 
     def _goto(self, nav_key):
-        pages = getattr(self.window, "pages", {})
+        pages = getattr(self.main_window, "pages", {})
         page = pages.get(nav_key)
         if page is not None:
-            self.window.switchTo(page)
+            self.main_window.switchTo(page)
 
     def showEvent(self, e):
         self._load_types()

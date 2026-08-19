@@ -52,10 +52,10 @@ class EmptyState(QVBoxLayout):
         self.icon_w = _SoftIconBox(icon)
         self.title_label = SubtitleLabel(title)
         self.title_label.setStyleSheet(
-            f"font-size: 17px; font-weight: 600; color: {ds.ink()};")
+            f"font-size: 17px; font-weight: 600;")
         self.desc_label = BodyLabel(desc)
         self.desc_label.setStyleSheet(
-            f"font-size: 13px; color: {ds.ink_sec()};")
+            f"font-size: 13px;")
         self.desc_label.setWordWrap(True)
         self.desc_label.setAlignment(Qt.AlignCenter)
         self.desc_label.setMaximumWidth(460)

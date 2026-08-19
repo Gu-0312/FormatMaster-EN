@@ -203,3 +203,23 @@ class PhantomPanelPage(BaseQtPanel):
                 toast.show_success(self, tr("幻影坦克已解密", "Phantom tank decoded"))
         except Exception as exc:  # noqa: BLE001
             toast.show_error(self, tr("处理失败", "Failed") + f": {exc}")
+
+    def collect_prefs(self) -> dict:
+        """记忆模式/颜色/源图/输出目录，重进面板自动恢复。"""
+        return {"mode": self.sg_mode.currentRouteKey(),
+                "white": self.ed_white.text().strip(),
+                "black": self.ed_black.text().strip(),
+                "src": self.ed_src.text().strip(),
+                "out": self.ed_out.text().strip()}
+
+    def apply_prefs(self, prefs: dict):
+        if not prefs:
+            return
+        mode = prefs.get("mode")
+        if mode in self.sg_mode.items:
+            self.sg_mode.setCurrentItem(mode)
+        for k in ("white", "black", "src", "out"):
+            v = prefs.get(k)
+            if v:
+                getattr(self, f"ed_{k}").setText(v)
+

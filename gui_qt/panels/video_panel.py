@@ -5,10 +5,11 @@ collect_params() 字段与 tkinter 版 gui/panels/video_panel.py 保持一致。
 """
 import os
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout
 from qfluentwidgets import (CaptionLabel, CheckBox, ComboBox,
-                            FluentIcon, LineEdit, PrimaryPushButton,
-                            PushButton, SubtitleLabel)
+                            EditableComboBox, FluentIcon, LineEdit,
+                            PrimaryPushButton, PushButton, SubtitleLabel)
 
 from gui_qt import task_manager as tm
 from gui_qt.i18n import tr
@@ -21,12 +22,15 @@ from utils.config import (RESOLUTIONS, SUPPORTED_VIDEO, VIDEO_CODECS,
 
 FPS_VALUES = [tr("原始帧率", "Original FPS"), "24", "25", "30", "60"]
 BR_VALUES = [tr("自动", "Auto"), "1M", "2M", "5M", "8M", "10M", "20M"]
+SUB_FONT_VALUES = [tr("自动", "Auto"), "16", "24", "32", "40"]
 
 
 class VideoPanelPage(BaseQtPanel):
     """视频转换页。"""
 
     panel_key = "video"
+    # 硬件加速检测完成（后台 daemon 线程 → 主线程信号，更新下拉不阻塞 UI）
+    _hw_ready = Signal(list)
 
     # ── UI 构建 ──────────────────────────────────
     def build(self):
@@ -68,6 +72,10 @@ class VideoPanelPage(BaseQtPanel):
         mgr.sig_state.connect(self._on_state)
 
         self._task_rows = {}   # task_id -> (file_path, row)
+
+        # 硬件加速下拉异步补全（缓存未命中时后台检测，不阻塞构建）
+        self._hw_ready.connect(self._fill_hw_options)
+        self._ensure_hw_options_async()
 
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
@@ -112,7 +120,7 @@ class VideoPanelPage(BaseQtPanel):
             tr("编码器 / 质量 / 帧率 / 码率 / 硬件加速 / 字幕（通常无需调整）",
                "Encoder / quality / FPS / bitrate / HW accel / subtitle (usually leave as-is)"))
         adv_hint.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()}; border: none; background: transparent;")
+            f"font-size: 12px border: none; background: transparent;")
         adv_h.addWidget(adv_hint)
         adv_h.addStretch(1)
         sec.add_widget(adv_head)
@@ -130,11 +138,23 @@ class VideoPanelPage(BaseQtPanel):
         self.cb_fps = adv_grid.add_field(
             tr("帧率", "Frame rate"), self._combo(FPS_VALUES, tr("原始帧率", "Original FPS")))
         self.cb_br = adv_grid.add_field(
-            tr("码率", "Bitrate"), self._combo(BR_VALUES, tr("自动", "Auto")),
-            hint=tr("自动由编码器决定，或手动指定", "Auto (encoder default) or manual"))
+            tr("码率", "Bitrate"), self._combo_editable(BR_VALUES, tr("自动", "Auto")),
+            hint=tr("自动由编码器决定，或手动指定（可自定义输入，如 3.5M）",
+                    "Auto (encoder default) or manual (custom values allowed, e.g. 3.5M)"))
         self.cb_hw = adv_grid.add_field(
             tr("硬件加速", "HW acceleration"), self._combo(self._hw_options(), tr("自动", "Auto")),
             hint=tr("NVIDIA / AMD / Intel 显卡加速编码", "NVIDIA / AMD / Intel GPU accelerated encoding"))
+        # 设置里「默认硬件引擎」指定时覆盖初始值
+        try:
+            _eng = self.services.get_pref("hw_accel_engine", "auto")
+            if _eng == "off":
+                self.cb_hw.setCurrentText(tr("关闭硬件加速", "Disable HW accel"))
+            elif _eng != "auto":
+                from utils.hardware_accel import HW_ACCEL_ENCODERS
+                if _eng in HW_ACCEL_ENCODERS:
+                    self.cb_hw.setCurrentText(HW_ACCEL_ENCODERS[_eng]["name"])
+        except Exception:  # noqa: BLE001 - 引擎默认值读取失败不影响
+            pass
         adv_v.addLayout(adv_grid)
 
         # 字幕烧录
@@ -143,15 +163,31 @@ class VideoPanelPage(BaseQtPanel):
         self._subtitle_path = ""
         self._lbl_sub = CaptionLabel(tr("未选择字幕", "No subtitle"), self)
         self._lbl_sub.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+            f"font-size: 12px")
         sub_row = HLAY()
         sub_row.setSpacing(8)
         sub_row.addWidget(self.btn_sub)
         sub_row.addWidget(self._lbl_sub, 1)
+        # 字幕字号（手动选择，随面板记忆保存）
+        self.cb_sub_font = self._combo(SUB_FONT_VALUES, tr("自动", "Auto"))
+        sub_row.addWidget(CaptionLabel(tr("字号", "Font size")))
+        sub_row.addWidget(self.cb_sub_font)
         sub_row.addStretch(1)
         sub_wrap = QW()
         sub_wrap.setLayout(sub_row)
         adv_v.addWidget(sub_wrap)
+
+        # 元数据（标题/艺术家，写入输出文件信息）
+        md_grid = FormGrid(columns=2)
+        self.ed_md_title = LineEdit()
+        self.ed_md_title.setPlaceholderText(tr("可选，如「我的视频」", "Optional, e.g. 'My video'"))
+        self.ed_md_artist = LineEdit()
+        self.ed_md_artist.setPlaceholderText(tr("可选，如作者名", "Optional, e.g. author"))
+        md_grid.add_field(tr("标题", "Title"), self.ed_md_title,
+                          hint=tr("写入输出文件的标题元数据", "Write title metadata to output"))
+        md_grid.add_field(tr("艺术家/作者", "Artist"), self.ed_md_artist,
+                          hint=tr("写入输出文件的艺术家元数据", "Write artist metadata to output"))
+        adv_v.addLayout(md_grid)
 
         sec.add_widget(self.adv_wrap)
         self.adv_wrap.setVisible(False)
@@ -169,14 +205,64 @@ class VideoPanelPage(BaseQtPanel):
         cb.setCurrentText(default)
         return cb
 
+    def _combo_editable(self, items, default):
+        """可编辑下拉（EditableComboBox）：保留预设选项 + 允许手输自定义值。
+        用于码率等「预设 + 自由输入」场景（如 3.5M）。"""
+        cb = EditableComboBox()
+        cb.addItems(items)
+        cb.setCurrentText(default)
+        return cb
+
     def _hw_options(self):
-        """硬件加速选项：自动 / 检测到的 GPU / 关闭硬件加速。"""
+        """硬件加速选项（非阻塞）：只读缓存，不触发 subprocess。
+
+        启动时 prewarm_hw_accel_async 已在后台预热，缓存命中直接返回
+        完整选项（0ms）；未命中先返回基础选项（自动/关闭），由
+        _ensure_hw_options_async 后台检测完成后经 Signal 补全，避免
+        UI 线程同步跑 `ffmpeg -encoders`（~85ms）卡顿。
+        """
         try:
-            from utils.hardware_accel import detect_hardware_acceleration
-            available = detect_hardware_acceleration()
+            from utils.hardware_accel import get_cached_hw_accel
+            available = get_cached_hw_accel() or []
         except Exception:  # noqa: BLE001 - 检测失败不应阻断 UI
             available = []
         return [tr("自动", "Auto")] + [a["name"] for a in available] + [tr("关闭硬件加速", "Disable HW accel")]
+
+    def _ensure_hw_options_async(self):
+        """缓存未命中时：后台线程检测硬件加速，完成后 Signal 补全下拉。"""
+        try:
+            from utils.hardware_accel import get_cached_hw_accel, detect_hardware_acceleration
+            if get_cached_hw_accel() is not None:
+                return  # 预热已命中，无需异步
+        except Exception:  # noqa: BLE001 - 探测入口失败直接跳过
+            return
+
+        def _run():
+            try:
+                available = detect_hardware_acceleration()
+            except Exception:  # noqa: BLE001 - 检测失败保持基础选项
+                available = []
+            self._hw_ready.emit(available)
+
+        import threading
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _fill_hw_options(self, available):
+        """后台检测完成：补齐硬件加速下拉选项（保留当前选择）。"""
+        try:
+            if not hasattr(self, "cb_hw") or self.cb_hw is None:
+                return
+            current = self.cb_hw.currentText()
+            opts = ([tr("自动", "Auto")] + [a["name"] for a in available]
+                    + [tr("关闭硬件加速", "Disable HW accel")])
+            self.cb_hw.blockSignals(True)
+            self.cb_hw.clear()
+            self.cb_hw.addItems(opts)
+            if current in opts:
+                self.cb_hw.setCurrentText(current)  # 保留用户/偏好选择
+            self.cb_hw.blockSignals(False)
+        except Exception:  # noqa: BLE001 - 补全失败不影响面板
+            pass
 
     def _apply_preset(self, name):
         """应用预设模板：自动填充各参数控件。"""
@@ -250,7 +336,20 @@ class VideoPanelPage(BaseQtPanel):
             "out_dir_path": self.out_row.path(),
             "hw_accel": self._resolve_hw_accel(),
             "subtitle_path": self._subtitle_path,
+            "sub_font_size": self._resolve_sub_font(),
+            "metadata": {
+                "title": self.ed_md_title.text().strip(),
+                "artist": self.ed_md_artist.text().strip(),
+            },
         }
+
+    def _resolve_sub_font(self):
+        """字幕字号：显示文本 → int（「自动」返回 None）。"""
+        try:
+            t = self.cb_sub_font.currentText()
+            return int(t) if t.strip().isdigit() else None
+        except Exception:  # noqa: BLE001
+            return None
 
     def collect_prefs(self) -> dict:
         return {
@@ -262,6 +361,8 @@ class VideoPanelPage(BaseQtPanel):
             "br": self.cb_br.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
+            "hw_accel": self.cb_hw.currentText(),
+            "sub_font_size": self.cb_sub_font.currentText(),
         }
 
     def apply_prefs(self, prefs: dict):
@@ -282,6 +383,12 @@ class VideoPanelPage(BaseQtPanel):
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
+        if prefs.get("hw_accel"):
+            _opts = self._hw_options()
+            if prefs["hw_accel"] in _opts:
+                self.cb_hw.setCurrentText(prefs["hw_accel"])
+        if prefs.get("sub_font_size") in SUB_FONT_VALUES:
+            self.cb_sub_font.setCurrentText(prefs["sub_font_size"])
 
     # ── 任务提交 ─────────────────────────────────
     def _start(self):
@@ -348,9 +455,9 @@ class VideoPanelPage(BaseQtPanel):
                                                 tm.state_text(state))
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
-        if state == tm.SUCCESS:
-            toast.show_success(self, tr("转换完成：{}", "Converted: {}").format(os.path.basename(task.file_path)))
-        elif state == tm.FAILED:
+        if state == tm.FAILED:
+            # 失败即时提示（具体文件+原因）；成功统一走全局完成通知，
+            # 避免与「全部转换完成」重复弹两条提示
             toast.show_error(self,
                              tr("转换失败：{}", "Failed: {}").format(os.path.basename(task.file_path)) +
                              tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))

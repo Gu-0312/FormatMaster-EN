@@ -5,11 +5,10 @@ FFmpeg libx265/libx264 恒定质量（CRF）重编码，配合分辨率缩放把
 压小（微信/网盘传视频刚需）。进度复用 FFmpegProgressReader。
 """
 import os
-import subprocess
 
 from core.ffmpeg_executor import get_ffprobe_raw
-from core.ffmpeg_progress import FFmpegProgressReader
-from utils.config import get_ffmpeg_path, translate_ffmpeg_error
+from core.ffmpeg_progress import run_ffmpeg
+from utils.config import get_ffmpeg_path
 
 # 压缩等级 → CRF（数值越大体积越小、质量越低；HEVC/H.264 通用）
 CRF_PRESETS = {
@@ -69,31 +68,14 @@ class VideoCompressor:
         cmd.extend(["-threads", "0"])
         cmd.append(output_path)
 
-        try:
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-            reader = FFmpegProgressReader(process, duration, label="压缩中",
-                                          done_message="压缩完成",
-                                          fail_message="压缩失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-            )
-            if result is True:
-                return True
-            if result is None:
-                return False
-            err = "".join(reader.error_output[-5:])
-            chn_msg = translate_ffmpeg_error(err)
-            detail = err.strip()[-80:] if err.strip() else ""
-            if progress_callback:
-                progress_callback(-1, f"压缩失败：{chn_msg}")
-                if detail and chn_msg not in detail:
-                    progress_callback(-1, f"详细信息：{detail}")
+        result = run_ffmpeg(cmd, duration=duration, label="压缩中",
+                            cancel_check=lambda: self._cancel,
+                            progress_callback=progress_callback,
+                            translate_error=True)
+        if result.success:
+            return True
+        if result.cancelled:
             return False
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
-            return False
+        if progress_callback:
+            progress_callback(-1, f"压缩失败：{result.error_cn}")
+        return False

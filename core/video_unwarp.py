@@ -9,11 +9,8 @@
   对应像素尺寸，重编码
 """
 
-import os
-import subprocess
-
 from core.ffmpeg_executor import get_ffprobe_raw
-from core.ffmpeg_progress import FFmpegProgressReader
+from core.ffmpeg_progress import run_ffmpeg
 from utils.config import get_ffmpeg_path, get_ffprobe_path
 
 
@@ -36,23 +33,23 @@ def get_video_dar(path):
 
 
 def _run_ffmpeg(args, duration, label, progress_cb, cancel_check):
-    """启动 FFmpeg 并读取进度。"""
+    """启动 FFmpeg 并等待完成。"""
     ffmpeg = get_ffmpeg_path()
     if not ffmpeg:
         if progress_cb:
             progress_cb(-1, "错误: FFmpeg 未安装")
         return False
-    try:
-        proc = subprocess.Popen(
-            args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            creationflags=(subprocess.CREATE_NO_WINDOW
-                           if os.name == "nt" else 0))
-    except OSError:
-        if progress_cb:
-            progress_cb(-1, "错误: 无法启动 FFmpeg")
+    result = run_ffmpeg(args, duration=duration, label=label,
+                        cancel_check=cancel_check,
+                        progress_callback=progress_cb,
+                        translate_error=True)
+    if result.success:
+        return True
+    if result.cancelled:
         return False
-    reader = FFmpegProgressReader(proc, duration, label=label)
-    return reader.read_loop(cancel_check, progress_cb)
+    if progress_cb:
+        progress_cb(-1, f"失败: {result.error_cn}")
+    return False
 
 
 def _parse_dar(dar_str):

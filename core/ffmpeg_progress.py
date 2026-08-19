@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time as _time
+from dataclasses import dataclass, field
 
 # ── 预编译正则（模块级，只编译一次） ──────────────────────────────
 _TIME_RE = re.compile(r'time=(\d+):(\d+):(\d+)\.(\d+)')
@@ -30,6 +31,21 @@ def _parse_time_line(line_str: str) -> float:
         h, mi, s, ms = m.groups()
         return int(h) * 3600 + int(mi) * 60 + int(s) + int(ms) / 100
     return -1.0
+
+
+@dataclass
+class FFmpegResult:
+    """run_ffmpeg() 的返回值，含成功/取消/失败原因。
+
+    __bool__ 实现兼容旧代码的 ``if result:`` 判断。
+    """
+    success: bool = False
+    cancelled: bool = False
+    error_lines: list[str] = field(default_factory=list)
+    error_cn: str = ""       # 经 translate_ffmpeg_error() 翻译的中文
+
+    def __bool__(self):
+        return self.success
 
 
 class FFmpegProgressReader:
@@ -98,72 +114,99 @@ class FFmpegProgressReader:
         last_update = 0.0
         last_speed = 0.0
 
-        while True:
-            if cancel_check and cancel_check():
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except Exception:
-                    proc.kill()
-                if progress_callback:
-                    progress_callback(-1, "已取消")
-                return None
-
-            line = self._read_stderr_line()
-            if not line:
-                if proc.poll() is not None:
-                    break
-                continue
-
-            line_str = line.decode('utf-8', errors='replace')
-            self.error_output.append(line_str)
-
-            if speed_enabled:
-                sm = _SPEED_RE.search(line_str)
-                if sm:
+        try:
+            while True:
+                if cancel_check and cancel_check():
+                    proc.terminate()
                     try:
-                        last_speed = float(sm.group(1))
+                        proc.wait(timeout=3)
                     except Exception:
-                        pass
+                        proc.kill()
+                    if progress_callback:
+                        progress_callback(-1, "已取消")
+                    return None
 
-            current = _parse_time_line(line_str)
-            if current < 0:
-                continue
+                line = self._read_stderr_line()
+                if not line:
+                    if proc.poll() is not None:
+                        break
+                    continue
 
-            if self.duration > 0:
-                pct = min(100, int(current * 100 / self.duration))
-                now = _time.time()
-                if progress_callback and (pct != last_pct or now - last_update >= self.update_interval):
-                    eta_str = ""
-                    if speed_enabled and last_speed > 0.05:
-                        remain = (self.duration - current) / last_speed
-                        if 0 < remain < 86400:
-                            mm, ss = divmod(int(remain), 60)
-                            hh, mm = divmod(mm, 60)
-                            eta_str = f" 剩{hh}:{mm:02d}:{ss:02d}" if hh > 0 else f" 剩{mm}:{ss:02d}"
-                    if pct >= 100:
-                        # FFmpeg 编码完成后还有写文件索引/收尾阶段，
-                        # 进度提前到 100% 并提示收尾，避免"卡在 99%"的错觉
-                        msg = f"{label} 完成，正在写入文件…"
-                    else:
-                        msg = f"{label} {pct}%{eta_str}"
-                    progress_callback(pct, msg)
-                    last_pct = pct
-                    last_update = now
-            else:
+                line_str = line.decode('utf-8', errors='replace')
+                self.error_output.append(line_str)
+
+                if speed_enabled:
+                    sm = _SPEED_RE.search(line_str)
+                    if sm:
+                        try:
+                            last_speed = float(sm.group(1))
+                        except Exception:
+                            pass
+
+                current = _parse_time_line(line_str)
+                if current < 0:
+                    continue
+
+                if self.duration > 0:
+                    pct = min(100, int(current * 100 / self.duration))
+                    now = _time.time()
+                    if progress_callback and (pct != last_pct or now - last_update >= self.update_interval):
+                        eta_str = ""
+                        if speed_enabled and last_speed > 0.05:
+                            remain = (self.duration - current) / last_speed
+                            if 0 < remain < 86400:
+                                mm, ss = divmod(int(remain), 60)
+                                hh, mm = divmod(mm, 60)
+                                eta_str = f" 剩{hh}:{mm:02d}:{ss:02d}" if hh > 0 else f" 剩{mm}:{ss:02d}"
+                        if pct >= 100:
+                            msg = f"{label} 完成，正在写入文件…"
+                        else:
+                            msg = f"{label} {pct}%{eta_str}"
+                        progress_callback(pct, msg)
+                        last_pct = pct
+                        last_update = now
+                else:
+                    if progress_callback:
+                        pct = min(100, int(current) % 100)
+                        progress_callback(pct, f"处理中... ({int(current)}s)")
+
+            if proc.returncode == 0:
                 if progress_callback:
-                    pct = min(100, int(current) % 100)
-                    progress_callback(pct, f"处理中... ({int(current)}s)")
+                    progress_callback(100, self.done_message)
+                return True
+            else:
+                err = ''.join(self.error_output[-5:])
+                if progress_callback:
+                    progress_callback(-1, f"{self.fail_message}: {err[:200]}")
+                return False
+        finally:
+            # 非正常退出时（取消/异常），确保子进程被终止
+            # 避免僵尸 ffmpeg 进程继续占用 CPU 和磁盘 IO
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except Exception:
+                        proc.kill()
+                        proc.wait(timeout=3)
+                except Exception:
+                    pass  # 进程已结束，忽略
 
-        if proc.returncode == 0:
-            if progress_callback:
-                progress_callback(100, self.done_message)
-            return True
-        else:
-            err = ''.join(self.error_output[-5:])
-            if progress_callback:
-                progress_callback(-1, f"{self.fail_message}: {err[:200]}")
-            return False
+
+def _extra_ffmpeg_args() -> list:
+    """读用户偏好「FFmpeg 附加参数」（空格分隔字符串 → 参数列表）。
+
+    设置页「高级」可配，供高级用户追加 -threads 4 / -preset 等全局选项。
+    读取失败/为空返回 []。注意：附加参数插在输出路径之前，只影响
+    run_ffmpeg 启动的进程（不修改调用方 cmd 列表）。
+    """
+    try:
+        from utils.config import USER_PREFS
+        s = USER_PREFS.get("qt_app", "ffmpeg_extra_args", "") or ""
+        return [a for a in str(s).split() if a]
+    except Exception:  # noqa: BLE001 - 读取失败静默
+        return []
 
 
 def run_ffmpeg(
@@ -174,15 +217,42 @@ def run_ffmpeg(
     progress_callback=None,
     speed_enabled: bool = False,
     progress_label: str | None = None,
-) -> bool:
+    translate_error: bool = True,
+) -> FFmpegResult:
     """一键启动 FFmpeg 子进程并读取进度。
 
+    Args:
+        translate_error: 为 True 时自动调用 translate_ffmpeg_error()
+                         填充 result.error_cn。
     Returns:
-        True = 成功，False = 失败或取消
+        FFmpegResult（`.success` / `.cancelled` / `.error_lines` / `.error_cn`）
     """
+    # 全局附加参数（设置页「高级 → FFmpeg 附加参数」）：空格分隔的选项
+    # 插入到输出路径之前（cmd 末位是输出文件）。不修改调用方列表。
+    extra = _extra_ffmpeg_args()
+    if extra and len(cmd) > 1:
+        cmd = [*cmd[:-1], *extra, cmd[-1]]
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
     )
     reader = FFmpegProgressReader(process, duration, label=label)
-    return reader.read_loop(cancel_check, progress_callback, speed_enabled, progress_label)
+    raw = reader.read_loop(cancel_check, progress_callback, speed_enabled, progress_label)
+
+    result = FFmpegResult()
+    result.error_lines = list(reader.error_output)
+    if raw is None:
+        result.cancelled = True
+        result.success = False
+    elif raw is True:
+        result.success = True
+    else:
+        result.success = False
+        # 取最近 5 行 stderr 作为错误上下文
+        tail = reader.error_output[-5:]
+        result.error_lines = tail.copy()
+        if translate_error:
+            err_text = ''.join(tail)
+            from utils.config import translate_ffmpeg_error
+            result.error_cn = translate_ffmpeg_error(err_text)
+    return result

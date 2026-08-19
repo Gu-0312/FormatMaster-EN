@@ -52,7 +52,27 @@ _AI_REASON_HI = 0.95
 
 
 def _model_path():
-    return os.path.join(MODEL_DIR, MODEL_FILE)
+    """模型路径（打包兼容）：资源自带（只读）→ 用户数据目录（可写下载目标）。
+
+    优先级：
+    1. get_resource_path（打包后指向 _MEIPASS/data/models，只读；开发时
+       即项目根 data/models）——打包随附的模型，命中则免下载；
+    2. 用户数据目录 models/idphoto（可写，持久化）——打包后模型缺失时
+       的下载目标，不写安装目录（符合项目数据文件规范）。
+    """
+    try:
+        from utils.config import get_resource_path
+        rp = get_resource_path(os.path.join(MODEL_DIR, MODEL_FILE))
+        if os.path.isfile(rp) and os.path.getsize(rp) >= _MODEL_MIN_SIZE:
+            return rp
+    except Exception:  # noqa: BLE001 - 资源路径不可用时回退
+        pass
+    try:
+        from utils.config import get_user_data_dir
+        return os.path.join(get_user_data_dir(), "models", "idphoto",
+                            MODEL_FILE)
+    except Exception:  # noqa: BLE001 - 开发环境回退项目 data
+        return os.path.join(MODEL_DIR, MODEL_FILE)
 
 
 def is_model_ready():
@@ -61,7 +81,7 @@ def is_model_ready():
 
 
 def _ensure_model_dir():
-    os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(_model_path()), exist_ok=True)
 
 
 def _download_model(progress_callback=None):
@@ -289,7 +309,8 @@ def change_background(input_path, output_path, color=DEFAULT_COLOR,
     else:
         return False
     try:
-        img = Image.open(input_path).convert("RGB")
+        with Image.open(input_path) as _f:
+            img = _f.convert("RGB")
     except (OSError, IOError):
         if progress_callback:
             progress_callback(-1, "错误：无法打开图片，文件可能已损坏")
@@ -365,6 +386,7 @@ CARD_PRESETS = {
 
 # ── 冲印相纸（物理尺寸 宽×高 cm） ───────────────
 PAPER_SIZES = {
+    "A6": (10.5, 14.8),   # A6 照片纸 105×148mm
     "4寸": (7.6, 10.2),
     "5寸": (8.9, 12.7),
     "6寸": (10.2, 15.2),
@@ -491,7 +513,8 @@ def check_compliance(img_path, size=None, offset=0.0, use_ai=True,
     person_w_pct、issues（问题列表）；处理失败返回 None。
     """
     try:
-        img = Image.open(img_path).convert("RGB")
+        with Image.open(img_path) as _f:
+            img = _f.convert("RGB")
     except (OSError, IOError):
         return None
     arr = np.asarray(img, dtype=np.uint8)

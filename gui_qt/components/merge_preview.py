@@ -31,8 +31,9 @@ class MergePreviewDialog(QDialog):
         self.setWindowTitle(tr("视频合并预览器", "Merge Preview"))
         self.resize(860, 620)
         self.setMinimumSize(720, 500)
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QVBoxLayout(self)
         main.setContentsMargins(14, 14, 14, 14)
@@ -53,18 +54,6 @@ class MergePreviewDialog(QDialog):
         self.list_widget.setDefaultDropAction(Qt.MoveAction)
         self.list_widget.setSelectionMode(QListWidget.SingleSelection)
         self.list_widget.currentRowChanged.connect(self._on_row_changed)
-        self.list_widget.setStyleSheet(
-            f"QListWidget {{ background: {self._dark_tokens['card_bg']};"
-            f" color: #E6E8F2;"
-            f" border: 1px solid {self._dark_tokens['border']};"
-            " border-radius: 8px; font-size: 12px;"
-            " padding: 6px; outline: none; }"
-            f"QListWidget::item {{ color: #E6E8F2; padding: 8px 10px;"
-            " border-radius: 6px; }"
-            f"QListWidget::item:hover {{ background:"
-            f" {self._dark_tokens['card_hover']}; color: #E6E8F2; }}"
-            f"QListWidget::item:selected {{ background:"
-            f" {self._dark_tokens['card_active']}; color: #FFFFFF; }}")
         main.addWidget(self.list_widget, 1)
 
         main.addLayout(self._build_bottom())
@@ -80,6 +69,8 @@ class MergePreviewDialog(QDialog):
         self.player.player.playbackStateChanged.connect(self._sync_play)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_ok.clicked.connect(self.accept)
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── UI ──────────────────────────────────────
     def _build_top_bar(self):
@@ -90,14 +81,9 @@ class MergePreviewDialog(QDialog):
         bar.addWidget(self.btn_play)
         self.lb_status = CaptionLabel(
             tr("共 {} 个片段", "{} clips").format(len(self._files)))
-        self.lb_status.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_status)
         bar.addStretch(1)
         self.lb_time = CaptionLabel("--:-- / --:--")
-        self.lb_time.setStyleSheet(
-            "font-size: 13px; color: #E6E8F2; font-family: Consolas;"
-            "background: transparent;")
         bar.addWidget(self.lb_time)
         return bar
 
@@ -111,8 +97,6 @@ class MergePreviewDialog(QDialog):
             root.addWidget(b)
         root.addStretch(1)
         self.lb_hint = CaptionLabel("")
-        self.lb_hint.setStyleSheet(
-            "font-size: 11px; color: #666C80; background: transparent;")
         root.addWidget(self.lb_hint)
         self.btn_cancel = PushButton(tr("取消", "Cancel"))
         self.btn_cancel.setFixedHeight(34)
@@ -126,12 +110,14 @@ class MergePreviewDialog(QDialog):
     def _label(self, text):
         lb = CaptionLabel(text)
         lb.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
+            f"font-size: 12px; color: {self._tokens['ink_sec']};"
+            " background: transparent;")
         return lb
 
-    def _apply_dark_style(self):
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{ background: {t['page_bg']}; }}
             PushButton {{
                 background: {t['card_hover']}; color: {t['ink']};
@@ -146,7 +132,45 @@ class MergePreviewDialog(QDialog):
                 font-weight: 500;
             }}
             PrimaryPushButton:hover {{ background: {t['accent_hover']}; }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 hasattr 保护）
+        if hasattr(self, "list_widget"):
+            self.list_widget.setStyleSheet(
+                f"QListWidget {{ background: {t['card_bg']};"
+                f" color: {t['ink']};"
+                f" border: 1px solid {t['border']};"
+                " border-radius: 8px; font-size: 12px;"
+                " padding: 6px; outline: none; }"
+                f"QListWidget::item {{ color: {t['ink']}; padding: 8px 10px;"
+                " border-radius: 6px; }"
+                f"QListWidget::item:hover {{ background:"
+                f" {t['card_hover']}; color: {t['ink']}; }}"
+                f"QListWidget::item:selected {{ background:"
+                f" {t['card_active']}; color: #FFFFFF; }}")
+            from PySide6.QtGui import QBrush, QColor
+            for r in range(self.list_widget.count()):
+                it = self.list_widget.item(r)
+                if it is not None:
+                    it.setForeground(QBrush(QColor(t['ink'])))
+        if hasattr(self, "lb_status"):
+            self.lb_status.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_time"):
+            self.lb_time.setStyleSheet(
+                f"font-size: 13px; color: {t['ink']};"
+                " font-family: Consolas; background: transparent;")
+        if hasattr(self, "lb_hint"):
+            self.lb_hint.setStyleSheet(
+                f"font-size: 11px; color: {t['ink_dis']};"
+                " background: transparent;")
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 列表 ────────────────────────────────────
     def _fill_list(self):
@@ -156,7 +180,7 @@ class MergePreviewDialog(QDialog):
             item = QListWidgetItem(f"#{i}  {os.path.basename(fp)}")
             item.setData(Qt.UserRole, fp)
             item.setIcon(FluentIcon.VIDEO.icon())
-            item.setForeground(QBrush(QColor("#E6E8F2")))  # 强制浅色文字
+            item.setForeground(QBrush(QColor(self._tokens['ink'])))  # 跟随主题文字色
             item.setSizeHint(QSize(0, 34))
             self.list_widget.addItem(item)
 

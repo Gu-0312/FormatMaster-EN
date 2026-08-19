@@ -57,12 +57,12 @@ class ToolCard(HoverCard):
         v.setSpacing(2)
         self.title_label = BodyLabel(title, self)
         self.title_label.setStyleSheet(
-            f"font-size: 14px; font-weight: 600; color: {ds.ink()};")
+            f"font-size: 14px; font-weight: 600;")
         v.addWidget(self.title_label)
         if desc:
             self.desc_label = CaptionLabel(desc, self)
             self.desc_label.setStyleSheet(
-                f"font-size: 12px; color: {ds.ink_sec()};")
+                f"font-size: 12px;")
             self.desc_label.setWordWrap(True)
             v.addWidget(self.desc_label)
         else:
@@ -72,7 +72,7 @@ class ToolCard(HoverCard):
 
         self.arrow = IconWidget(FluentIcon.CHEVRON_RIGHT, self)
         self.arrow.setFixedSize(16, 16)
-        self.arrow.setStyleSheet(f"color: {ds.ink_dis()};")
+        self.arrow.setStyleSheet(f";")
         h.addWidget(self.arrow, 0, Qt.AlignVCenter)
 
     def enterEvent(self, e):
@@ -80,5 +80,5 @@ class ToolCard(HoverCard):
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        self.arrow.setStyleSheet(f"color: {ds.ink_dis()};")
+        self.arrow.setStyleSheet(f";")
         super().leaveEvent(e)

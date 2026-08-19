@@ -7,10 +7,10 @@
 import glob
 import os
 import re
-import subprocess
 
 from utils.config import get_ffmpeg_path
 from core.ffmpeg_executor import get_ffprobe_raw
+from core.ffmpeg_progress import run_ffmpeg
 
 SRT_TEMPLATE = "{idx}\n{start} --> {end}\n{text}\n\n"
 
@@ -53,8 +53,16 @@ def _extract_frames(video, tmp_dir, fps, progress_cb=None, cancel_check=None):
     cmd = [ffmpeg, "-y", "-i", video, "-vf", f"fps={fps}",
            "-q:v", "2", pattern]
     try:
-        subprocess.run(cmd, capture_output=True, timeout=600,
-                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        result = run_ffmpeg(cmd, duration=0, label="抽帧",
+                            cancel_check=cancel_check,
+                            progress_callback=progress_cb,
+                            translate_error=True)
+        if not result.success:
+            if result.cancelled:
+                return None
+            if progress_cb:
+                progress_cb(-1, f"抽帧失败: {result.error_cn}")
+            return None
     except Exception as e:
         if progress_cb:
             progress_cb(-1, f"抽帧失败：{e}")
@@ -78,7 +86,8 @@ def detect_subtitle_band(frame_path, scan_ratio=0.7, min_band=0.02):
     try:
         import numpy as np
         from PIL import Image
-        arr = np.asarray(Image.open(frame_path).convert("L"))
+        with Image.open(frame_path) as _f:
+            arr = np.asarray(_f.convert("L"))
     except Exception:
         return None
     h, w = arr.shape
@@ -150,7 +159,8 @@ def _ocr_frames(frames, fps, lang, region="bottom", height=0.15, band=None,
         end = (i + 1) / fps
         text = ""
         try:
-            img = Image.open(fp).convert("RGB")
+            with Image.open(fp) as _f:
+                img = _f.convert("RGB")
             img = img.crop(_crop_box(img, region, height, band))
             # 小字幕区放大后再 OCR（提升小字号识别率）
             if img.height < 120:

@@ -50,12 +50,12 @@ class _ActionRow(QWidget):
         v.setSpacing(1)
         self.title_label = CaptionLabel(title, self)
         self.title_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; color: {ds.ink()};"
+            f"font-size: 13px; font-weight: 600;"
             "border: none; background: transparent;")
         v.addWidget(self.title_label)
         self.desc_label = CaptionLabel(desc, self)
         self.desc_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_sec()};"
+            f"font-size: 11px;"
             "border: none; background: transparent;")
         v.addWidget(self.desc_label)
         v.addStretch(1)
@@ -63,7 +63,7 @@ class _ActionRow(QWidget):
 
         self.go = IconWidget(FluentIcon.CHEVRON_RIGHT, self)
         self.go.setFixedSize(14, 14)
-        self.go.setStyleSheet(f"color: {ds.ink_dis()};")
+        self.go.setStyleSheet(f";")
         lay.addWidget(self.go, 0, Qt.AlignVCenter)
 
     def mouseReleaseEvent(self, e):
@@ -80,9 +80,9 @@ class _ActionRow(QWidget):
 
     def leaveEvent(self, e):
         self.title_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; color: {ds.ink()};"
+            f"font-size: 13px; font-weight: 600;"
             "border: none; background: transparent;")
-        self.go.setStyleSheet(f"color: {ds.ink_dis()};")
+        self.go.setStyleSheet(f";")
         super().leaveEvent(e)
 
 
@@ -102,7 +102,7 @@ class OpenSourceCard(Card):
         header.addWidget(icon)
         title = QLabel(tr("开源项目", "Open source"))
         title.setStyleSheet(
-            f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
+            f"font-size: 15px; font-weight: 700;"
             "border: none; background: transparent;")
         header.addWidget(title)
         header.addStretch(1)

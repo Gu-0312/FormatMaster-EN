@@ -131,8 +131,9 @@ class WaveformEditorDialog(QDialog):
         self.setWindowTitle(tr("音频波形编辑器", "Audio Waveform Editor"))
         self.resize(900, 520)
         self.setMinimumSize(720, 420)
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QVBoxLayout(self)
         main.setContentsMargins(14, 14, 14, 14)
@@ -182,6 +183,8 @@ class WaveformEditorDialog(QDialog):
             self.player.setSource(QUrl.fromLocalFile(self._path))
             self._load_waveform()
         self._refresh_labels()
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── UI ──────────────────────────────────────
     def _build_top_bar(self):
@@ -192,14 +195,9 @@ class WaveformEditorDialog(QDialog):
         bar.addWidget(self.btn_play)
         self.lb_status = CaptionLabel(tr("点击波形定位，设置入/出点",
                                          "Click waveform to seek, set in/out"))
-        self.lb_status.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_status)
         bar.addStretch(1)
         self.lb_time = CaptionLabel("--:-- / --:--")
-        self.lb_time.setStyleSheet(
-            "font-size: 13px; color: #E6E8F2; font-family: Consolas;"
-            "background: transparent;")
         bar.addWidget(self.lb_time)
         return bar
 
@@ -220,9 +218,6 @@ class WaveformEditorDialog(QDialog):
         row.addStretch(1)
         self.lb_in = CaptionLabel("")
         self.lb_out = CaptionLabel("")
-        for lb in (self.lb_in, self.lb_out):
-            lb.setStyleSheet(
-                "font-size: 12px; color: #9BA1B4; background: transparent;")
         row.addWidget(self.lb_in)
         row.addWidget(self.lb_out)
         root.addLayout(row)
@@ -239,9 +234,10 @@ class WaveformEditorDialog(QDialog):
         root.addLayout(btns)
         return root
 
-    def _apply_dark_style(self):
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{ background: {t['page_bg']}; }}
             PushButton {{
                 background: {t['card_hover']}; color: {t['ink']};
@@ -261,7 +257,29 @@ class WaveformEditorDialog(QDialog):
             QSlider::handle:horizontal {{ width: 12px; height: 12px;
                 margin: -4px 0; border-radius: 6px;
                 background: {t['accent']}; }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 hasattr 保护）
+        if hasattr(self, "lb_status"):
+            self.lb_status.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_time"):
+            self.lb_time.setStyleSheet(
+                f"font-size: 13px; color: {t['ink']};"
+                " font-family: Consolas; background: transparent;")
+        for name in ("lb_in", "lb_out"):
+            lb = getattr(self, name, None)
+            if lb is not None:
+                lb.setStyleSheet(
+                    f"font-size: 12px; color: {t['ink_sec']};"
+                    " background: transparent;")
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 波形加载 ──
     def _load_waveform(self):

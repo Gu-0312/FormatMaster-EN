@@ -39,7 +39,7 @@ class FormSection(Card):
             head.addWidget(iw)
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet(
-            f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
+            f"font-size: 15px; font-weight: 700;"
             "border: none; background: transparent;")
         head.addWidget(self.title_label)
         head.addStretch(1)
@@ -81,17 +81,17 @@ class FormGrid(QGridLayout):
         if icon is not None:
             iw = IconWidget(icon, None)
             iw.setFixedSize(14, 14)
-            iw.setStyleSheet(f"color: {ds.ink_dis()};")
+            iw.setStyleSheet(f";")
             lbl_row.addWidget(iw)
         lbl = CaptionLabel(label)
         lbl.setStyleSheet(
-            f"font-size: 12px; font-weight: 600; color: {ds.ink_sec()};"
+            f"font-size: 12px; font-weight: 600;"
             "border: none; background: transparent;")
         lbl_row.addWidget(lbl)
         if hint:
             tip = CaptionLabel("ⓘ")
             tip.setStyleSheet(
-                f"font-size: 11px; color: {ds.ink_dis()};"
+                f"font-size: 11px;"
                 "border: none; background: transparent;")
             tip.setToolTip(hint)
             lbl_row.addWidget(tip)
@@ -116,7 +116,7 @@ class FormRow(QHBoxLayout):
         self.setSpacing(8)
         lbl = CaptionLabel(label)
         lbl.setStyleSheet(
-            f"font-size: 12px; font-weight: 600; color: {ds.ink_sec()};"
+            f"font-size: 12px; font-weight: 600;"
             "border: none; background: transparent;")
         self.addWidget(lbl)
         self.addWidget(control, 1)
@@ -150,7 +150,7 @@ class CollapsibleSection(QWidget):
         if hint:
             h = CaptionLabel(str(hint))
             h.setStyleSheet(
-                f"font-size: 12px; color: {ds.ink_sec()};"
+                f"font-size: 12px;"
                 "border: none; background: transparent;")
             head.addWidget(h)
         head.addStretch(1)

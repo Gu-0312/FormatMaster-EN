@@ -7,7 +7,7 @@ import subprocess
 import struct
 
 from utils.config import get_ffmpeg_path
-from core.ffmpeg_progress import FFmpegProgressReader
+from core.ffmpeg_progress import run_ffmpeg
 from core.ffmpeg_executor import get_ffprobe_raw
 
 
@@ -158,24 +158,16 @@ def trim_audio(input_path, output_path, start_sec=0, end_sec=0,
     cmd += ["-threads", "0", output_path]
 
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-
-        reader = FFmpegProgressReader(proc, clip_duration, label="裁剪中",
-                                       done_message="裁剪完成", fail_message="裁剪失败")
-        result = reader.read_loop(progress_callback=progress_cb)
-        if result is True:
+        result = run_ffmpeg(cmd, duration=clip_duration, label="裁剪中",
+                            cancel_check=None,
+                            progress_callback=progress_cb,
+                            translate_error=True)
+        if result.success:
             return True
-        if result is None:
+        if result.cancelled:
             return False
-        err = ''.join(reader.error_output[-5:]) if reader.error_output else ""
         if progress_cb:
-            progress_cb(-1, f"裁剪失败：{err[-200:]}")
-        return False
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        if progress_cb:
-            progress_cb(-1, "裁剪超时")
+            progress_cb(-1, f"失败: {result.error_cn}")
         return False
     except Exception as e:
         if progress_cb:

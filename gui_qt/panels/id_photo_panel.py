@@ -8,11 +8,12 @@ import os
 import tempfile
 
 from PySide6.QtCore import Qt, QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QColorDialog, QFileDialog, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 from qfluentwidgets import (CaptionLabel, CheckBox, ComboBox, FluentIcon,
-                            PushButton, Slider)
+                            PrimaryPushButton, PushButton, Slider)
 
 from core.id_photo import (PHOTO_SIZES, TRANSPARENT_KEY, size_to_px,
                            CARD_PRESETS, PAPER_SIZES, draw_head_guides,
@@ -49,10 +50,11 @@ _SIZE_KEYS = ["原尺寸", "小1寸", "1寸", "大1寸", "小2寸", "2寸",
 PRESET_VALUES = [tr("手动设置", "Manual")] + [tr(k, k) for k in CARD_PRESETS]
 _PRESET_KEYS = ["__manual__"] + list(CARD_PRESETS.keys())
 # 冲印相纸
-PAPER_VALUES = [tr("6寸 (10.2×15.2cm)", "6-inch (10.2×15.2cm)"),
+PAPER_VALUES = [tr("A6 (10.5×14.8cm)", "A6 (10.5×14.8cm)"),
+                tr("6寸 (10.2×15.2cm)", "6-inch (10.2×15.2cm)"),
                 tr("5寸 (8.9×12.7cm)", "5-inch (8.9×12.7cm)"),
                 tr("4寸 (7.6×10.2cm)", "4-inch (7.6×10.2cm)")]
-_PAPER_KEYS = ["6寸", "5寸", "4寸"]
+_PAPER_KEYS = ["A6", "6寸", "5寸", "4寸"]
 
 # 预览临时输出（系统临时目录，每次覆盖；透明预览为 PNG）
 _PREVIEW_OUT = os.path.join(tempfile.gettempdir(), "FormatMaster_idphoto_preview.png")
@@ -71,7 +73,7 @@ def _checker_composite(rgb, alpha):
             + checker.astype(_np.float32) * (1 - a)).astype(_np.uint8)
 
 
-class _PreviewWorker(QThread):
+class _PreviewWorker(SafeWorker):
     """后台跑一次换底生成预览图，信号回传结果。"""
 
     sig_done = Signal(bool, str)  # (成功, 预览图路径)
@@ -84,7 +86,7 @@ class _PreviewWorker(QThread):
         self._size, self._offset = size, offset
         self._show_guides = show_guides
 
-    def run(self):
+    def work(self):
         try:
             from core.id_photo import change_background, draw_head_guides
             ok = change_background(
@@ -95,8 +97,11 @@ class _PreviewWorker(QThread):
             if ok and self._show_guides and self._size is not None:
                 try:
                     from PIL import Image
-                    im = Image.open(self._out)
-                    draw_head_guides(im).save(self._out)
+                    # with 打开：参考线绘制后先释放句柄再覆盖保存，
+                    # 避免 Windows 文件锁导致 save 同一路径 PermissionError
+                    with Image.open(self._out) as _im:
+                        _guided = draw_head_guides(_im)
+                    _guided.save(self._out)
                 except Exception:  # noqa: BLE001 - 参考线失败不影响预览
                     pass
             self.sig_done.emit(bool(ok), self._out if ok else "")
@@ -108,7 +113,9 @@ class _PreviewWorker(QThread):
         try:
             from PIL import Image
             import numpy as _np
-            img = Image.open(self._out).convert("RGBA")
+            # with 读取 → 完整解码后释放句柄 → 再覆盖保存原路径
+            with Image.open(self._out) as _src:
+                img = _src.convert("RGBA")
             rgb = _np.asarray(img.convert("RGB"))
             alpha = _np.asarray(img)[..., 3]
             Image.fromarray(_checker_composite(rgb, alpha), "RGB").save(self._out)
@@ -116,7 +123,8 @@ class _PreviewWorker(QThread):
             pass
 
 
-class _CheckWorker(QThread):
+
+class _CheckWorker(SafeWorker):
     """后台跑合规自检，信号回传结果 dict（失败为 None）。"""
 
     sig_done = Signal(object)
@@ -126,7 +134,7 @@ class _CheckWorker(QThread):
         self._path, self._size = path, size
         self._offset, self._use_ai = offset, use_ai
 
-    def run(self):
+    def work(self):
         try:
             from core.id_photo import check_compliance
             result = check_compliance(self._path, self._size,
@@ -134,6 +142,7 @@ class _CheckWorker(QThread):
         except Exception:  # noqa: BLE001 - 自检失败仅提示
             result = None
         self.sig_done.emit(result)
+
 
 
 class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
@@ -322,6 +331,53 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         pv_card.add_widget(print_row)
         lay.addWidget(pv_card)
 
+        # ── 排版打印：1寸/2寸排满一版 A6 照片纸，直接打印 ──
+        self.print_collapse = CollapsibleSection(
+            tr("排版打印", "Print layout"),
+            hint=tr("把当前尺寸证件照排满一版 A6 照片纸（1寸一版 16 张、2寸 9 张），"
+                    "预览后保存或直接打印", "Tile the photo onto an A6 sheet (16×1-inch or 9×2-inch), save or print"))
+        p_row = QWidget()
+        pl2 = QHBoxLayout(p_row)
+        pl2.setContentsMargins(0, 0, 0, 0)
+        pl2.setSpacing(8)
+        pl2.addWidget(QLabel(tr("纸张", "Paper")))
+        self.cb_layout_paper = _combo(PAPER_VALUES, PAPER_VALUES[0])
+        self.cb_layout_paper.setFixedWidth(180)
+        pl2.addWidget(self.cb_layout_paper)
+        pl2.addStretch(1)
+        self.print_collapse.add_widget(p_row)
+
+        act_row = QWidget()
+        ar = QHBoxLayout(act_row)
+        ar.setContentsMargins(0, 0, 0, 0)
+        ar.setSpacing(8)
+        self.btn_layout = PushButton(FluentIcon.VIEW,
+                                     tr("生成排版预览", "Layout preview"))
+        self.btn_layout.clicked.connect(self._make_layout)
+        ar.addWidget(self.btn_layout)
+        self.btn_layout_save = PushButton(FluentIcon.SAVE,
+                                          tr("保存排版图", "Save layout"))
+        self.btn_layout_save.clicked.connect(self._save_layout)
+        ar.addWidget(self.btn_layout_save)
+        self.btn_print = PrimaryPushButton(FluentIcon.PRINT,
+                                           tr("直接打印", "Print"))
+        self.btn_print.clicked.connect(self._print_layout)
+        ar.addWidget(self.btn_print)
+        self.lb_layout = CaptionLabel("")
+        ar.addWidget(self.lb_layout)
+        ar.addStretch(1)
+        self.print_collapse.add_widget(act_row)
+
+        from qfluentwidgets import ImageLabel
+        self.layout_preview = ImageLabel(
+            tr("先点「预览效果」生成单张照片，再点「生成排版预览」",
+               "Preview first, then generate the layout"), self)
+        self.layout_preview.setAlignment(Qt.AlignCenter)
+        self.layout_preview.setMinimumHeight(220)
+        self.layout_preview.setBorderRadius(8, 8, 8, 8)
+        self.print_collapse.add_widget(self.layout_preview)
+        lay.addWidget(self.print_collapse)
+
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
         lay.addWidget(self.out_row)
@@ -443,7 +499,10 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
         if prefs.get("size_key") in _SIZE_KEYS:
             self.cb_size.setCurrentIndex(_SIZE_KEYS.index(str(prefs["size_key"])))
         if "offset" in prefs:
-            self.sl_offset.setValue(int(round(float(prefs["offset"]) * 100)))
+            try:
+                self.sl_offset.setValue(int(round(float(prefs["offset"]) * 100)))
+            except (TypeError, ValueError):  # noqa: BLE001 - 配置损坏时跳过
+                pass
         if "show_guides" in prefs:
             self.cb_guides.setChecked(bool(prefs["show_guides"]))
         if "do_print" in prefs:
@@ -600,6 +659,89 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
                    + "\n".join(lines))
         QMessageBox.information(self, tr("合规自检", "Compliance"), msg)
 
+    # ── 排版打印（A6 一版多张 + 直接打印）────────
+    def _make_layout(self):
+        """用当前预览单张 → layout_print 排满所选相纸，返回 PIL Image。"""
+        if not os.path.isfile(_PREVIEW_OUT):
+            self.lb_layout.setText(
+                tr("请先点击「预览效果」生成单张照片", "Run Preview first"))
+            return None
+        from PIL import Image
+        from core.id_photo import layout_print
+        paper_key = _PAPER_KEYS[self.cb_layout_paper.currentIndex()]
+        paper = PAPER_SIZES.get(paper_key, PAPER_SIZES["A6"])
+        try:
+            with Image.open(_PREVIEW_OUT) as _src:
+                single = _src.convert("RGB")
+            img = layout_print(single, paper, dpi=300)
+        except Exception as e:  # noqa: BLE001
+            self.lb_layout.setText(tr("排版失败：{}", "Layout failed: {}").format(e))
+            return None
+        self._layout_img = img
+        tmp = os.path.join(tempfile.gettempdir(),
+                           "FormatMaster_idphoto_layout.png")
+        try:
+            img.save(tmp)
+            pix = QPixmap(tmp)
+            if not pix.isNull():
+                self.layout_preview.setPixmap(pix.scaled(
+                    380, 320, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:  # noqa: BLE001
+            pass
+        cols = max(1, img.width // max(1, single.width))
+        rows = max(1, img.height // max(1, single.height))
+        self.lb_layout.setText(
+            tr("{} · 一版排 {} 张", "{} · {} per sheet")
+            .format(paper_key, cols * rows))
+        return img
+
+    def _save_layout(self):
+        img = self._make_layout()
+        if img is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("保存排版图", "Save layout"),
+            f"证件照排版_{self._layout_paper_name()}.png", "PNG (*.png)")
+        if path:
+            try:
+                img.save(path, dpi=(300, 300))
+            except Exception as e:  # noqa: BLE001
+                toast.show_error(self, tr("保存失败：{}", "Save failed: {}").format(e))
+                return
+            toast.show_success(self, tr("已保存：{}", "Saved: {}").format(path))
+
+    def _layout_paper_name(self):
+        return _PAPER_KEYS[self.cb_layout_paper.currentIndex()]
+
+    def _print_layout(self):
+        img = self._make_layout()
+        if img is None:
+            return
+        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+        from PySide6.QtWidgets import QDialog
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        dlg = QPrintDialog(printer, self)
+        dlg.setWindowTitle(tr("打印证件照排版", "Print ID photo layout"))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        tmp = os.path.join(tempfile.gettempdir(),
+                           "FormatMaster_idphoto_print.png")
+        try:
+            img.save(tmp)
+            qimg = QImage(tmp)
+            painter = QPainter(printer)
+            rect = painter.viewport()
+            size = qimg.size()
+            size.scale(rect.size(), Qt.AspectRatioMode.KeepAspectRatio)
+            painter.setViewport(rect.x(), rect.y(), size.width(), size.height())
+            painter.setWindow(qimg.rect())
+            painter.drawImage(0, 0, qimg)
+            painter.end()
+            toast.show_success(self, tr("已发送到打印机", "Sent to printer"))
+        except Exception as e:  # noqa: BLE001
+            toast.show_error(self, tr("打印失败：{}", "Print failed: {}").format(e))
+
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
         from core.id_photo import change_background, layout_print
@@ -618,7 +760,8 @@ class IdPhotoPanelPage(BaseQtPanel, TaskPanelMixin):
                                dpi=dpi, quality=quality)
         if ok and params.get("do_print"):
             try:
-                single = Image.open(task.output_path).convert("RGB")
+                with Image.open(task.output_path) as _src:
+                    single = _src.convert("RGB")
                 paper = PAPER_SIZES.get(params.get("paper", "6寸"),
                                         PAPER_SIZES["6寸"])
                 layout_print(single, paper, dpi=dpi).save(

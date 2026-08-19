@@ -6,6 +6,7 @@
 import os
 
 from PySide6.QtCore import QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
                                QVBoxLayout, QWidget)
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon, LineEdit,
@@ -29,11 +30,21 @@ MODES = [
     ("speed", tr("变速处理", "Change Speed")),
     ("delogo", tr("去水印", "Remove logo")),
 ]
+# 特效模式（第二组）：倒放 / 转GIF / 文字水印 / 视频稳定 / 音轨
+# 首项 "none" 表示不使用特效（此时使用第一组处理模式）
+MODES2 = [
+    ("none", tr("无特效", "None")),
+    ("reverse", tr("倒放", "Reverse")),
+    ("gif", tr("转GIF", "To GIF")),
+    ("watermark", tr("文字水印", "Text watermark")),
+    ("stabilize", tr("视频稳定", "Stabilize")),
+    ("track", tr("音轨替换", "Audio track")),
+]
 
 SUB_EXTS = {".srt", ".ass", ".ssa", ".vtt"}
 
 
-class _InfoWorker(QThread):
+class _InfoWorker(SafeWorker):
     """后台读取视频信息（时长/分辨率），避免阻塞 UI 线程。"""
 
     sig_done = Signal(str, object)  # (路径, info dict)
@@ -42,13 +53,14 @@ class _InfoWorker(QThread):
         super().__init__(parent)
         self._fp = video_path
 
-    def run(self):
+    def work(self):
         from core.ffmpeg_executor import get_ffprobe_info
         try:
             info = get_ffprobe_info(self._fp)
         except Exception:  # noqa: BLE001 - 读取失败显示占位
             info = None
         self.sig_done.emit(self._fp, info)
+
 
 
 def _parse_time(s):
@@ -122,7 +134,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.lb_video_info = CaptionLabel(
             tr("导入视频后显示时长与分辨率", "Video duration & resolution will show here"))
         self.lb_video_info.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+            f"font-size: 12px")
         info_row.addWidget(self.lb_video_info)
         info_row.addStretch(1)
         lay.addWidget(info_wrap)
@@ -159,6 +171,19 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         mode_row.addWidget(self.sg_mode, 1)
         sec.add_layout(mode_row)
 
+        # 特效模式（第二组）
+        mode2_row = QHBoxLayout()
+        mode2_row.setSpacing(8)
+        mode2_row.addWidget(CaptionLabel(tr("特效模式", "Effects")))
+        self.sg_mode2 = SegmentedWidget()
+        for key, label in MODES2:
+            self.sg_mode2.addItem(key, label)
+        self.sg_mode2.setCurrentItem("none")
+        self.sg_mode2.currentItemChanged.connect(
+            lambda _k: self._mode_changed())
+        mode2_row.addWidget(self.sg_mode2, 1)
+        sec.add_layout(mode2_row)
+
         # 剪辑：起止时间
         self.w_clip = QWidget()
         g1 = FormGrid(columns=2)
@@ -184,6 +209,29 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         clip_btn_row.addWidget(self.btn_clip_editor)
         clip_btn_row.addStretch(1)
         v1.addLayout(clip_btn_row)
+        # 高级调整：画面裁剪 / 锐化 / 降噪 / 色相 / 色温 / 去隔行
+        v1.addWidget(CaptionLabel(tr("高级调整", "Advanced")))
+        from PySide6.QtWidgets import QDoubleSpinBox, QCheckBox, QSpinBox
+        g_adv = FormGrid(columns=4)
+        self.sb_crop_x = QSpinBox(); self.sb_crop_x.setRange(0, 10000)
+        self.sb_crop_y = QSpinBox(); self.sb_crop_y.setRange(0, 10000)
+        self.sb_crop_w = QSpinBox(); self.sb_crop_w.setRange(0, 10000); self.sb_crop_w.setValue(0)
+        self.sb_crop_h = QSpinBox(); self.sb_crop_h.setRange(0, 10000); self.sb_crop_h.setValue(0)
+        g_adv.add_field(tr("裁剪X", "Crop X"), self.sb_crop_x)
+        g_adv.add_field(tr("裁剪Y", "Crop Y"), self.sb_crop_y)
+        g_adv.add_field(tr("裁剪宽(0=不裁)", "Crop W (0=none)"), self.sb_crop_w)
+        g_adv.add_field(tr("裁剪高(0=不裁)", "Crop H (0=none)"), self.sb_crop_h)
+        self.sb_sharpen = QDoubleSpinBox(); self.sb_sharpen.setRange(0, 5); self.sb_sharpen.setSingleStep(0.2); self.sb_sharpen.setValue(0)
+        self.sb_denoise = QDoubleSpinBox(); self.sb_denoise.setRange(0, 8); self.sb_denoise.setSingleStep(0.5); self.sb_denoise.setValue(0)
+        self.sb_hue = QDoubleSpinBox(); self.sb_hue.setRange(-180, 180); self.sb_hue.setSingleStep(5); self.sb_hue.setValue(0)
+        self.sb_wb = QDoubleSpinBox(); self.sb_wb.setRange(-0.5, 0.5); self.sb_wb.setSingleStep(0.05); self.sb_wb.setValue(0)
+        g_adv.add_field(tr("锐化", "Sharpen"), self.sb_sharpen)
+        g_adv.add_field(tr("降噪", "Denoise"), self.sb_denoise)
+        g_adv.add_field(tr("色相(°)", "Hue"), self.sb_hue)
+        g_adv.add_field(tr("色温", "Color temp"), self.sb_wb)
+        self.cb_deinterlace = QCheckBox(tr("去隔行扫描(老视频)", "Deinterlace (old video)"))
+        g_adv.add_field(tr("去隔行", "Deinterlace"), self.cb_deinterlace)
+        v1.addLayout(g_adv)
         sec.add_widget(self.w_clip)
 
         # 合并：预览排序入口
@@ -233,8 +281,98 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_speed.setCurrentText("1.5x")
         srow2.addWidget(CaptionLabel(tr("播放倍速", "Speed")))
         srow2.addWidget(self.cb_speed)
+        from PySide6.QtWidgets import QCheckBox as _QChk
+        self.cb_interp = _QChk(
+            tr("补帧慢动作(运动补偿,仅0.5x)", "Interpolated slow-mo (0.5x only)"))
+        srow2.addWidget(self.cb_interp)
         srow2.addStretch(1)
         sec.add_widget(self.w_speed)
+
+        # 倒放：是否保留音轨
+        self.w_reverse = QWidget()
+        rrow = QHBoxLayout(self.w_reverse)
+        rrow.setContentsMargins(0, 0, 0, 0)
+        rrow.setSpacing(8)
+        self.cb_rev_audio = _QChk(tr("同步倒放音轨", "Reverse audio too"))
+        self.cb_rev_audio.setChecked(True)
+        rrow.addWidget(self.cb_rev_audio)
+        rrow.addStretch(1)
+        sec.add_widget(self.w_reverse)
+
+        # 转GIF：帧率 + 宽度
+        self.w_gif = QWidget()
+        grow = QHBoxLayout(self.w_gif)
+        grow.setContentsMargins(0, 0, 0, 0)
+        grow.setSpacing(8)
+        self.cb_gif_fps = ComboBox()
+        self.cb_gif_fps.addItems(["10", "12", "15", "20", "24"])
+        self.cb_gif_fps.setCurrentText("15")
+        self.cb_gif_w = ComboBox()
+        self.cb_gif_w.addItems(["320", "480", "640", "800", "1024"])
+        self.cb_gif_w.setCurrentText("480")
+        grow.addWidget(CaptionLabel(tr("帧率", "FPS")))
+        grow.addWidget(self.cb_gif_fps)
+        grow.addWidget(CaptionLabel(tr("宽度", "Width")))
+        grow.addWidget(self.cb_gif_w)
+        grow.addStretch(1)
+        sec.add_widget(self.w_gif)
+
+        # 文字水印：文字/字号/位置/透明度
+        self.w_watermark = QWidget()
+        gwm = FormGrid(columns=2)
+        self.ed_wm_text = LineEdit()
+        self.ed_wm_text.setPlaceholderText(tr("输入水印文字…", "Watermark text…"))
+        self.cb_wm_pos = ComboBox()
+        self.cb_wm_pos.addItems([tr("右下", "Bottom right"), tr("右上", "Top right"),
+                                 tr("左下", "Bottom left"), tr("左上", "Top left"),
+                                 tr("居中", "Center")])
+        self.sb_wm_size = QSpinBox(); self.sb_wm_size.setRange(12, 200); self.sb_wm_size.setValue(48)
+        self.sb_wm_alpha = QDoubleSpinBox(); self.sb_wm_alpha.setRange(0.1, 1.0)
+        self.sb_wm_alpha.setSingleStep(0.1); self.sb_wm_alpha.setValue(0.7)
+        gwm.add_field(tr("水印文字", "Text"), self.ed_wm_text)
+        gwm.add_field(tr("位置", "Position"), self.cb_wm_pos)
+        gwm.add_field(tr("字号", "Size"), self.sb_wm_size)
+        gwm.add_field(tr("透明度", "Opacity"), self.sb_wm_alpha)
+        vwm = QVBoxLayout(self.w_watermark)
+        vwm.setContentsMargins(0, 0, 0, 0)
+        vwm.addLayout(gwm)
+        sec.add_widget(self.w_watermark)
+
+        # 视频稳定：无参数，提示即可
+        self.w_stabilize = QWidget()
+        strow = QHBoxLayout(self.w_stabilize)
+        strow.setContentsMargins(0, 0, 0, 0)
+        strow.addWidget(CaptionLabel(
+            tr("自动修复手持拍摄抖动（deshake）", "Auto-correct handheld shake (deshake)")))
+        strow.addStretch(1)
+        sec.add_widget(self.w_stabilize)
+
+        # 音轨：选择音频 + 模式 + 背景音量
+        self.w_track = QWidget()
+        gtk = FormGrid(columns=2)
+        self.ed_track_audio = LineEdit()
+        self.ed_track_audio.setReadOnly(True)
+        self.ed_track_audio.setPlaceholderText(tr("选择音频文件…", "Pick audio…"))
+        self.btn_track_pick = PushButton(FluentIcon.MUSIC, tr("选择音频", "Pick"))
+        self.btn_track_pick.clicked.connect(self._pick_track_audio)
+        ha_w = QWidget()
+        ha = QHBoxLayout(ha_w)
+        ha.setContentsMargins(0, 0, 0, 0)
+        ha.setSpacing(8)
+        ha.addWidget(self.ed_track_audio, 1)
+        ha.addWidget(self.btn_track_pick)
+        gtk.add_field(tr("音频文件", "Audio"), ha_w)
+        self.cb_track_mode = ComboBox()
+        self.cb_track_mode.addItems([tr("替换原音轨", "Replace audio"),
+                                     tr("混音(原声+背景)", "Mix with original")])
+        self.sb_track_bg = QDoubleSpinBox(); self.sb_track_bg.setRange(0.0, 1.0)
+        self.sb_track_bg.setSingleStep(0.1); self.sb_track_bg.setValue(0.3)
+        gtk.add_field(tr("模式", "Mode"), self.cb_track_mode)
+        gtk.add_field(tr("背景音量", "BG volume"), self.sb_track_bg)
+        vtk = QVBoxLayout(self.w_track)
+        vtk.setContentsMargins(0, 0, 0, 0)
+        vtk.addLayout(gtk)
+        sec.add_widget(self.w_track)
 
         # 去水印：水印区域（delogo 选区）
         self.w_delogo = QWidget()
@@ -277,14 +415,43 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         dlg = SubtitleTimelineDialog(
             self.ed_sub.text().strip(), video_path=video, parent=self)
         dlg.exec()
+    def _pick_track_audio(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("选择音频文件", "Pick audio file"), "",
+            tr("音频文件 (*.mp3 *.wav *.m4a *.aac *.flac *.ogg)",
+               "Audio files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg)"))
+        if path:
+            self.ed_track_audio.setText(path)
+
     def _mode_changed(self):
         mode = self.sg_mode.currentRouteKey()
-        self.w_clip.setVisible(mode == "clip")
-        self.w_merge.setVisible(mode == "merge")
-        self.w_sub.setVisible(mode == "subtitle")
-        self.w_speed.setVisible(mode == "speed")
-        self.w_delogo.setVisible(mode == "delogo")
+        mode2 = self.sg_mode2.currentRouteKey()
+        use_fx = mode2 != "none"
+        # 处理组
+        self.w_clip.setVisible(not use_fx and mode == "clip")
+        self.w_merge.setVisible(not use_fx and mode == "merge")
+        self.w_sub.setVisible(not use_fx and mode == "subtitle")
+        self.w_speed.setVisible(not use_fx and mode == "speed")
+        self.w_delogo.setVisible(not use_fx and mode == "delogo")
+        # 特效组
+        self.w_reverse.setVisible(use_fx and mode2 == "reverse")
+        self.w_gif.setVisible(use_fx and mode2 == "gif")
+        self.w_watermark.setVisible(use_fx and mode2 == "watermark")
+        self.w_stabilize.setVisible(use_fx and mode2 == "stabilize")
+        self.w_track.setVisible(use_fx and mode2 == "track")
         # 提示文案随模式变化
+        if use_fx:
+            if mode2 == "reverse":
+                self.file_card.set_target_fmt(tr("倒放处理", "Reverse"))
+            elif mode2 == "gif":
+                self.file_card.set_target_fmt(tr("转GIF", "To GIF"))
+            elif mode2 == "watermark":
+                self.file_card.set_target_fmt(tr("文字水印", "Text watermark"))
+            elif mode2 == "stabilize":
+                self.file_card.set_target_fmt(tr("视频稳定", "Stabilize"))
+            elif mode2 == "track":
+                self.file_card.set_target_fmt(tr("音轨处理", "Audio track"))
+            return
         if mode == "merge":
             self.file_card.set_target_fmt(tr("合并为 1 个文件", "Merge into 1 file"))
         elif mode == "subtitle":
@@ -384,14 +551,38 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def collect_params(self) -> dict:
         mode = self.sg_mode.currentRouteKey()
+        mode2 = self.sg_mode2.currentRouteKey()
         params = {
             "mode": mode,
+            "mode2": mode2,
             "start": _parse_time(self.ed_start.text()),
             "end": _parse_time(self.ed_end.text()),
             "subtitle_path": self.ed_sub.text().strip(),
             "rate": float(self.cb_speed.currentText().replace("x", "")),
             "dl_x": self.sb_dx.value(), "dl_y": self.sb_dy.value(),
             "dl_w": self.sb_dw.value(), "dl_h": self.sb_dh.value(),
+            # 高级调整（剪辑模式）
+            "crop_x": self.sb_crop_x.value(), "crop_y": self.sb_crop_y.value(),
+            "crop_w": self.sb_crop_w.value(), "crop_h": self.sb_crop_h.value(),
+            "sharpen": self.sb_sharpen.value(), "denoise": self.sb_denoise.value(),
+            "hue": self.sb_hue.value(), "wb": self.sb_wb.value(),
+            "deinterlace": self.cb_deinterlace.isChecked(),
+            # 变速补帧
+            "interp": self.cb_interp.isChecked(),
+            # 倒放
+            "rev_audio": self.cb_rev_audio.isChecked(),
+            # 转GIF
+            "gif_fps": int(self.cb_gif_fps.currentText()),
+            "gif_w": int(self.cb_gif_w.currentText()),
+            # 文字水印
+            "wm_text": self.ed_wm_text.text().strip(),
+            "wm_pos": self.cb_wm_pos.currentIndex(),
+            "wm_size": self.sb_wm_size.value(),
+            "wm_alpha": self.sb_wm_alpha.value(),
+            # 音轨
+            "track_audio": self.ed_track_audio.text().strip(),
+            "track_mode": self.cb_track_mode.currentIndex(),
+            "track_bg": self.sb_track_bg.value(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -402,6 +593,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
     def collect_prefs(self) -> dict:
         return {
             "mode": self.sg_mode.currentRouteKey(),
+            "mode2": self.sg_mode2.currentRouteKey(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -412,6 +604,10 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         mode = prefs.get("mode")
         if mode in dict(MODES):
             self.sg_mode.setCurrentItem(mode)
+            self._mode_changed()
+        mode2 = prefs.get("mode2")
+        if mode2 in dict(MODES2):
+            self.sg_mode2.setCurrentItem(mode2)
             self._mode_changed()
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
@@ -426,10 +622,55 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _make_task(self, f: str) -> dict:
         mode = self.sg_mode.currentRouteKey()
+        mode2 = self.sg_mode2.currentRouteKey()
         params = self.collect_params()
         files = self.file_card.files()
+        fx = mode2 if mode2 != "none" else mode
 
-        if mode == "clip":
+        # ── 特效组（mode2 非 none 时优先）──
+        if mode2 != "none":
+            ext = os.path.splitext(f)[1] or ".mp4"
+            if mode2 == "gif":
+                out = tm.make_output_path(f, self.out_row.path(), ".gif")
+                return dict(name=tr("视频转GIF", "Video to GIF"), task_type="video_tools",
+                            file_path=f, output_path=out, params=params,
+                            runner=self._runner, history_type=tr("视频处理", "Video Tools"),
+                            history_target=tr("转GIF", "To GIF"), need_ffmpeg=True)
+            if mode2 == "watermark":
+                if not params["wm_text"]:
+                    from gui_qt.components import toast
+                    toast.show_warning(self, tr("请先输入水印文字", "Enter watermark text"))
+                    return None
+                out = tm.make_output_path(f, self.out_row.path(), ext)
+                return dict(name=tr("文字水印", "Text watermark"), task_type="video_tools",
+                            file_path=f, output_path=out, params=params,
+                            runner=self._runner, history_type=tr("视频处理", "Video Tools"),
+                            history_target=tr("文字水印", "Watermark"), need_ffmpeg=True)
+            if mode2 == "track":
+                if not params["track_audio"]:
+                    from gui_qt.components import toast
+                    toast.show_warning(self, tr("请先选择音频文件", "Pick an audio file"))
+                    return None
+                out = tm.make_output_path(f, self.out_row.path(), ext)
+                target = tr("音轨替换", "Replace audio") if params["track_mode"] == 0 else tr("混音", "Mix")
+                return dict(name=target, task_type="video_tools",
+                            file_path=f, output_path=out, params=params,
+                            runner=self._runner, history_type=tr("视频处理", "Video Tools"),
+                            history_target=target, need_ffmpeg=True)
+            if mode2 == "reverse":
+                out = tm.make_output_path(f, self.out_row.path(), ext)
+                return dict(name=tr("视频倒放", "Reverse"), task_type="video_tools",
+                            file_path=f, output_path=out, params=params,
+                            runner=self._runner, history_type=tr("视频处理", "Video Tools"),
+                            history_target=tr("倒放", "Reverse"), need_ffmpeg=True)
+            # stabilize
+            out = tm.make_output_path(f, self.out_row.path(), ext)
+            return dict(name=tr("视频稳定", "Stabilize"), task_type="video_tools",
+                        file_path=f, output_path=out, params=params,
+                        runner=self._runner, history_type=tr("视频处理", "Video Tools"),
+                        history_target=tr("稳定", "Stabilize"), need_ffmpeg=True)
+
+        if fx == "clip":
             if params["start"] is None:
                 from gui_qt.components import toast
                 toast.show_warning(self, tr("请填写开始时间", "Enter a start time"))
@@ -441,7 +682,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
                         runner=self._runner,
                         history_type=tr("视频处理", "Video Tools"), history_target=tr("剪辑", "Clip"),
                         need_ffmpeg=True)
-        if mode == "merge":
+        if fx == "merge":
             if len(files) < 2:
                 from gui_qt.components import toast
                 toast.show_warning(self, tr("合并至少需要 2 个视频文件", "Merge needs at least 2 video files"))
@@ -456,7 +697,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
                         runner=self._runner,
                         history_type=tr("视频处理", "Video Tools"), history_target=tr("合并", "Merge"),
                         need_ffmpeg=True)
-        if mode == "subtitle":
+        if fx == "subtitle":
             if not params["subtitle_path"]:
                 from gui_qt.components import toast
                 toast.show_warning(self, tr("请先选择字幕文件", "Pick a subtitle file first"))
@@ -470,7 +711,7 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         # speed / delogo
         out = tm.make_output_path(f, self.out_row.path(),
                                   os.path.splitext(f)[1] or ".mp4")
-        if mode == "delogo":
+        if fx == "delogo":
             return dict(name=tr("视频去水印", "Remove Logo"), task_type="video_tools",
                         file_path=f, output_path=out, params=params,
                         runner=self._runner, runner_key="video_tools",
@@ -486,23 +727,60 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
         from core import video_tools
         p = task.params
         mode = p.get("mode", "clip")
-        if mode == "clip":
+        mode2 = p.get("mode2", "none")
+        fx = mode2 if mode2 != "none" else mode
+        # 特效组
+        if mode2 == "reverse":
+            return video_tools.reverse_video(task.file_path, task.output_path,
+                                             keep_audio=bool(p.get("rev_audio", True)),
+                                             progress_cb=prog)
+        if mode2 == "gif":
+            return video_tools.video_to_gif(task.file_path, task.output_path,
+                                            fps=p.get("gif_fps", 15),
+                                            max_width=p.get("gif_w", 480),
+                                            progress_cb=prog)
+        if mode2 == "watermark":
+            return video_tools.burn_text_watermark(
+                task.file_path, task.output_path, p.get("wm_text", ""),
+                font_size=p.get("wm_size", 48),
+                position=("bottom_right", "top_right", "bottom_left",
+                          "top_left", "center")[p.get("wm_pos", 0)],
+                opacity=p.get("wm_alpha", 0.7), progress_cb=prog)
+        if mode2 == "stabilize":
+            return video_tools.stabilize_video(task.file_path, task.output_path,
+                                               progress_cb=prog)
+        if mode2 == "track":
+            if p.get("track_mode", 0) == 0:
+                return video_tools.replace_audio(task.file_path,
+                                                 p.get("track_audio", ""),
+                                                 task.output_path, progress_cb=prog)
+            return video_tools.mix_audio(task.file_path, p.get("track_audio", ""),
+                                         task.output_path,
+                                         bg_volume=p.get("track_bg", 0.3),
+                                         progress_cb=prog)
+        # 处理组
+        if fx == "clip":
             return video_tools.clip_video(task.file_path, task.output_path,
                                           p.get("start"), p.get("end"),
                                           progress_cb=prog,
                                           vf=self._build_clip_vf(p))
-        if mode == "merge":
+        if fx == "merge":
             return video_tools.merge_videos(p.get("files") or [task.file_path],
                                             task.output_path, progress_cb=prog)
-        if mode == "subtitle":
+        if fx == "subtitle":
             return video_tools.burn_subtitle(task.file_path,
                                              p.get("subtitle_path", ""),
                                              task.output_path, progress_cb=prog)
-        if mode == "delogo":
+        if fx == "delogo":
             return video_tools.remove_logo(
                 task.file_path, task.output_path,
                 p.get("dl_x", 0), p.get("dl_y", 0),
                 p.get("dl_w", 120), p.get("dl_h", 60), progress_cb=prog)
+        # speed：普通变速 / 补帧慢动作
+        if p.get("interp") and 0 < float(p.get("rate", 1.0) or 1.0) < 1:
+            return video_tools.slowmo_interp(task.file_path, task.output_path,
+                                             p.get("rate", 0.5), target_fps=60,
+                                             progress_cb=prog)
         return video_tools.change_speed(task.file_path, task.output_path,
                                         p.get("rate", 1.0), progress_cb=prog)
 
@@ -535,5 +813,34 @@ class VideoToolsPanelPage(BaseQtPanel, TaskPanelMixin):
             eq.append(f"saturation={float(adjust['saturation']):.2f}")
         if eq:
             filters.append("eq=" + ":".join(eq))
+
+        # ── 面板级高级调整（剪辑模式新增）──
+        # 色相
+        hue = float(p.get("hue", 0) or 0)
+        if abs(hue) > 0.01:
+            filters.append(f"hue=h={hue:.2f}")
+        # 色温（colorbalance，正值偏暖/负值偏冷）
+        wb = float(p.get("wb", 0) or 0)
+        if abs(wb) > 0.01:
+            if wb > 0:
+                filters.append(f"colorbalance=rs=0.15:gs=0.05:bs=-0.15")
+            else:
+                filters.append(f"colorbalance=rs=-0.15:gs=-0.05:bs=0.15")
+        # 锐化 / 降噪
+        sharpen = float(p.get("sharpen", 0) or 0)
+        if sharpen > 0:
+            filters.append(f"unsharp=5:5:{min(5.0, sharpen):.2f}:5:5:0.0")
+        denoise = float(p.get("denoise", 0) or 0)
+        if denoise > 0:
+            s = min(8.0, denoise)
+            filters.append(f"hqdn3d={s:.1f}:{s:.1f}:{s:.1f}:{s:.1f}")
+        # 去隔行
+        if p.get("deinterlace"):
+            filters.append("yadif=mode=1")
+        # 画面裁剪（宽高 >0 才裁剪）
+        cw, ch = int(p.get("crop_w", 0) or 0), int(p.get("crop_h", 0) or 0)
+        if cw > 0 and ch > 0:
+            cx, cy = int(p.get("crop_x", 0) or 0), int(p.get("crop_y", 0) or 0)
+            filters.append(f"crop={cw}:{ch}:{cx}:{cy}")
 
         return ",".join(filters) if filters else None

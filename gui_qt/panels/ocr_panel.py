@@ -34,10 +34,10 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── UI 构建 ──────────────────────────────────
     def build(self):
         lay = self.content_layout
-        lay.addWidget(self.make_title(tr("OCR 文字识别", "OCR")))
+        lay.addWidget(self.make_title(tr("高级 OCR", "Advanced OCR")))
         lay.addWidget(CaptionLabel(
-            tr("从图片或PDF中识别文字，支持单文件和批量处理",
-               "OCR text from images or PDF, single file and batch")))
+            tr("PDF 全文（含扫描件/图片文本）识别为可编辑 Word 或 TXT",
+               "Convert full PDF (incl. scanned/image text) to editable Word or TXT")))
 
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=OCR_EXTS)
         lay.addWidget(self.file_card)
@@ -61,15 +61,36 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_export.setCurrentIndex(0)
         row.addWidget(self.cb_export)
         sec.add_layout(row)
+
+        # 表格识别 / 嵌入原图（Word 导出时生效）
+        opt_row = QHBoxLayout()
+        opt_row.setSpacing(16)
+        self.sw_table = SwitchButton(tr("表格识别", "Table recognition"))
+        self.sw_table.setOnText(tr("表格识别", "Table recognition"))
+        self.sw_table.setToolTip(
+            tr("Word 导出时：把扫描页中的表格重建成可编辑的真·Word表格（每个单元格可改）；关闭则只输出纯文字",
+               "Word export: rebuild scanned tables into editable real Word tables (each cell editable); off = plain text only"))
+        self.sw_table.setChecked(True)
+        self.sw_image = SwitchButton(tr("嵌入原图", "Keep original image"))
+        self.sw_image.setOnText(tr("嵌入原图", "Keep original image"))
+        self.sw_image.setToolTip(
+            tr("保留每页原始图像（所见即所得，含图表/版式）；关闭则只输出可编辑的表格与文字",
+               "Embed original page image (WYSIWYG, with charts/layout); off = editable tables & text only"))
+        self.sw_image.setChecked(True)
+        opt_row.addWidget(self.sw_table)
+        opt_row.addWidget(self.sw_image)
+        opt_row.addStretch(1)
+        sec.add_layout(opt_row)
         lay.addWidget(sec)
 
         # 批量模式开关
         batch_row = QHBoxLayout()
         batch_row.setSpacing(8)
         self.sw_batch = SwitchButton(tr("批量模式", "Batch mode"))
+        self.sw_batch.setOnText(tr("批量模式", "Batch mode"))
         self.sw_batch.setToolTip(
-            tr("批量模式：每个文件生成一个.txt结果文件；关闭：单文件模式，显示识别结果",
-               "Batch: each file generates a .txt; Off: single file, show result"))
+            tr("批量模式：每个文件生成同名结果文件（TXT/Word 按导出格式）；关闭：单文件模式，显示识别结果",
+               "Batch: each file → one result file (TXT/Word by export format); Off: single file, show result"))
         self.sw_batch.checkedChanged.connect(self._on_batch_changed)
         batch_row.addWidget(self.sw_batch)
         batch_row.addStretch(1)
@@ -143,6 +164,8 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
             "lang": self.cb_lang.currentText(),
             "export_fmt": "docx" if self.cb_export.currentIndex() == 1 else "txt",
             "batch_mode": self.sw_batch.isChecked(),
+            "keep_images": self.sw_image.isChecked(),
+            "table_recognition": self.sw_table.isChecked(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -159,21 +182,34 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
             self.cb_export.setCurrentIndex(1)
         if "batch_mode" in prefs:
             self.sw_batch.setChecked(bool(prefs["batch_mode"]))
+        if "keep_images" in prefs:
+            self.sw_image.setChecked(bool(prefs["keep_images"]))
+        if "table_recognition" in prefs:
+            self.sw_table.setChecked(bool(prefs["table_recognition"]))
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
 
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
-        from core.ocr_batch import ocr_file_to_txt
-        return ocr_file_to_txt(task.file_path, task.output_path,
-                               lang=task.params.get("lang", "chi_sim+eng"),
-                               progress_cb=prog)
+        from core import ocr_batch
+        params = task.params or {}
+        if params.get("export_fmt") == "docx":
+            return ocr_batch.ocr_file_to_docx(
+                task.file_path, task.output_path,
+                lang=params.get("lang", "chi_sim+eng"),
+                keep_images=params.get("keep_images", True),
+                table_recognition=params.get("table_recognition", True),
+                progress_cb=prog)
+        return ocr_batch.ocr_file_to_txt(
+            task.file_path, task.output_path,
+            lang=params.get("lang", "chi_sim+eng"), progress_cb=prog)
 
     def _make_task(self, f):
         params = self.collect_params()
         out_dir = self.out_row.resolve_dir(f)
-        out_path = tm.make_output_path(f, out_dir, ".txt")
+        ext = ".docx" if params["export_fmt"] == "docx" else ".txt"
+        out_path = tm.make_output_path(f, out_dir, ext)
         return dict(
             name=f"{tr('OCR识别', 'OCR')} - {os.path.basename(f)}",
             task_type="ocr", file_path=f, output_path=out_path,
@@ -194,8 +230,13 @@ class OcrPanelPage(BaseQtPanel, TaskPanelMixin):
                 and os.path.isfile(task.output_path)
                 and not task.params.get("batch_mode", False)):
             try:
-                with open(task.output_path, "r", encoding="utf-8") as f:
-                    self.txt_result.setPlainText(f.read())
+                if task.params.get("export_fmt") == "docx":
+                    from core.ocr_batch import extract_docx_text
+                    text = extract_docx_text(task.output_path)
+                else:
+                    with open(task.output_path, "r", encoding="utf-8") as f:
+                        text = f.read()
+                self.txt_result.setPlainText(text)
             except OSError:
                 pass
         super()._on_state(task_id, state)

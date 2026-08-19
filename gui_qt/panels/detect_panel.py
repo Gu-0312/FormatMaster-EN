@@ -6,7 +6,7 @@
 """
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout,
                                QHeaderView, QTableWidget, QTableWidgetItem,
                                QWidget)
@@ -16,6 +16,7 @@ from qfluentwidgets import (CaptionLabel, CheckBox,
 from gui_qt.i18n import tr
 from gui_qt.components import toast
 from gui_qt.components.form_widgets import FormSection
+from gui_qt.components.safe_worker import SafeWorker
 from gui_qt.panels.base_panel import BaseQtPanel
 
 VIDEO_EXTS = {'.mp4', '.avi', '.mkv', '.wmv', '.mov', '.flv', '.webm', '.ts', '.3gp'}
@@ -113,8 +114,8 @@ def detect_format_by_content(fp):
     return None
 
 
-class _ScanWorker(QThread):
-    """后台扫描文件夹：归类 + 内容识别。"""
+class _ScanWorker(SafeWorker):
+    """后台扫描文件夹：归类 + 内容识别（异常由 SafeWorker 统一兜底）。"""
 
     sig_progress = Signal(int, int)           # (当前, 总数)
     sig_done = Signal(dict, list)             # (detected, file_info)
@@ -124,11 +125,11 @@ class _ScanWorker(QThread):
         self._path = path
         self._stop = stop_flag  # 共享 list，[0]=True 表示取消
 
-    def run(self):
+    def work(self):
         detected = {k: [] for k in TYPE_ORDER}
         all_files = []
         for root, _dirs, files in os.walk(self._path):
-            if self._stop[0]:
+            if self._stop[0] or self.is_stopped():
                 self.sig_done.emit({}, [])
                 return
             for f in files:
@@ -136,7 +137,7 @@ class _ScanWorker(QThread):
         total = len(all_files)
         file_info = []
         for i, fp in enumerate(all_files):
-            if self._stop[0]:
+            if self._stop[0] or self.is_stopped():
                 self.sig_done.emit({}, [])
                 return
             cat = classify_ext(fp)
@@ -380,7 +381,7 @@ class DetectPanelPage(BaseQtPanel):
         added = 0
         for cat, files in grouped.items():
             page_key = CAT_PAGE.get(cat)
-            page = self.window.pages.get(page_key) if page_key else None
+            page = self.main_window.pages.get(page_key) if page_key else None
             card = getattr(page, "file_card", None) if page else None
             if card is None:
                 continue

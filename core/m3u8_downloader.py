@@ -52,6 +52,11 @@ class M3U8Store:
     def get_history(self):
         return list(self._history)
 
+    def remove_history(self, url):
+        """按 URL 删除单条历史。"""
+        self._history = [h for h in self._history if h.get("url") != url]
+        self._save(self._history_file, self._history)
+
     def clear_history(self):
         self._history = []
         self._save(self._history_file, [])

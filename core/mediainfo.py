@@ -148,3 +148,58 @@ def get_mediainfo(path):
                 ("类型", s.get("codec_name") or "--"),
             ]))
     return sections
+
+
+def get_bitrate_samples(path, max_seconds=600):
+    """逐秒码率采样（视频质量分析，2026-08-19 新增）。
+
+    用 ffprobe -show_packets 统计视频流每个包（dts_time + size），
+    按整秒分桶累加 → 每秒 kbps 曲线。返回：
+      (samples_kbps, duration_sec, avg_kbps, peak_kbps) 或 None（失败/无视频流）。
+
+    max_seconds：超过该时长的视频只统计前 N 秒（长片采样足够判断质量，
+    避免超大文件输出爆炸）。
+    """
+    import subprocess
+    from utils.config import get_ffprobe_path
+    ffprobe = get_ffprobe_path()
+    if not ffprobe:
+        return None
+    cmd = [ffprobe, "-v", "error",
+           "-select_streams", "v:0",
+           "-show_entries", "packet=dts_time,size",
+           "-of", "csv=p=0", path]
+    try:
+        proc = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding="utf-8", errors="replace", timeout=30,
+            creationflags=(subprocess.CREATE_NO_WINDOW
+                           if os.name == "nt" else 0))
+    except Exception:  # noqa: BLE001
+        return None
+    if proc.returncode != 0:
+        return None
+
+    buckets = {}
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(",")
+        if len(parts) < 2:
+            continue
+        try:
+            ts = float(parts[0])
+            size = int(parts[1])
+        except ValueError:
+            continue
+        if ts < 0 or ts >= max_seconds:
+            continue
+        b = int(ts)
+        buckets[b] = buckets.get(b, 0) + size
+
+    if not buckets:
+        return None
+    duration = max(buckets.keys()) + 1
+    samples = [buckets.get(i, 0) * 8 / 1024.0 for i in range(duration)]
+    total_bits = sum(buckets.values()) * 8
+    avg = total_bits / 1024.0 / duration if duration else 0
+    peak = max(samples)
+    return samples, duration, round(avg, 1), round(peak, 1)

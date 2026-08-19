@@ -15,6 +15,7 @@ import shutil
 import tempfile
 
 from PySide6.QtCore import Qt, QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtGui import QPixmap
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame,
@@ -41,7 +42,7 @@ def _fmt(sec):
     return f"{h}:{m:02d}:{sec_int:02d}.{ms:03d}"
 
 
-class ThumbnailWorker(QThread):
+class ThumbnailWorker(SafeWorker):
     """后台为视频生成等间隔缩略图。"""
 
     progress = Signal(int, str)
@@ -57,7 +58,7 @@ class ThumbnailWorker(QThread):
     def tmp_dir(self):
         return self._tmp_dir
 
-    def run(self):
+    def work(self):
         try:
             from core import video_frame_extract
             from utils.config import get_ffmpeg_path
@@ -100,6 +101,7 @@ class ThumbnailWorker(QThread):
             self.finished_fail.emit(str(exc))
 
 
+
 class ClipEditorDialog(QDialog):
     """专业剪辑窗口：预览 + 时间轴 + 入出点。
 
@@ -121,9 +123,10 @@ class ClipEditorDialog(QDialog):
         self.resize(1100, 720)
         self.setMinimumSize(820, 560)
 
-        # 整体深色专业面板（无论应用当前主题）
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        # 整体专业面板（跟随应用当前主题）
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QHBoxLayout(self)
         main.setContentsMargins(0, 0, 0, 0)
@@ -191,6 +194,8 @@ class ClipEditorDialog(QDialog):
             self.player.audio_out.setVolume(0.8)
             self.player.set_source(self._path, autoplay=True)
             self._start_thumbnails()
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── 构建 UI 部件 ─────────────────────────────
     def _build_sidebar(self):
@@ -202,10 +207,8 @@ class ClipEditorDialog(QDialog):
         v.setContentsMargins(10, 14, 10, 14)
         v.setSpacing(14)
 
-        title = CaptionLabel(tr("视频剪辑", "Video Clip"))
-        title.setStyleSheet(
-            "font-size: 15px; font-weight: 700; color: #E6E8F2;")
-        v.addWidget(title)
+        self.lb_side_title = CaptionLabel(tr("视频剪辑", "Video Clip"))
+        v.addWidget(self.lb_side_title)
 
         # 垂直工具按钮列表（SegmentedWidget 不支持垂直方向）
         self._tool_btns = {}
@@ -237,8 +240,6 @@ class ClipEditorDialog(QDialog):
         self.lb_tool_hint = CaptionLabel(
             tr("当前模式：剪辑片段", "Current: clip"))
         self.lb_tool_hint.setWordWrap(True)
-        self.lb_tool_hint.setStyleSheet(
-            "font-size: 11px; color: #9BA1B4; background: transparent;")
         v.addWidget(self.lb_tool_hint)
 
         return bar
@@ -264,8 +265,6 @@ class ClipEditorDialog(QDialog):
         bar.addSpacing(12)
 
         self.lb_status = CaptionLabel(tr("准备就绪", "Ready"))
-        self.lb_status.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_status)
         bar.addStretch(1)
 
@@ -275,9 +274,6 @@ class ClipEditorDialog(QDialog):
         bar.addWidget(self.btn_top_play)
 
         self.lb_top_time = CaptionLabel("--:-- / --:--")
-        self.lb_top_time.setStyleSheet(
-            "font-size: 13px; color: #E6E8F2; font-family: Consolas;"
-            "background: transparent;")
         bar.addWidget(self.lb_top_time)
 
         return bar
@@ -285,12 +281,9 @@ class ClipEditorDialog(QDialog):
     # ── 工具参数面板（左侧 6 个工具对应的可操作设置）────
     def _build_tool_panels(self):
         """QStackedWidget：剪辑/变换/调整/音频/速度/时间 各一页。"""
-        t = self._dark_tokens
+        t = self._tokens
         self.tool_stack = QStackedWidget(self)
         self.tool_stack.setFixedHeight(118)
-        self.tool_stack.setStyleSheet(
-            f"QStackedWidget {{ background: {t['card_bg']};"
-            f" border: 1px solid {t['border']}; border-radius: 8px; }}")
 
         # ① 剪辑：操作提示
         p = QWidget()
@@ -300,7 +293,7 @@ class ClipEditorDialog(QDialog):
             tr("拖动下方时间轴上的入点/出点游标，或点击「设置入点/出点」"
                "以当前播放位置标记区间", "Drag in/out cursors on the timeline, or set them at the playhead"))
         lb.setWordWrap(True)
-        lb.setStyleSheet("font-size: 12px; color: #9BA1B4;")
+        lb.setStyleSheet(f"font-size: 12px; color: {t['ink_sec']};")
         h.addWidget(lb)
         h.addStretch(1)
         self.tool_stack.addWidget(p)
@@ -321,17 +314,12 @@ class ClipEditorDialog(QDialog):
         self.cb_hflip = QCheckBox(tr("水平翻转", "Flip H"))
         self.cb_vflip = QCheckBox(tr("垂直翻转", "Flip V"))
         for cb in (self.cb_hflip, self.cb_vflip):
-            cb.setStyleSheet(
-                f"color: {t['ink_sec']}; font-size: 12px;"
-                "QCheckBox::indicator { width: 14px; height: 14px; }")
             cb.toggled.connect(self._apply_transform)
         h.addWidget(self.cb_hflip)
         h.addWidget(self.cb_vflip)
         h.addStretch(1)
         self.lb_xf_hint = CaptionLabel(
             tr("实时预览生效", "Live preview"))
-        self.lb_xf_hint.setStyleSheet(
-            "font-size: 11px; color: #2FC99A;")
         h.addWidget(self.lb_xf_hint)
         self.tool_stack.addWidget(p)
 
@@ -353,7 +341,6 @@ class ClipEditorDialog(QDialog):
         h.addStretch(1)
         self.lb_adj_hint = CaptionLabel(
             tr("实时预览生效", "Live preview"))
-        self.lb_adj_hint.setStyleSheet("font-size: 11px; color: #2FC99A;")
         h.addWidget(self.lb_adj_hint)
         self.tool_stack.addWidget(p)
 
@@ -367,9 +354,6 @@ class ClipEditorDialog(QDialog):
         self._box_volume.setFixedWidth(280)
         h.addWidget(self._box_volume)
         self.cb_mute = QCheckBox(tr("静音", "Mute"))
-        self.cb_mute.setStyleSheet(
-            f"color: {t['ink_sec']}; font-size: 12px;"
-            "QCheckBox::indicator { width: 14px; height: 14px; }")
         self.cb_mute.toggled.connect(self._apply_volume)
         h.addWidget(self.cb_mute)
         h.addStretch(1)
@@ -412,20 +396,36 @@ class ClipEditorDialog(QDialog):
     def _panel_label(self, text):
         lb = CaptionLabel(text)
         lb.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
+            f"font-size: 12px; color: {self._tokens['ink_sec']};"
+            " background: transparent;")
         return lb
 
     def _style_combo(self, combo):
-        t = self._dark_tokens
+        t = self._tokens
         combo.setStyleSheet(
             f"QComboBox {{ background: {t['card_hover']}; color: {t['ink']};"
             f" border: 1px solid {t['border']}; border-radius: 6px;"
             " padding: 4px 8px; font-size: 12px; }"
             f"QComboBox::drop-down {{ border: none; width: 18px; }}")
 
+    def _slider_qss(self, t=None):
+        """滑杆 QSS（跟随主题，供构造与主题刷新共用）。"""
+        t = t or self._tokens
+        return (f"QSlider::groove:horizontal {{ height: 4px;"
+                f" background: {t['card_active']}; border-radius: 2px; }}"
+                f"QSlider::handle:horizontal {{ width: 12px; height: 12px;"
+                f" margin: -4px 0; border-radius: 6px;"
+                f" background: {t['accent']}; }}")
+
+    def _slider_val_qss(self, t=None):
+        """滑杆数值标签 QSS（跟随主题，供构造与主题刷新共用）。"""
+        t = t or self._tokens
+        return (f"font-size: 11px; color: {t['accent_soft']};"
+                "background: transparent; min-width: 26px;")
+
     def _make_slider(self, title, lo, hi, val, slot):
         """返回 (box, slider, value_label)，box 内含标题+滑杆+数值。"""
-        t = self._dark_tokens
+        t = self._tokens
         box = QWidget()
         h = QHBoxLayout(box)
         h.setContentsMargins(0, 0, 0, 0)
@@ -435,16 +435,9 @@ class ClipEditorDialog(QDialog):
         s.setRange(lo, hi)
         s.setValue(val)
         s.setFixedHeight(20)
-        s.setStyleSheet(
-            f"QSlider::groove:horizontal {{ height: 4px;"
-            f" background: {t['card_active']}; border-radius: 2px; }}"
-            f"QSlider::handle:horizontal {{ width: 12px; height: 12px;"
-            f" margin: -4px 0; border-radius: 6px;"
-            f" background: {t['accent']}; }}")
+        s.setStyleSheet(self._slider_qss(t))
         lb = CaptionLabel(str(val))
-        lb.setStyleSheet(
-            f"font-size: 11px; color: {t['accent_soft']};"
-            "background: transparent; min-width: 26px;")
+        lb.setStyleSheet(self._slider_val_qss(t))
         h.addWidget(s)
         h.addWidget(lb)
         s.valueChanged.connect(slot)
@@ -546,9 +539,6 @@ class ClipEditorDialog(QDialog):
         info.setSpacing(16)
         self.lb_in = CaptionLabel("")
         self.lb_out = CaptionLabel("")
-        for lb in (self.lb_in, self.lb_out):
-            lb.setStyleSheet(
-                "font-size: 12px; color: #9BA1B4; background: transparent;")
         info.addWidget(self.lb_in)
         info.addWidget(self.lb_out)
         bar.addLayout(info)
@@ -575,10 +565,10 @@ class ClipEditorDialog(QDialog):
 
         return root
 
-    def _apply_dark_style(self):
-        """强制本对话框使用深色专业剪辑面板样式。"""
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{
                 background: {t['page_bg']};
             }}
@@ -622,7 +612,55 @@ class ClipEditorDialog(QDialog):
                 background: {t['card_hover']};
                 border-color: {t['accent_soft']};
             }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 getattr 保护）
+        if hasattr(self, "lb_side_title"):
+            self.lb_side_title.setStyleSheet(
+                f"font-size: 15px; font-weight: 700; color: {t['ink']};")
+        for name in ("lb_tool_hint", "lb_status", "lb_in", "lb_out",
+                     "lb_t_in", "lb_t_out", "lb_t_dur"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(
+                    f"font-size: 12px; color: {t['ink_sec']};"
+                    " background: transparent;")
+        if hasattr(self, "lb_top_time"):
+            self.lb_top_time.setStyleSheet(
+                f"font-size: 13px; color: {t['ink']};"
+                " font-family: Consolas; background: transparent;")
+        for name in ("lb_xf_hint", "lb_adj_hint"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(f"font-size: 11px; color: {t['success']};")
+        if hasattr(self, "tool_stack"):
+            self.tool_stack.setStyleSheet(
+                f"QStackedWidget {{ background: {t['card_bg']};"
+                f" border: 1px solid {t['border']}; border-radius: 8px; }}")
+        for name in ("cb_rotate", "cb_rate"):
+            w = getattr(self, name, None)
+            if w is not None:
+                self._style_combo(w)
+        for name in ("cb_hflip", "cb_vflip", "cb_mute"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(
+                    f"color: {t['ink_sec']}; font-size: 12px;"
+                    "QCheckBox::indicator { width: 14px; height: 14px; }")
+        for name in ("_sl_bright", "_sl_contrast", "_sl_satur", "_sl_volume"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(self._slider_qss(t))
+        for name in ("lb_bright", "lb_contrast", "lb_satur", "lb_volume"):
+            w = getattr(self, name, None)
+            if w is not None:
+                w.setStyleSheet(self._slider_val_qss(t))
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 对外 ──
     def clip_range(self):

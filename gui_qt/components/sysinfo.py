@@ -46,31 +46,17 @@ _cpu_cache = None
 
 
 def cpu_info():
-    """CPU 详细信息：名称 + 核心数 + 频率。
+    """CPU 名称（用户指定：只显示型号，不带核心数/频率）。
 
-    优先从 Windows 注册表读名称，从 PowerShell CIM 读核心数和频率。
-    会话内缓存结果：PowerShell 冷启动 + CIM 查询耗时 1~3 秒，
-    避免每次刷新首页都重复探测（见 _cpu_details）。
+    从 Windows 注册表读取处理器名称（如 "13th Gen Intel(R) Core(TM) i7-13700H"）。
+    会话内缓存结果，避免每次刷新首页都重复探测。
     """
     global _cpu_cache
     if _cpu_cache is not None:
         return _cpu_cache
     try:
-        name = _cpu_name()
-        details = _cpu_details()
-        parts = [name]
-        if details:
-            cores = details.get("cores", "")
-            threads = details.get("threads", "")
-            ghz = details.get("ghz", "")
-            if cores and threads and cores != threads:
-                parts.append(tr("{}核{}线程", "{} cores / {} threads").format(cores, threads))
-            elif cores:
-                parts.append(tr("{}核", "{} cores").format(cores))
-            if ghz:
-                parts.append(ghz)
-        _cpu_cache = " · ".join(parts)
-    except Exception:
+        _cpu_cache = _cpu_name()
+    except Exception:  # noqa: BLE001
         _cpu_cache = tr("未知 CPU", "Unknown CPU")
     return _cpu_cache
 
@@ -132,11 +118,14 @@ _gpu_cache = None
 
 
 def gpu_info():
-    """显卡详细信息：名称 + 显存 + 驱动版本。
+    """显卡名称（用户指定：只显示型号，不带显存/驱动）。
 
     多显卡时优先显示独立显卡（NVIDIA/AMD），排除 Microsoft 基本显示适配器。
-    返回格式: "NVIDIA GeForce RTX 4070 Ti · 12GB · 驱动 546.33"
+    返回格式: "NVIDIA GeForce RTX 4060 Laptop GPU"
     会话内缓存结果（显卡信息运行期基本不变），避免重复 PowerShell 查询。
+
+    说明：显存不再读取——Win32_VideoController.AdapterRAM 是 32 位，
+    >4GB 显存（如 8GB 的 4060）会被截断显示成 4GB，误导用户。
     """
     global _gpu_cache
     if _gpu_cache is not None:
@@ -145,8 +134,7 @@ def gpu_info():
     try:
         out = _powershell(
             "Get-CimInstance Win32_VideoController"
-            " | Select-Object Name, AdapterRAM, DriverVersion"
-            " | ConvertTo-Json")
+            " | Select-Object Name | ConvertTo-Json")
         if out:
             import json
             data = json.loads(out)
@@ -161,26 +149,15 @@ def gpu_info():
                 low = name.lower()
                 if "microsoft" in low and "basic" in low:
                     continue
-                vram_bytes = item.get("AdapterRAM", 0) or 0
-                driver = (item.get("DriverVersion") or "").strip()
-                gpus.append({
-                    "name": name,
-                    "vram_gb": vram_bytes / (1024 ** 3) if vram_bytes > 0 else 0,
-                    "driver": driver,
-                })
+                gpus.append({"name": name})
             if gpus:
                 # 优先独立显卡（NVIDIA / AMD / Intel Arc）
                 discrete = [g for g in gpus if any(
                     kw in g["name"].lower()
                     for kw in ("nvidia", "amd", "radeon", "arc"))]
                 gpu = discrete[0] if discrete else gpus[0]
-                parts = [gpu["name"]]
-                if gpu["vram_gb"] > 0:
-                    parts.append(f"{gpu['vram_gb']:.0f}GB")
-                if gpu["driver"]:
-                    parts.append(tr("驱动 {}", "Driver {}").format(gpu['driver']))
-                result = " · ".join(parts)
-    except Exception:
+                result = gpu["name"]
+    except Exception:  # noqa: BLE001
         pass
     if result == tr("未知显卡", "Unknown GPU"):
         # 兜底：直接取第一个显卡名称
@@ -228,6 +205,83 @@ def mem_info():
     return total_gb, available_gb, used_pct
 
 
+_mem_module_cache = None
+
+
+def memory_modules_info():
+    """内存条信息：型号 + 条数 + 总容量。
+
+    用 Win32_PhysicalMemory 查询每根内存条的 PartNumber（如
+    MTC4C10163S1SC48BA1）与 Capacity。返回
+    {"module": "MTC4C10163S1SC48BA1", "count": 2, "total_gb": 16}；
+    失败/无数据返回 None，绝不抛异常。
+    """
+    global _mem_module_cache
+    if _mem_module_cache is not None:
+        return _mem_module_cache
+    result = None
+    try:
+        out = _powershell(
+            "Get-CimInstance Win32_PhysicalMemory"
+            " | Select-Object PartNumber, Capacity | ConvertTo-Json")
+        if out:
+            import json
+            data = json.loads(out)
+            if not isinstance(data, list):
+                data = [data]
+            count = len(data)
+            total_gb = sum(d.get("Capacity") or 0 for d in data) / 2 ** 30
+            module = next(
+                ((d.get("PartNumber") or "").strip() for d in data
+                 if (d.get("PartNumber") or "").strip()),
+                "")
+            if count > 0:
+                result = {"module": module, "count": count,
+                          "total_gb": total_gb}
+    except Exception:  # noqa: BLE001
+        result = None
+    _mem_module_cache = result
+    return result
+
+
+_mobo_cache = None
+
+
+def motherboard_info():
+    """主板型号（Win32_BaseBoard.Product，如 FX507VV）。
+
+    Product 为空或是通用占位名（"Base Board"/"System Product Name" 等）
+    时回退 Manufacturer；仍无效返回空串。
+    """
+    global _mobo_cache
+    if _mobo_cache is not None:
+        return _mobo_cache
+    result = ""
+    try:
+        out = _powershell(
+            "Get-CimInstance Win32_BaseBoard | Select-Object -First 1"
+            " Manufacturer, Product | ConvertTo-Json")
+        if out:
+            import json
+            data = json.loads(out)
+            if not isinstance(data, list):
+                data = [data]
+            item = data[0] if data else {}
+            product = (item.get("Product") or "").strip()
+            mfr = (item.get("Manufacturer") or "").strip()
+            # 通用占位名过滤
+            _generic = {"base board", "none", "system product name",
+                        "to be filled by o.e.m.", "not applicable"}
+            if product and product.lower() not in _generic:
+                result = product
+            elif mfr and mfr.lower() not in _generic:
+                result = mfr
+    except Exception:  # noqa: BLE001
+        pass
+    _mobo_cache = result
+    return result
+
+
 def app_version():
     """软件版本。"""
     try:
@@ -237,12 +291,13 @@ def app_version():
         try:
             return platform.python_version()
         except Exception:
-            return "1.3.5"
+            return "1.3.7"
 
 
 def collect():
     """一次性采集全部系统信息。"""
     total_gb, avail_gb, used_pct = mem_info()
+    disk_total, disk_free = disk_info()
     return {
         "os": os_info(),
         "cpu": cpu_info(),
@@ -250,5 +305,110 @@ def collect():
         "mem_total": total_gb,
         "mem_avail": avail_gb,
         "mem_used_pct": used_pct,
+        "mem_module": memory_modules_info(),
+        "motherboard": motherboard_info(),
+        "disk_total": disk_total,
+        "disk_free": disk_free,
+        "disks": disks_info(),
+        "phys_disks": physical_disks_info(),
         "version": app_version(),
     }
+
+
+def disk_info():
+    """安装盘空间（GB, GB）。失败返回 (None, None)。"""
+    try:
+        import shutil
+        usage = shutil.disk_usage(os.path.abspath("."))
+        return usage.total / 2 ** 30, usage.free / 2 ** 30
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+def disks_info():
+    """所有固定硬盘分区空间（按盘符排序）。
+
+    返回 [{"drive": "C:", "total_gb": x, "free_gb": y}, ...]。
+    只统计固定硬盘（DRIVE_FIXED，如 C:/D: 本地盘），排除 U 盘、光驱、
+    网络映射盘等；用 GetDriveTypeW 判定，失败时兜底全部显示。
+    任何异常静默跳过，绝不抛异常（首页采集用）。
+    """
+    disks = []
+    try:
+        import shutil
+        import string
+        DRIVE_FIXED = 3
+        get_drive_type = None
+        if os.name == "nt":
+            try:
+                get_drive_type = ctypes.windll.kernel32.GetDriveTypeW
+            except Exception:  # noqa: BLE001
+                get_drive_type = None
+        for letter in string.ascii_uppercase:
+            root = f"{letter}:\\"
+            try:
+                if not os.path.exists(root):
+                    continue
+                if get_drive_type is not None:
+                    try:
+                        # 只保留固定硬盘（跳过可移动/光驱/网络盘）
+                        if get_drive_type(root) != DRIVE_FIXED:
+                            continue
+                    except Exception:  # noqa: BLE001
+                        pass
+                usage = shutil.disk_usage(root)
+                disks.append({
+                    "drive": f"{letter}:",
+                    "total_gb": usage.total / 2 ** 30,
+                    "free_gb": usage.free / 2 ** 30,
+                })
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    return disks
+
+
+_phys_disk_cache = None
+
+
+def physical_disks_info():
+    """物理硬盘列表（型号 + 实际容量）。
+
+    用 Win32_DiskDrive 查询：Model（型号，NVMe 盘自带 "NVMe" 前缀）、
+    Size（总字节）。容量换算成**二进制 GiB**（除以 2^30）——用户指定显示
+    实际容量（如 476.9 → 477GB，与厂商标称 512GB 区分）。返回
+    [{"interface": "", "model": "HYV512X4 (GR)", "size_gb": 477}, ...]。
+    会话内缓存（物理硬盘运行期不变）；失败返回空列表，绝不抛异常。
+    """
+    global _phys_disk_cache
+    if _phys_disk_cache is not None:
+        return _phys_disk_cache
+    disks = []
+    try:
+        out = _powershell(
+            "Get-CimInstance Win32_DiskDrive"
+            " | Select-Object InterfaceType, Model,"
+            " @{N='SizeGB';E={[math]::Round($_.Size / 1GB, 1)}}"
+            " | ConvertTo-Json")
+        if out:
+            import json
+            data = json.loads(out)
+            if not isinstance(data, list):
+                data = [data]
+            for item in data:
+                model = (item.get("Model") or "").strip()
+                if not model:
+                    continue
+                interface = (item.get("InterfaceType") or "").strip()
+                # Windows 对 NVMe 盘的 InterfaceType 常报告为 SCSI（不准），
+                # 而 Model 已带 "NVMe" 前缀；interface 仅作展示补充
+                disks.append({
+                    "interface": interface if interface and interface.lower() != "scsi" else "",
+                    "model": model,
+                    "size_gb": float(item.get("SizeGB") or 0),
+                })
+    except Exception:  # noqa: BLE001
+        pass
+    _phys_disk_cache = disks
+    return disks

@@ -6,8 +6,9 @@
 import os
 
 from PySide6.QtCore import Qt, QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (FluentIcon, CaptionLabel, ComboBox, LineEdit,
                             PushButton)
 
@@ -23,6 +24,12 @@ FADE_VALUES = ["0", "0.5", "1.0", "2.0", "3.0", "5.0"]
 AUDIO_EXTS = {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a",
               ".wma", ".opus"}
 
+MODES = [
+    ("trim", tr("裁剪", "Trim")),
+    ("silence", tr("去静音", "Remove silence")),
+    ("pitch", tr("变调", "Change pitch")),
+]
+
 
 def parse_time(s):
     """「HH:MM:SS / MM:SS / 秒数」→ float 秒（与 tkinter 版一致）。"""
@@ -37,7 +44,7 @@ def parse_time(s):
         return 0.0
 
 
-class _WaveWorker(QThread):
+class _WaveWorker(SafeWorker):
     """后台读取音频信息与波形振幅数据，避免阻塞 UI 线程。"""
 
     sig_done = Signal(str, object, list)  # (文件路径, info, 波形数据)
@@ -47,7 +54,7 @@ class _WaveWorker(QThread):
         self._fp = fp
         self._points = points
 
-    def run(self):
+    def work(self):
         from core.audio_trimmer import get_audio_info, get_waveform_data
         try:
             info = get_audio_info(self._fp)
@@ -58,6 +65,7 @@ class _WaveWorker(QThread):
         except Exception:
             data = []
         self.sig_done.emit(self._fp, info, data)
+
 
 
 class WaveformWidget(QWidget):
@@ -133,7 +141,27 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(self.file_card)
         self.file_card.files_changed.connect(self._on_files_changed)
 
-        card = FormSection(tr("裁剪设置", "Crop settings"), FluentIcon.CUT)
+        card = FormSection(tr("音频处理", "Audio settings"), FluentIcon.CUT)
+
+        # 模式分段选择
+        from qfluentwidgets import SegmentedWidget
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
+        mode_row.addWidget(CaptionLabel(tr("处理模式", "Mode")))
+        self.sg_mode = SegmentedWidget()
+        for key, label in MODES:
+            self.sg_mode.addItem(key, label)
+        self.sg_mode.setCurrentItem("trim")
+        self.sg_mode.currentItemChanged.connect(
+            lambda _k: self._mode_changed())
+        mode_row.addWidget(self.sg_mode, 1)
+        card.add_layout(mode_row)
+
+        # 裁剪区：文件信息 + 波形 + 起止 + 淡入淡出
+        self.w_trim = QWidget()
+        vtrim = QVBoxLayout(self.w_trim)
+        vtrim.setContentsMargins(0, 0, 0, 0)
+        vtrim.setSpacing(8)
 
         # 文件信息行
         info_wrap = QWidget()
@@ -145,11 +173,11 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         info_row.addStretch(1)
         self.lb_info = CaptionLabel("")
         info_row.addWidget(self.lb_info)
-        card.add_widget(info_wrap)
+        vtrim.addWidget(info_wrap)
 
         # 波形预览
         self.wave = WaveformWidget()
-        card.add_widget(self.wave)
+        vtrim.addWidget(self.wave)
         self.wave.time_picked.connect(self._on_pick)
 
         # 起止时间行
@@ -181,7 +209,7 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
             tr("在独立窗口中可视化编辑入/出点", "Edit in/out visually in a standalone window"))
         btn_editor.clicked.connect(self._open_wave_editor)
         time_row.addWidget(btn_editor)
-        card.add_widget(time_wrap)
+        vtrim.addWidget(time_wrap)
 
         # 淡入淡出
         fade_grid = FormGrid(columns=2)
@@ -191,12 +219,46 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         self.cb_fade_out = fade_grid.add_field(
             tr("淡出(秒)", "Fade-out (sec)"), self._fade_combo("0"),
             hint=tr("淡出时长，0 表示不淡出", "Fade-out duration, 0 = none"))
-        card.add_form(fade_grid)
+        vtrim.addLayout(fade_grid)
+        card.add_widget(self.w_trim)
+
+        # 去静音区
+        self.w_silence = QWidget()
+        vs = QVBoxLayout(self.w_silence)
+        vs.setContentsMargins(0, 0, 0, 0)
+        vs.setSpacing(8)
+        sg = FormGrid(columns=2)
+        self.cb_sil_thr = self._fade_combo("-50")
+        self.cb_sil_thr.clear()
+        self.cb_sil_thr.addItems(["-40", "-45", "-50", "-55", "-60"])
+        self.cb_sil_thr.setCurrentText("-50")
+        self.cb_sil_min = self._fade_combo("0.5")
+        self.cb_sil_min.clear()
+        self.cb_sil_min.addItems(["0.2", "0.5", "1.0", "1.5", "2.0"])
+        self.cb_sil_min.setCurrentText("0.5")
+        sg.add_field(tr("静音阈值(dB)", "Silence threshold (dB)"), self.cb_sil_thr)
+        sg.add_field(tr("最短静音(秒)", "Min silence (sec)"), self.cb_sil_min)
+        vs.addLayout(sg)
+        card.add_widget(self.w_silence)
+
+        # 变调区
+        self.w_pitch = QWidget()
+        vp = QHBoxLayout(self.w_pitch)
+        vp.setContentsMargins(0, 0, 0, 0)
+        vp.setSpacing(8)
+        self.cb_pitch = ComboBox()
+        self.cb_pitch.addItems(["-12", "-7", "-5", "-3", "-1", "0",
+                                "1", "3", "5", "7", "12"])
+        self.cb_pitch.setCurrentText("0")
+        vp.addWidget(CaptionLabel(tr("变调(半音)", "Pitch (semitones)")))
+        vp.addWidget(self.cb_pitch)
+        vp.addStretch(1)
+        card.add_widget(self.w_pitch)
 
         # 输出目录（并入裁剪设置卡片，与 tkinter 版一致）
         out_lbl = CaptionLabel(tr("输出目录", "Output folder"))
         out_lbl.setStyleSheet(
-            "font-size: 12px; font-weight: 600; color: #6b7280;"
+            "font-size: 12px; font-weight: 600;"
             "border: none; background: transparent;")
         card.add_widget(out_lbl)
         self.out_row = OutputDirRow()
@@ -209,6 +271,13 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
 
         self._wave_worker = None
         self._wire_tasks()
+        self._mode_changed()
+
+    def _mode_changed(self):
+        mode = self.sg_mode.currentRouteKey()
+        self.w_trim.setVisible(mode == "trim")
+        self.w_silence.setVisible(mode == "silence")
+        self.w_pitch.setVisible(mode == "pitch")
 
     # ── 波形编辑器（独立窗口）────────────────────
     def _open_wave_editor(self):
@@ -286,16 +355,24 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:
         return {
+            "mode": self.sg_mode.currentRouteKey(),
             "start_sec": parse_time(self.ed_start.text()),
             "end_sec": parse_time(self.ed_end.text()),
             "fade_in": float(self.cb_fade_in.currentText()),
             "fade_out": float(self.cb_fade_out.currentText()),
+            "sil_thr": float(self.cb_sil_thr.currentText()),
+            "sil_min": float(self.cb_sil_min.currentText()),
+            "pitch": int(self.cb_pitch.currentText()),
         }
 
     def collect_prefs(self) -> dict:
         return {
+            "mode": self.sg_mode.currentRouteKey(),
             "fade_in": self.cb_fade_in.currentText(),
             "fade_out": self.cb_fade_out.currentText(),
+            "sil_thr": self.cb_sil_thr.currentText(),
+            "sil_min": self.cb_sil_min.currentText(),
+            "pitch": self.cb_pitch.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -303,18 +380,39 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
     def apply_prefs(self, prefs: dict):
         if not prefs:
             return
+        mode = prefs.get("mode")
+        if mode in dict(MODES):
+            self.sg_mode.setCurrentItem(str(mode))
+            self._mode_changed()
         if prefs.get("fade_in") in FADE_VALUES:
             self.cb_fade_in.setCurrentText(prefs["fade_in"])
         if prefs.get("fade_out") in FADE_VALUES:
             self.cb_fade_out.setCurrentText(prefs["fade_out"])
+        if prefs.get("sil_thr") in ["-40", "-45", "-50", "-55", "-60"]:
+            self.cb_sil_thr.setCurrentText(prefs["sil_thr"])
+        if prefs.get("sil_min") in ["0.2", "0.5", "1.0", "1.5", "2.0"]:
+            self.cb_sil_min.setCurrentText(prefs["sil_min"])
+        if prefs.get("pitch") in ["-12", "-7", "-5", "-3", "-1", "0", "1", "3", "5", "7", "12"]:
+            self.cb_pitch.setCurrentText(prefs["pitch"])
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
 
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):
-        from core.audio_trimmer import trim_audio
         p = task.params
+        mode = p.get("mode", "trim")
+        if mode == "silence":
+            from core.audio_tools import remove_silence
+            return remove_silence(task.file_path, task.output_path,
+                                  threshold=p.get("sil_thr", -50),
+                                  min_silence=p.get("sil_min", 0.5),
+                                  progress_cb=prog)
+        if mode == "pitch":
+            from core.audio_tools import audio_pitch
+            return audio_pitch(task.file_path, task.output_path,
+                               semitones=p.get("pitch", 0), progress_cb=prog)
+        from core.audio_trimmer import trim_audio
         return trim_audio(
             task.file_path, task.output_path,
             start_sec=float(p.get("start_sec", 0)),
@@ -328,12 +426,16 @@ class AudioTrimPanelPage(BaseQtPanel, TaskPanelMixin):
         nm = os.path.splitext(os.path.basename(f))[0]
         ext = os.path.splitext(f)[1]
         out_dir = self.out_row.resolve_dir(f)
-        out_path = os.path.join(out_dir, nm + "_trim" + ext)
+        mode = params["mode"]
+        suffix = {"trim": "_trim", "silence": "_nosil", "pitch": "_pitch"}.get(mode, "_out")
+        # 统一走 make_output_path：应用冲突策略（自动改名/覆盖）+ 源目同路径保护
+        out_path = tm.make_output_path(f, out_dir, ext, name=nm + suffix)
+        target = dict(MODES).get(mode, tr("裁剪", "Trim"))
         return dict(
-            name=f"{tr('音频裁剪', 'Audio Trim')} - {os.path.basename(f)}",
+            name=f"{tr('音频处理', 'Audio')} - {os.path.basename(f)}",
             task_type="audio_trim", file_path=f, output_path=out_path,
             params=params, runner=self._runner,
-            history_type="音频裁剪", history_target=tr("裁剪", "Crop"),
+            history_type="音频处理", history_target=target,
             need_ffmpeg=True)
 
     def _start(self):

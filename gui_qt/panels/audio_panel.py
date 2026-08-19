@@ -7,7 +7,7 @@ fmt / codec / bitrate / sample_rate / channels / volume。
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QVBoxLayout
+from PySide6.QtWidgets import QGridLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon,
                             Slider, SubtitleLabel)
 
@@ -59,6 +59,9 @@ class AudioPanelPage(BaseQtPanel):
         out_card.add_widget(self.out_row)
         lay.addWidget(out_card)
 
+        # 波形预览（pyqtgraph，后台解码不卡 UI）
+        lay.addWidget(self._build_waveform_card())
+
         # 底部操作栏
         self.action_bar = ActionBar(tr("开始转换", "Convert"))
         lay.addWidget(self.action_bar)
@@ -70,11 +73,81 @@ class AudioPanelPage(BaseQtPanel):
         self.btn_go.clicked.connect(self._start)
         self.btn_cancel.clicked.connect(self._cancel_all)
         self.cb_fmt.currentTextChanged.connect(self.file_card.set_target_fmt)
+        self._wave_worker = None
 
         mgr = self.services.task_manager
         mgr.sig_progress.connect(self._on_progress)
         mgr.sig_state.connect(self._on_state)
         self._task_rows = {}   # task_id -> (file_path, row)
+
+    def _build_waveform_card(self):
+        """波形预览折叠区：按钮 + pyqtgraph 波形（后台解码）。"""
+        from PySide6.QtWidgets import QHBoxLayout
+        from qfluentwidgets import PushButton
+        from gui_qt.components.form_widgets import CollapsibleSection
+        from gui_qt.components.audio_waveform import AudioWaveformWidget
+
+        sec = CollapsibleSection(tr("波形预览", "Waveform preview"),
+                                 hint=tr("查看音频音量波形（可选，不影响转换）",
+                                         "View volume waveform (optional)"))
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.btn_wave = PushButton(tr("显示波形", "Show waveform"))
+        self.btn_wave.clicked.connect(self._show_waveform)
+        row.addWidget(self.btn_wave)
+        self.lb_wave = CaptionLabel("")
+        row.addWidget(self.lb_wave)
+        row.addStretch(1)
+        sec.add_widget(self._holder(row))
+        self.waveform = AudioWaveformWidget()
+        sec.add_widget(self.waveform)
+        return sec
+
+    @staticmethod
+    def _holder(layout):
+        w = QWidget()
+        w.setLayout(layout)
+        return w
+
+    def _show_waveform(self):
+        files = self.file_card.files()
+        if not files:
+            toast.show_warning(self, tr("请先添加音频/视频文件", "Add audio/video files first"))
+            return
+        fp = files[0]
+        if self._wave_worker and self._wave_worker.isRunning():
+            return
+        self.lb_wave.setText(tr("正在解码…", "Decoding…"))
+        from gui_qt.components.safe_worker import SafeWorker
+        from PySide6.QtCore import Signal
+
+        class _WaveWorker(SafeWorker):
+            sig_done = Signal(str, object)
+
+            def __init__(self, f, parent=None):
+                super().__init__(parent)
+                self._f = f
+
+            def work(self):
+                from gui_qt.components.audio_waveform import _decode_pcm, _bucket_peaks
+                samples, dur = _decode_pcm(self._f)
+                if samples is None or len(samples) == 0:
+                    self.sig_done.emit(self._f, None)
+                    return
+                peaks = _bucket_peaks(samples, 2000)
+                self.sig_done.emit(self._f, (peaks, dur))
+
+        self._wave_worker = _WaveWorker(fp, self)
+        self._wave_worker.sig_done.connect(self._on_wave_done)
+        self._wave_worker.start()
+
+    def _on_wave_done(self, fp, result):
+        if result is None:
+            self.lb_wave.setText(tr("解码失败（文件损坏或非音频）", "Decode failed"))
+            return
+        peaks, dur = result
+        self.waveform.set_peaks(peaks, dur)
+        self.lb_wave.setText(tr("已显示波形 · 时长 {}s", "Waveform · {}s").format(int(dur)))
 
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid
@@ -107,7 +180,7 @@ class AudioPanelPage(BaseQtPanel):
         vol_row.setSpacing(8)
         vol_lbl = CaptionLabel(tr("音量", "Volume"))
         vol_lbl.setStyleSheet(
-            f"font-size: 12px; font-weight: 600; color: {ds.ink_sec()};"
+            f"font-size: 12px; font-weight: 600"
             "border: none; background: transparent;")
         vol_row.addWidget(vol_lbl)
         self.vol_slider = Slider(Qt.Horizontal)
@@ -248,9 +321,9 @@ class AudioPanelPage(BaseQtPanel):
                                                 tm.state_text(state))
             self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
-        if state == tm.SUCCESS and task:
-            toast.show_success(self, tr("转换完成：{}", "Converted: {}").format(os.path.basename(task.file_path)))
-        elif state == tm.FAILED and task:
+        if state == tm.FAILED and task:
+            # 失败即时提示（具体文件+原因）；成功统一走全局完成通知，
+            # 避免与「全部转换完成」重复弹两条提示
             toast.show_error(self,
                              tr("转换失败：{}", "Failed: {}").format(os.path.basename(task.file_path))
                              + tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))

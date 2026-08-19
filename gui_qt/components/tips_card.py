@@ -54,17 +54,17 @@ class TipsCard(Card):
         header.setSpacing(8)
         icon = IconWidget(FluentIcon.INFO, self)
         icon.setFixedSize(16, 16)
-        icon.setStyleSheet(f"color: {ds.ink()};")
+        icon.setStyleSheet(f";")
         header.addWidget(icon)
         title = QLabel(tr("使用小贴士", "Tips"))
         title.setStyleSheet(
-            f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
+            f"font-size: 15px; font-weight: 700;"
             "border: none; background: transparent;")
         header.addWidget(title)
         header.addStretch(1)
         self.counter_label = CaptionLabel("")
         self.counter_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_dis()};"
+            f"font-size: 11px;"
             "border: none; background: transparent;")
         header.addWidget(self.counter_label)
         v.addLayout(header)
@@ -73,7 +73,7 @@ class TipsCard(Card):
         self.tip_label = QLabel()
         self.tip_label.setWordWrap(True)
         self.tip_label.setStyleSheet(
-            f"font-size: 13px; color: {ds.ink_sec()};"
+            f"font-size: 13px;"
             "border: none; background: transparent;")
         v.addWidget(self.tip_label)
         v.addStretch(1)

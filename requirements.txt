@@ -1,7 +1,8 @@
 Pillow>=10.0.0
 pillow-avif-plugin>=1.4
 rapidocr-onnxruntime>=1.3.0
-pyinstaller>=6.0.0
+# 表格结构识别（SLANet-plus，onnx；缺失时自动降级为几何重建）
+rapid-table>=3.0.0
 pdf2docx>=0.5.13
 python-docx>=1.2.0
 openpyxl>=3.1.5
@@ -14,3 +15,23 @@ pywin32>=305
 PySide6>=6.6
 PySide6-Fluent-Widgets>=1.5
 pillow-heif>=1.4.0
+cryptography>=42.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+# 文档转换补充依赖（RTF/ODT/XLS/编码检测/系统信息）
+striprtf>=0.0.32
+odfpy>=1.4.0
+xlrd>=2.0.1
+chardet>=5.0.0
+psutil>=5.9.0
+# 电子书互转（EPUB/MOBI/PRC/AZW3/TXT/HTML；MOBI/AZW3 目标格式需系统装 Calibre）
+ebooklib>=0.18
+mobi>=0.4
+# 高级控件：pyqtgraph（实时高性能绘图/音频波形）、superqt（双滑块区间等科学控件）
+pyqtgraph>=0.13
+superqt>=0.6
+# 简繁转换（插件 zh_convert 词汇级引擎；缺失时回退内置 2314 字表）
+opencc-python-reimplemented>=0.1.7
+# 视频下载 / M3U8 下载（core.video_downloader / core.m3u8_downloader 的
+# Python 引擎；bin/yt-dlp.exe 为打包附带便携版，开发环境依赖此包）
+yt-dlp>=2026.7.4

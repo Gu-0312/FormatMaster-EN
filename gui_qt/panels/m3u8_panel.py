@@ -8,6 +8,7 @@ import os
 from urllib.parse import unquote, urlparse
 
 from PySide6.QtCore import QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout,
                                QVBoxLayout, QWidget)
 from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox,
@@ -26,6 +27,30 @@ THREADS_VALUES = ["4", "8", "16", "24", "32", "48", "64"]
 FORMAT_VALUES = ["mp4", "mkv", "avi", "mov", "ts"]
 SPEED_VALUES = [tr("不限", "Unlimited"), "2", "5", "10", "20", "50"]
 
+# 队列行状态视觉（对标 Fluent-M3U8 任务卡的状态圆点 + 状态色）
+_QUEUE_STYLE = {
+    "waiting": ("#5F6472", "●"),     # 待下载：灰点
+    "running": ("#2F6BFF", "▶"),     # 运行中：蓝点
+    "success": ("#0FA47A", "✓"),     # 成功：绿勾
+    "failed":  ("#E5484D", "✕"),     # 失败：红叉
+    "cancelled": ("#9AA0AC", "○"),   # 已取消：空心灰
+}
+
+
+def _dot_icon(color):
+    """12px 彩色圆点图标（队列行状态指示，与任务卡风格一致）。"""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+    pm = QPixmap(14, 14)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHints(QPainter.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    p.drawEllipse(2, 2, 10, 10)
+    p.end()
+    return QIcon(pm)
+
 
 def _parse_headers(text):
     headers = {}
@@ -37,7 +62,7 @@ def _parse_headers(text):
     return headers
 
 
-class _QualityWorker(QThread):
+class _QualityWorker(SafeWorker):
     """后台解析 M3U8 画质与字幕轨道（联网请求）。"""
 
     sig_done = Signal(list, list)   # (qualities, subs)
@@ -48,7 +73,7 @@ class _QualityWorker(QThread):
         self._dl, self._url = dl, url
         self._headers, self._cookie, self._proxy = headers, cookie, proxy
 
-    def run(self):
+    def work(self):
         try:
             qualities = self._dl.get_qualities(
                 self._url, headers=self._headers,
@@ -59,6 +84,7 @@ class _QualityWorker(QThread):
             self.sig_done.emit(qualities or [], subs or [])
         except Exception as e:  # noqa: BLE001
             self.sig_fail.emit(str(e))
+
 
 
 class M3u8PanelPage(BaseQtPanel):
@@ -91,7 +117,7 @@ class M3u8PanelPage(BaseQtPanel):
         vl.addWidget(self.txt_url)
         brow = QHBoxLayout()
         brow.setSpacing(8)
-        btn_add = PrimaryPushButton(tr("批量添加", "Add batch"))
+        btn_add = PrimaryPushButton(tr("添加链接", "Add links"))
         btn_add.clicked.connect(self._batch_add)
         btn_fav = PushButton(tr("⭐ 收藏", "⭐ Favorite"))
         btn_fav.clicked.connect(self._add_favorite)
@@ -156,7 +182,8 @@ class M3u8PanelPage(BaseQtPanel):
             "Cookie", self._line_edit(180, ""),
             hint=tr("登录 Cookie，用于访问受限资源", "Login cookie for restricted content"))
         self.ed_proxy = adv_grid.add_field(
-            tr("代理", "Proxy"), self._line_edit(180, "如 http://127.0.0.1:7890"),
+            tr("代理", "Proxy"),
+            self._line_edit(180, tr("如 http://127.0.0.1:7890", "e.g. http://127.0.0.1:7890")),
             hint=tr("HTTP/HTTPS 代理地址", "HTTP/HTTPS proxy"))
         self.ed_headers = adv_grid.add_field(
             tr("自定义Header", "Custom headers"), self._line_edit(0, "Key:Value,Key:Value"),
@@ -261,7 +288,10 @@ class M3u8PanelPage(BaseQtPanel):
         if not urls:
             toast.show_warning(self, tr("请先输入M3U8链接", "Enter M3U8 links first"))
             return
-        url = urls[0]
+        self._parse_url_for(urls[0])
+
+    def _parse_url_for(self, url):
+        """解析指定 M3U8 的画质/字幕（后台线程），结果填入画质下拉。"""
         self.lb_quality_hint.setText(tr("正在解析画质...", "Parsing quality…"))
         self._worker = _QualityWorker(
             self._m3u8_dl, url,
@@ -307,6 +337,34 @@ class M3u8PanelPage(BaseQtPanel):
             self.lb_quality_hint.setText(hint)
 
     # ── 队列操作 ─────────────────────────────────
+    def _add_queue_row(self, display):
+        """创建队列行：待下载灰点 + 灰字（统一入口，状态更新走 _set_row_state）。"""
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QListWidgetItem
+        item = QListWidgetItem(display)
+        color = _QUEUE_STYLE["waiting"][0]
+        item.setIcon(_dot_icon(color))
+        item.setForeground(QColor("#8A9099"))
+        self.lst_queue.addItem(item)
+        return item
+
+    def _set_row_state(self, row, state_key, extra=""):
+        """按状态更新队列行：图标圆点 + 前景色 + 可选附加文本。"""
+        from PySide6.QtGui import QColor
+        if not (0 <= row < self.lst_queue.count()):
+            return
+        color, symbol = _QUEUE_STYLE.get(state_key, _QUEUE_STYLE["waiting"])
+        item = self.lst_queue.item(row)
+        if state_key in ("running", "success", "failed", "cancelled"):
+            item.setIcon(_dot_icon(color))
+            fg = {"success": "#0FA47A", "failed": "#E5484D",
+                  "cancelled": "#9AA0AC"}.get(state_key, "#2F6BFF")
+            item.setForeground(QColor(fg))
+            item.setText(f"{self._queue[row]['display']}  {symbol} {extra}".rstrip())
+        else:
+            item.setIcon(_dot_icon(color))
+            item.setForeground(QColor("#8A9099"))
+
     def _gen_name(self, url):
         name = self.ed_name.text().strip()
         if name:
@@ -336,12 +394,14 @@ class M3u8PanelPage(BaseQtPanel):
             display = f"  {name}{label}  —  {url[:50]}"
             self._queue.append({"url": quality_url, "master_url": url,
                                 "name": name, "display": display})
-            self.lst_queue.addItem(display)
+            self._add_queue_row(display)
             added += 1
         self._update_count()
         self.txt_url.clear()
         self.ed_name.clear()
         if added:
+            # 添加链接后自动解析画质（用户要求：无需再手动点「解析画质」）
+            self._parse_url_for(urls[0])
             toast.show_success(self, tr("已添加 {} 个链接到队列", "Added {} links to queue").format(added))
 
     def _batch_import(self):
@@ -371,7 +431,7 @@ class M3u8PanelPage(BaseQtPanel):
             display = f"  {name}  —  {url[:50]}"
             self._queue.append({"url": url, "master_url": url,
                                 "name": name, "display": display})
-            self.lst_queue.addItem(display)
+            self._add_queue_row(display)
             added += 1
         self._update_count()
         if added:
@@ -395,6 +455,7 @@ class M3u8PanelPage(BaseQtPanel):
 
     def _show_favorites(self):
         from gui_qt.panels.url_list_dialog import UrlListDialog
+        store = self._m3u8_dl.store
 
         def use(url, name):
             if url and not any(q["url"] == url for q in self._queue):
@@ -402,23 +463,28 @@ class M3u8PanelPage(BaseQtPanel):
                 self._queue.append({"url": url, "master_url": url,
                                     "name": name or url[:40],
                                     "display": display})
-                self.lst_queue.addItem(display)
+                self._add_queue_row(display)
                 self._update_count()
 
-        dlg = UrlListDialog(tr("收藏链接", "Saved links"), self._m3u8_dl.store.get_favorites(),
-                            use, self)
+        dlg = UrlListDialog(tr("收藏链接", "Saved links"), store.get_favorites(),
+                            use, self, kind="favorites",
+                            delete_fn=store.remove_favorite,
+                            clear_fn=store.clear_favorites)
         dlg.exec()
 
     def _show_history(self):
         from gui_qt.panels.url_list_dialog import UrlListDialog
+        store = self._m3u8_dl.store
 
         def use(url, name):
             if url:
                 self.txt_url.setPlainText(url)
                 self.ed_name.setText(name or "")
 
-        dlg = UrlListDialog(tr("下载历史", "Download history"), self._m3u8_dl.store.get_history(),
-                            use, self)
+        dlg = UrlListDialog(tr("下载历史", "Download history"), store.get_history(),
+                            use, self, kind="history",
+                            delete_fn=store.remove_history,
+                            clear_fn=store.clear_history)
         dlg.exec()
 
     def _update_count(self):
@@ -571,21 +637,44 @@ class M3u8PanelPage(BaseQtPanel):
         self.action_bar.btn_cancel.setEnabled(False)
 
     # ── 进度/状态联动 ────────────────────────────
+    _STATE_TO_QUEUE = {
+        tm.WAITING: "waiting", tm.PAUSED: "waiting",
+        tm.RUNNING: "running", tm.SUCCESS: "success",
+        tm.FAILED: "failed", tm.CANCELLED: "cancelled",
+    }
+
     def _on_progress(self, task_id, pct, msg, speed):
         if task_id not in self._task_rows:
             return
         self.action_bar.set_status(msg)
         if pct >= 0:
             self.action_bar.set_total(pct)
+        # 行级实时状态：运行中蓝点 + 进度% + 速度（对标 Fluent-M3U8 任务卡）
+        row = self._task_rows[task_id]
+        extra = ""
+        if pct >= 0:
+            extra = f"{int(pct)}%"
+        if speed:
+            extra = f"{extra}  {speed}".strip()
+        self._set_row_state(row, "running", extra)
 
     def _on_state(self, task_id, state):
         if task_id not in self._task_rows:
             return
         row = self._task_rows[task_id]
-        if (0 <= row < self.lst_queue.count()
-                and row < len(self._queue)):
-            self.lst_queue.item(row).setText(
-                f"{self._queue[row]['display']}  [{tm.state_text(state)}]")
+        if 0 <= row < len(self._queue):
+            self._set_row_state(
+                row, self._STATE_TO_QUEUE.get(state, "waiting"))
+            # 失败即时提示（具体 URL 队列项 + 原因），与面板级失败 toast 一致
+            if state == tm.FAILED:
+                task = self.services.task_manager.get_task(task_id)
+                reason = (task.error if task and task.error
+                          else tr("未知错误", "unknown error"))
+                display = self._queue[row]["display"]
+                toast.show_error(
+                    self,
+                    tr("下载失败：{}", "Download failed: {}").format(display) +
+                    tr("（{}）", " ({})").format(reason))
         if state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
             self._task_rows.pop(task_id, None)
         active = [self.services.task_manager.get_task(t)

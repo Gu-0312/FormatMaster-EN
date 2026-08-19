@@ -1,6 +1,6 @@
 """PDF 可视化编辑器核心引擎"""
 import threading
-import fitz
+import pymupdf
 from typing import Optional
 from PIL import Image
 
@@ -24,7 +24,7 @@ class PdfEditor:
 
     def open(self, path: str) -> bool:
         try:
-            doc = fitz.open(path)
+            doc = pymupdf.open(path)
         except Exception as e:
             raise RuntimeError(f"无法打开 PDF：{e}")
         if doc.needs_pass:
@@ -44,7 +44,7 @@ class PdfEditor:
         if not self._doc:
             raise RuntimeError("没有打开的文档")
         try:
-            new_doc = fitz.open()
+            new_doc = pymupdf.open()
             for idx in self._page_order:
                 new_doc.insert_pdf(self._doc, from_page=idx, to_page=idx)
             new_doc.save(path, deflate=True, garbage=4)
@@ -60,7 +60,7 @@ class PdfEditor:
         if not self._doc or not self._page_order:
             return
         with self._lock:
-            new_doc = fitz.open()
+            new_doc = pymupdf.open()
             for idx in self._page_order:
                 new_doc.insert_pdf(self._doc, from_page=idx, to_page=idx)
             self._doc.close()
@@ -128,7 +128,7 @@ class PdfEditor:
         page = self._doc[real_idx]
         w, h = self.THUMB_SIZE
         zoom = min(w / page.rect.width, h / page.rect.height)
-        mat = fitz.Matrix(zoom, zoom)
+        mat = pymupdf.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         if len(self._thumb_cache) >= self.THUMB_CACHE_MAX:
@@ -175,7 +175,7 @@ class PdfEditor:
         if at_index < 0 or at_index > self.page_count:
             at_index = self.page_count
         try:
-            src = fitz.open(pdf_path)
+            src = pymupdf.open(pdf_path)
         except Exception:
             return False
         if src.needs_pass:
@@ -200,21 +200,21 @@ class PdfEditor:
         if at_index < 0 or at_index > self.page_count:
             at_index = self.page_count
         try:
-            pil_img = Image.open(img_path)
-            if pil_img.mode != "RGB":
-                pil_img = pil_img.convert("RGB")
+            # with + convert：完整解码后释放句柄，再转 JPEG 字节
+            with Image.open(img_path) as _f:
+                pil_img = _f.convert("RGB")
             import io
             buf = io.BytesIO()
             pil_img.save(buf, format="JPEG")
             img_bytes = buf.getvalue()
-            rect = fitz.Rect(0, 0, pil_img.width, pil_img.height)
+            rect = pymupdf.Rect(0, 0, pil_img.width, pil_img.height)
             page = self._doc.new_page(width=pil_img.width, height=pil_img.height)
             page.insert_image(rect, stream=img_bytes)
         except Exception:
             try:
-                img = fitz.Pixmap(img_path)
+                img = pymupdf.Pixmap(img_path)
                 page = self._doc.new_page(width=img.width, height=img.height)
-                page.insert_image(fitz.Rect(0, 0, img.width, img.height), pixmap=img)
+                page.insert_image(pymupdf.Rect(0, 0, img.width, img.height), pixmap=img)
             except Exception:
                 return False
         self._snapshot()
@@ -248,7 +248,7 @@ class PdfEditor:
         for i in sorted(indices):
             if 0 <= i < len(self._page_order):
                 real_idx = self._page_order[i]
-                tmp = fitz.open()
+                tmp = pymupdf.open()
                 tmp.insert_pdf(self._doc, from_page=real_idx, to_page=real_idx)
                 self._doc.insert_pdf(tmp, from_page=0, to_page=0, start_at=-1)
                 tmp.close()
@@ -309,7 +309,7 @@ class PdfEditor:
             x = r.x0 + r.width * rx
             y = r.y0 + r.height * ry
             annot = page.add_freetext_annot(
-                fitz.Rect(x, y, x + r.width * 0.3, y + r.height * 0.1),
+                pymupdf.Rect(x, y, x + r.width * 0.3, y + r.height * 0.1),
                 text,
                 fontsize=max(12, r.width / 50),
                 fontname="helv",
@@ -341,7 +341,7 @@ class PdfEditor:
             num = start + i
             text = fmt.replace("{n}", str(num))
             page.insert_text(
-                fitz.Point(r.x0 + r.width * rx, r.y0 + r.height * ry),
+                pymupdf.Point(r.x0 + r.width * rx, r.y0 + r.height * ry),
                 text,
                 fontname="helv",
                 fontsize=10,
@@ -370,7 +370,7 @@ class PdfEditor:
                 real_idx = self._page_order[i]
                 page = self._doc[real_idx]
                 r = page.rect
-                new_rect = fitz.Rect(
+                new_rect = pymupdf.Rect(
                     r.x0 + left, r.y0 + top,
                     r.x0 + r.width - right, r.y0 + r.height - bottom
                 )

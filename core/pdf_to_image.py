@@ -20,7 +20,7 @@ def pdf_to_images(pdf_path, output_dir, fmt="PNG", dpi=200, pages=None, progress
     返回 (success: bool, saved_files: list[str])。
     """
     try:
-        import fitz
+        import pymupdf
     except ImportError:
         if progress_cb:
             progress_cb(-1, "错误: PyMuPDF (fitz) 未安装")
@@ -34,7 +34,7 @@ def pdf_to_images(pdf_path, output_dir, fmt="PNG", dpi=200, pages=None, progress
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        doc = fitz.open(pdf_path)
+        doc = pymupdf.open(pdf_path)
     except Exception as e:
         if progress_cb:
             progress_cb(-1, f"错误: PDF 打开失败 - {e}")
@@ -114,8 +114,8 @@ def pdf_to_single_image(pdf_path, output_path, page=0, fmt="PNG", dpi=200, progr
         return False
 
     try:
-        import fitz
-        doc = fitz.open(pdf_path)
+        import pymupdf
+        doc = pymupdf.open(pdf_path)
         page = doc.load_page(page)
         pix = page.get_pixmap(dpi=dpi)
         pix.save(output_path)

@@ -7,7 +7,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, IconWidget,
-                            ProgressBar, ToolButton, TransparentToolButton)
+                            ProgressBar, ProgressRing, ToolButton,
+                            TransparentToolButton)
 
 from gui_qt.i18n import tr
 from gui_qt.components.card import Card
@@ -93,6 +94,7 @@ class TaskCard(Card):
     def __init__(self, task, parent=None):
         super().__init__(parent)
         self.task = task
+        self._bar_ani = None   # 进度条平滑动画（防 GC）
 
         h = QHBoxLayout(self)
         h.setContentsMargins(18, 14, 18, 14)
@@ -106,16 +108,16 @@ class TaskCard(Card):
         left.setSpacing(3)
         self.name_label = BodyLabel(task.name, self)
         self.name_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; color: {ds.ink()};")
+            f"font-size: 13px; font-weight: 600;")
         self.meta_label = CaptionLabel(self._meta_text(), self)
         self.meta_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_sec()};")
+            f"font-size: 11px;")
         left.addWidget(self.name_label)
         left.addWidget(self.meta_label)
         left.setAlignment(Qt.AlignLeft)
         h.addLayout(left, 1)
 
-        # 中：进度条 + 速度
+        # 中：进度条 + 速度（图标化：速度图标 + 文本，对标 Fluent-M3U8 任务卡）
         mid = QVBoxLayout()
         mid.setSpacing(4)
         self.bar = ProgressBar(self)
@@ -124,15 +126,30 @@ class TaskCard(Card):
         self.bar.setMinimumWidth(340)
         self.bar.setMaximumWidth(560)
         self.bar.setFixedHeight(12)
+        speed_row = QHBoxLayout()
+        speed_row.setSpacing(5)
+        self.speed_icon = IconWidget(FluentIcon.SPEED_HIGH, self)
+        self.speed_icon.setFixedSize(14, 14)
+        self.speed_icon.setStyleSheet(
+            f"; border: none; background: transparent;")
         self.speed_label = CaptionLabel(task.speed or "", self)
         self.speed_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_sec()};")
+            f"font-size: 11px;")
+        speed_row.addWidget(self.speed_icon)
+        speed_row.addWidget(self.speed_label)
+        speed_row.addStretch(1)
         mid.addWidget(self.bar)
-        mid.addWidget(self.speed_label)
+        mid.addLayout(speed_row)
         mid.setAlignment(Qt.AlignRight)
         h.addLayout(mid, 1)
 
-        # 右：状态徽章 + 操作按钮
+        # 右：环形进度 + 状态徽章 + 操作按钮
+        self.ring = ProgressRing(self)
+        self.ring.setFixedSize(38, 38)
+        self.ring.setRange(0, 100)
+        self.ring.setValue(max(0, int(task.progress)))
+        self.ring.setVisible(task.state in (tm.RUNNING, tm.WAITING, tm.PAUSED))
+        h.addWidget(self.ring)
         self.badge = CaptionLabel(tm.state_text(task.state), self)
         self.badge.setAlignment(Qt.AlignCenter)
         self.badge.setFixedHeight(24)
@@ -155,7 +172,17 @@ class TaskCard(Card):
         p = self.task.params
         fmt = p.get('fmt', '') or self.task.history_target
         base = fmt or tr("通用任务", "General task")
-        return tr("{} · 优先级 {}", "{} · priority {}").format(base, self.task.priority)
+        # 文件大小（Fluent-M3U8 任务卡同款信息层级：格式 · 大小 · 优先级）
+        try:
+            from utils.format_helpers import format_size
+            size = format_size(self.task.input_size) if self.task.input_size else ""
+        except Exception:  # noqa: BLE001 - 大小格式化失败不影响
+            size = ""
+        parts = [base]
+        if size:
+            parts.append(size)
+        parts.append(tr("优先级 {}", "priority {}").format(self.task.priority))
+        return " · ".join(parts)
 
     def _sync_buttons(self):
         s = self.task.state
@@ -183,9 +210,29 @@ class TaskCard(Card):
         if self.task.state in (tm.SUCCESS, tm.FAILED, tm.CANCELLED):
             return
         if pct >= 0:
-            self.bar.setValue(pct)
+            self._animate_bar(pct)
+            self.ring.setValue(min(100, max(0, int(pct))))
         if speed:
             self.speed_label.setText(speed)
+
+    def _animate_bar(self, target):
+        """进度平滑过渡（150ms OutCubic），避免百分比跳变。
+
+        不使用 DeleteWhenStopped：停止后 C++ 对象被删会导致 Python 侧
+        二次访问抛 libshiboken 已删除错误；对象由引用持有，替换时 GC。
+        """
+        from PySide6.QtCore import (QAbstractAnimation, QEasingCurve,
+                                    QPropertyAnimation)
+        if (self._bar_ani is not None
+                and self._bar_ani.state() != QAbstractAnimation.Stopped):
+            self._bar_ani.stop()
+        ani = QPropertyAnimation(self.bar, b"value", self)
+        ani.setDuration(150)
+        ani.setStartValue(self.bar.value())
+        ani.setEndValue(min(100, max(0, int(target))))
+        ani.setEasingCurve(QEasingCurve.OutCubic)
+        self._bar_ani = ani
+        ani.start()
 
     def on_state(self, state):
         self.badge.setText(tm.state_text(state))
@@ -194,5 +241,8 @@ class TaskCard(Card):
             self.meta_label.setText(self.task.error)
         # 终态不清零：成功显示 100%，失败/取消保留已有进度便于回看
         if state == tm.SUCCESS:
-            self.bar.setValue(100)
+            self._animate_bar(100)
+            self.ring.setValue(100)
+        # 环形进度只在运行中类状态显示（成功/失败/取消后隐藏）
+        self.ring.setVisible(state in (tm.RUNNING, tm.WAITING, tm.PAUSED))
         self._sync_buttons()

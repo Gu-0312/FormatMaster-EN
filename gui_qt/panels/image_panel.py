@@ -21,6 +21,10 @@ SIZE_VALUES = [tr("原始大小", "Original size"), "50%", "25%", "200%"]
 ROTATE_VALUES = ["0°", "90°", "180°", "270°"]
 CROP_VALUES = [tr("原始比例", "Original ratio"), tr("裁剪为正方形", "Crop to square")]
 WATERMARK_POS_VALUES = [tr("右下角", "Bottom right"), tr("左下角", "Bottom left"), tr("右上角", "Top right"), tr("左上角", "Top left"), tr("居中", "Center")]
+EFFECT_VALUES = [tr("无特效", "None"), tr("水平翻转", "Flip horizontal"),
+                 tr("垂直翻转", "Flip vertical"), tr("反色", "Invert"),
+                 tr("浮雕", "Emboss"), tr("边缘检测", "Edges"),
+                 tr("锐化", "Sharpen")]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff",
               ".webp", ".ico", ".tga", ".heic", ".heif"}
@@ -103,6 +107,28 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
         adv.add_widget(self.cb_gray)
         self.cb_strip = CheckBox(tr("清除 EXIF 隐私信息（拍摄设备/GPS）", "Strip EXIF privacy data (camera/GPS)"))
         adv.add_widget(self.cb_strip)
+
+        # 增强与特效（2026-08-15 合并）
+        adv.add_widget(CaptionLabel(tr("增强与特效", "Enhance & effects")))
+        fx_grid = FormGrid(columns=2)
+        from PySide6.QtWidgets import QDoubleSpinBox
+        self.sp_contrast = QDoubleSpinBox()
+        self.sp_contrast.setRange(0.5, 2.0); self.sp_contrast.setSingleStep(0.1); self.sp_contrast.setValue(1.0)
+        self.sp_saturation = QDoubleSpinBox()
+        self.sp_saturation.setRange(0.0, 3.0); self.sp_saturation.setSingleStep(0.1); self.sp_saturation.setValue(1.0)
+        self.sp_sharpness = QDoubleSpinBox()
+        self.sp_sharpness.setRange(0.0, 5.0); self.sp_sharpness.setSingleStep(0.1); self.sp_sharpness.setValue(1.0)
+        fx_grid.add_field(tr("对比度", "Contrast"), self.sp_contrast,
+                          hint=tr("1.0 为原样，>1 增强", "1.0 = original, >1 = stronger"))
+        fx_grid.add_field(tr("饱和度", "Saturation"), self.sp_saturation,
+                          hint=tr("1.0 为原样，0 为黑白", "1.0 = original, 0 = grayscale"))
+        fx_grid.add_field(tr("锐度", "Sharpness"), self.sp_sharpness,
+                          hint=tr("1.0 为原样，>1 更锐利", "1.0 = original, >1 = sharper"))
+        self.cb_effect = fx_grid.add_field(
+            tr("特效", "Effect"), _combo(EFFECT_VALUES, tr("无特效", "None")),
+            hint=tr("翻转 / 反色 / 浮雕 / 边缘检测 / 锐化", "Flip / invert / emboss / edges / sharpen"))
+        adv.add_layout(fx_grid)
+
         sec.add_widget(adv)
         return sec
 
@@ -118,6 +144,10 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             "crop": self.cb_crop.currentText(),
             "grayscale": self.cb_gray.isChecked(),
             "strip_exif": self.cb_strip.isChecked(),
+            "contrast": self.sp_contrast.value(),
+            "saturation": self.sp_saturation.value(),
+            "sharpness": self.sp_sharpness.value(),
+            "effect": self.cb_effect.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -131,6 +161,10 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             "crop": self.cb_crop.currentText(),
             "grayscale": self.cb_gray.isChecked(),
             "strip_exif": self.cb_strip.isChecked(),
+            "contrast": self.sp_contrast.value(),
+            "saturation": self.sp_saturation.value(),
+            "sharpness": self.sp_sharpness.value(),
+            "effect": self.cb_effect.currentText(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
         }
@@ -169,7 +203,22 @@ class ImagePanelPage(BaseQtPanel, TaskPanelMixin):
             rotate=rotate_val, crop_mode=p.get("crop", tr("原始比例", "Original ratio")),
             grayscale=p.get("grayscale", False),
             strip_exif=p.get("strip_exif", False),
-            resize_factor=resize_factor, progress_callback=prog)
+            resize_factor=resize_factor, progress_callback=prog,
+            contrast=p.get("contrast", 1.0),
+            saturation=p.get("saturation", 1.0),
+            sharpness=p.get("sharpness", 1.0),
+            effect=self._resolve_effect(p.get("effect", "")))
+
+    @staticmethod
+    def _resolve_effect(text):
+        """特效中文名 → core 特效 key。"""
+        mapping = {tr("水平翻转", "Flip horizontal"): "hflip",
+                   tr("垂直翻转", "Flip vertical"): "vflip",
+                   tr("反色", "Invert"): "invert",
+                   tr("浮雕", "Emboss"): "emboss",
+                   tr("边缘检测", "Edges"): "edges",
+                   tr("锐化", "Sharpen"): "sharpen"}
+        return mapping.get(text or "", "")
 
     def _make_task(self, f):
         params = self.collect_params()

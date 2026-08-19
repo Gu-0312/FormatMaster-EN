@@ -31,7 +31,6 @@ MODE_VALUES = [
     tr("添加水印", "Add watermark"),
     tr("添加页码", "Add page numbers"),
     tr("转为图片", "To image"),
-    tr("填写表单", "Fill form"),
 ]
 
 # 模式分段选择器：routeKey(完整模式名) → 短标签（SegmentedWidget 展示）
@@ -45,7 +44,6 @@ MODE_SHORT_LABELS = [
     (tr("解密（移除密码）", "Decrypt (remove password)"), tr("解密", "Decrypt")),
     (tr("添加水印", "Add watermark"), tr("水印", "Watermark")),
     (tr("添加页码", "Add page numbers"), tr("页码", "Page numbers")),
-    (tr("填写表单", "Fill form"), tr("填写表单", "Fill form")),
 ]
 
 
@@ -88,6 +86,16 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt("PDF")
 
+        # 预览按钮行（QtPdf 内置预览，零外调）
+        prev_row = QHBoxLayout()
+        prev_row.setSpacing(8)
+        self.btn_preview = PushButton(FluentIcon.VIEW, tr("预览 PDF", "Preview PDF"))
+        self.btn_preview.setToolTip(tr("内置预览器，查看选中 PDF", "Built-in viewer for selected PDF"))
+        self.btn_preview.clicked.connect(self._preview_pdf)
+        prev_row.addWidget(self.btn_preview)
+        prev_row.addStretch(1)
+        lay.addLayout(prev_row)
+
         lay.addWidget(self._build_settings_card())
 
         from gui_qt.components.form_widgets import FormSection
@@ -122,7 +130,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         sec.add_layout(mode_row)
 
         # 各模式子区（随模式显隐）
-        # 主选项直接展示；高级选项（加密/解密/水印/页码/表单）默认折叠
+        # 主选项直接展示；高级选项（加密/解密/水印/页码）默认折叠
         self.sec_split = self._build_split_section()
         self.sec_encrypt = self._build_encrypt_section()
         self.sec_decrypt = self._build_decrypt_section()
@@ -130,12 +138,11 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         self.sec_wm = self._build_watermark_section()
         self.sec_pn = self._build_page_number_section()
         self.sec_img = self._build_to_image_section()
-        self.sec_form = self._build_form_section()
         for w in (self.sec_split, self.sec_compress, self.sec_img):
             sec.add_widget(w)
 
         # 高级选项折叠区
-        self.adv_toggle = CheckBox(tr("高级选项（加密 / 解密 / 水印 / 页码 / 填写表单）", "Advanced (Encrypt / Decrypt / Watermark / Page numbers / Forms)"))
+        self.adv_toggle = CheckBox(tr("高级选项（加密 / 解密 / 水印 / 页码）", "Advanced (Encrypt / Decrypt / Watermark / Page numbers)"))
         self.adv_toggle.toggled.connect(self._toggle_advanced)
         sec.add_widget(self.adv_toggle)
         self.adv_box = QWidget()
@@ -144,7 +151,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         _adv.setContentsMargins(0, 0, 0, 0)
         _adv.setSpacing(10)
         for w in (self.sec_encrypt, self.sec_decrypt, self.sec_wm,
-                  self.sec_pn, self.sec_form):
+                  self.sec_pn):
             _adv.addWidget(w)
         sec.add_widget(self.adv_box)
         return sec
@@ -158,7 +165,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         else:
             # 收起时隐藏全部高级子区
             for w in (self.sec_encrypt, self.sec_decrypt, self.sec_wm,
-                      self.sec_pn, self.sec_form):
+                      self.sec_pn):
                 w.setVisible(False)
 
     def _row_widget(self, builder):
@@ -286,115 +293,14 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             h.addWidget(self.ed_img_pages)
         return self._row_widget(build)
 
-    def _build_form_section(self):
-        """表单填写子区：检测字段 → 动态生成输入框。"""
-        from PySide6.QtWidgets import QScrollArea, QVBoxLayout as VLAY
-        from PySide6.QtWidgets import QWidget as QW
-
-        w = QW()
-        v = VLAY(w)
-        v.setContentsMargins(0, 4, 0, 0)
-        v.setSpacing(4)
-
-        self._lbl_form = CaptionLabel(tr("点击「检测表单」读取 PDF 中的可填写字段", "Click \"Detect form\" to read fillable fields"))
-        v.addWidget(self._lbl_form)
-
-        self.btn_detect_form = PushButton(FluentIcon.SEARCH, tr("检测表单", "Detect form"))
-        self.btn_detect_form.clicked.connect(self._detect_form_fields)
-        v.addWidget(self.btn_detect_form)
-
-        # 字段容器（滚动区域）
-        self._form_scroll = QScrollArea()
-        self._form_scroll.setWidgetResizable(True)
-        self._form_scroll.setMaximumHeight(200)
-        self._form_scroll.setStyleSheet("background: transparent; border: none;")
-        self._form_container = QW()
-        self._form_layout = VLAY(self._form_container)
-        self._form_layout.setContentsMargins(0, 0, 0, 0)
-        self._form_layout.setSpacing(4)
-        self._form_scroll.setWidget(self._form_container)
-        v.addWidget(self._form_scroll, 1)
-
-        self._form_fields = {}  # field_name -> LineEdit/ComboBox
-        return w
-
-    def _detect_form_fields(self):
-        """检测当前文件的 PDF 表单字段。"""
-        files = self.file_card.files()
-        if not files:
-            toast.show_warning(self, tr("请先添加 PDF 文件", "Add PDF files first"))
-            return
-        from core import pdf_form
-        if not pdf_form.is_available():
-            toast.show_error(self, tr("PyMuPDF 未安装，无法检测表单", "PyMuPDF not installed, cannot detect forms"))
-            return
-
-        # 清空旧字段
-        self._form_fields.clear()
-        while self._form_layout.count():
-            child = self._form_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
-        all_fields = []
-        for f in files:
-            fields = pdf_form.get_form_fields(f)
-            for fd in fields:
-                fd["_file"] = f
-                all_fields.append(fd)
-
-        if not all_fields:
-            self._lbl_form.setText(tr("未检测到可填写的表单字段", "No fillable form fields found"))
-            return
-
-        self._lbl_form.setText(tr("检测到 {} 个字段：", "Found {} fields:").format(len(all_fields)))
-        for fd in all_fields:
-            key = f"{fd['_file']}::{fd['name']}"
-            row = QHBoxLayout()
-            row.setSpacing(6)
-            lbl = CaptionLabel(fd["name"])
-            lbl.setFixedWidth(120)
-            lbl.setToolTip(tr("类型: {}  页: {}", "Type: {}  Page: {}").format(fd['type'], fd['page']))
-            row.addWidget(lbl)
-
-            if fd["type"] == "checkbox":
-                from qfluentwidgets import CheckBox
-                cb = CheckBox()
-                cb.setChecked(bool(fd["value"]))
-                row.addWidget(cb)
-                self._form_fields[key] = cb
-            elif fd["type"] in ("combo", "list") and fd["options"]:
-                cb = ComboBox()
-                cb.addItems(fd["options"])
-                if fd["value"] in fd["options"]:
-                    cb.setCurrentText(fd["value"])
-                cb.setFixedWidth(180)
-                row.addWidget(cb)
-                self._form_fields[key] = cb
-            else:
-                le = LineEdit()
-                le.setText(str(fd["value"]))
-                le.setFixedWidth(240)
-                row.addWidget(le)
-                self._form_fields[key] = le
-
-            row.addStretch(1)
-            w = QWidget()
-            w.setLayout(row)
-            self._form_layout.addWidget(w)
-
-        self._form_layout.addStretch(1)
-        self._detected_form_files = [f for f in files
-                                     if any(fd["_file"] == f for fd in all_fields)]
-
     # ── 模式切换 ─────────────────────────────────
-    _ADV_MODES = (tr("加密", "Encrypt"), tr("解密", "Decrypt"), tr("水印", "Watermark"), tr("页码", "Page numbers"), tr("表单", "Form"))
+    _ADV_MODES = (tr("加密", "Encrypt"), tr("解密", "Decrypt"), tr("水印", "Watermark"), tr("页码", "Page numbers"))
 
     def _mode_changed(self):
         mode = self.cb_mode.currentRouteKey()
         # 高级模式自动展开折叠区；主模式自动收起（blockSignals 防递归）
         is_adv = any(k in mode for k in self._ADV_MODES)
-        # 高级选项复选框只在高级模式（加密/解密/水印/页码/表单）下显示；
+        # 高级选项复选框只在高级模式（加密/解密/水印/页码）下显示；
         # 合并/拆分/提取/压缩/转图片等主模式与它无关，隐藏避免困惑
         self.adv_toggle.setVisible(is_adv)
         if is_adv and not self.adv_toggle.isChecked():
@@ -409,8 +315,7 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.adv_box.setVisible(False)
 
         secs = (self.sec_split, self.sec_encrypt, self.sec_decrypt,
-                self.sec_compress, self.sec_wm, self.sec_pn, self.sec_img,
-                self.sec_form)
+                self.sec_compress, self.sec_wm, self.sec_pn, self.sec_img)
         for w in secs:
             w.setVisible(False)
         if tr("拆分", "Split") in mode or tr("提取", "Extract") in mode:
@@ -427,8 +332,6 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             self.sec_pn.setVisible(True)
         elif tr("转为图片", "To image") in mode:
             self.sec_img.setVisible(True)
-        elif tr("表单", "Form") in mode:
-            self.sec_form.setVisible(True)
 
     # ── 参数/偏好 ────────────────────────────────
     def collect_params(self) -> dict:
@@ -455,7 +358,6 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             "to_image_pages": self.ed_img_pages.text().strip(),
             "out_dir_combo": self.out_row.mode(),
             "out_dir_path": self.out_row.path(),
-            "form_values": self._collect_form_values(),
         }
 
     def collect_prefs(self) -> dict:
@@ -539,16 +441,6 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
                                        dpi=p.get("to_image_dpi", 200),
                                        pages=p.get("to_image_pages", ""),
                                        progress_cb=prog)
-            return ok
-        if tr("表单", "Form") in mode:
-            from core.pdf_form import fill_form
-            field_values = p.get("form_values", {})
-            prog(10, tr("正在填写表单…", "Filling form…"))
-            ok, msg = fill_form(task.file_path, task.output_path, field_values)
-            if ok:
-                prog(100, msg)
-            else:
-                task.error = msg
             return ok
         task.error = tr("未知操作模式", "Unknown mode")
         return False
@@ -645,8 +537,6 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             out_path = self._unique_path(os.path.join(out_dir, nm + "_decrypted.pdf"))
         elif tr("压缩", "Compress") in mode:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_compressed.pdf"))
-        elif tr("表单", "Form") in mode:
-            out_path = self._unique_path(os.path.join(out_dir, nm + "_filled.pdf"))
         else:
             out_path = self._unique_path(os.path.join(out_dir, nm + "_numbered.pdf"
                                                       if tr("页码", "Page numbers") in mode
@@ -658,31 +548,27 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             history_type=tr("PDF 处理", "PDF Tools"), history_target=mode.split("（")[0],
             need_ffmpeg=False)
 
+    def _preview_pdf(self):
+        """内置 QtPdf 预览选中的 PDF。"""
+        files = self.file_card.files()
+        if not files:
+            toast.show_warning(self, tr("请先添加 PDF 文件", "Add PDF files first"))
+            return
+        from gui_qt.components.pdf_preview import PdfPreviewDialog
+        dlg = PdfPreviewDialog(files[0], self.window())
+        dlg.exec()
+
     def _open_editor_page(self):
         """跳转到 PDF编辑 导航页（对应 tkinter 版 _open_pdf_editor 弹窗）。"""
         # 优先用 MainWindow 挂载的 _switch_to(key)，回退到标准 switchTo
-        page = getattr(self.window, "pages", {}).get("pdf_editor")
+        page = getattr(self.main_window, "pages", {}).get("pdf_editor")
         if page is None:
             return
-        switcher = getattr(self.window, "_switch_to", None)
+        switcher = getattr(self.main_window, "_switch_to", None)
         if callable(switcher):
             switcher("pdf_editor")
         else:
-            self.window.switchTo(page)
+            self.main_window.switchTo(page)
 
     def _empty_hint(self):
         return tr("请先添加 PDF 文件", "Add PDF files first")
-
-    def _collect_form_values(self):
-        """从 UI 控件中收集表单字段值。"""
-        from qfluentwidgets import CheckBox as CB, ComboBox as Cb
-        values = {}
-        for key, widget in self._form_fields.items():
-            field_name = key.split("::", 1)[1] if "::" in key else key
-            if isinstance(widget, CB):
-                values[field_name] = widget.isChecked()
-            elif isinstance(widget, Cb):
-                values[field_name] = widget.currentText()
-            else:
-                values[field_name] = widget.text()
-        return values

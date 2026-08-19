@@ -12,23 +12,24 @@
 """
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF
 from PySide6.QtGui import QAction, QColor, QCursor, QKeySequence, QPainter
-from PySide6.QtWidgets import QFrame, QMenu
+from PySide6.QtWidgets import QFrame, QMenu, QVBoxLayout, QWidget
 from qfluentwidgets import (FluentIcon, NavigationItemPosition,
                             isDarkTheme)
 
 from gui_qt import nav_registry
-from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
 
 
-def _style_nav_header(header, label):
+def _style_nav_header(header, group):
     """分组小标题着色：复用 ds.group_color 色系，增强分组辨识。
 
+    传入 NAV_GROUPS 的「中文原文」分组名，group_key_for_name 按原文匹配
+    色板（英文模式下翻译后的标题无法直接匹配，故统一传原文）。
     NavigationItemHeader 用 paintEvent 自绘文字，不走样式表——
     必须设置 lightTextColor / darkTextColor 属性（亮/暗主题两套色）。
     """
     try:
-        key = ds.group_key_for_name(label)
+        key = ds.group_key_for_name(group)
         light = ds.GROUP_COLORS.get(key, ("",))[0]
         dark = ds.GROUP_COLORS_DARK.get(key, ("",))[0]
     except Exception:  # noqa: BLE001 - 取色失败保持默认
@@ -119,14 +120,57 @@ def _patch_compact_nav_paint():
 _patch_compact_nav_paint()
 
 
+class LazyPage(QWidget):
+    """懒加载页面占位：导航注册时只创建空壳，首次显示/访问才构建真面板。
+
+    显著降低启动耗时（不再一次性构建 39 个页面）。
+    属性访问（file_card、collect_params 等）自动转发到真页面。
+    """
+
+    def __init__(self, factory, window, services):
+        super().__init__()
+        self._factory = factory
+        self._window = window
+        self._services = services
+        self._real = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._lay = lay
+
+    def _ensure(self):
+        """首次访问/显示时构建真面板并加入布局。"""
+        if self._real is None:
+            self._real = self._factory(self._window, self._services)
+            self._lay.addWidget(self._real)
+            # 页面构建后立即应用快速滚动（懒加载面板晚于启动时的
+            # enable_smooth_scrolling，需在此补上；含页面内嵌套滚动区域）
+            try:
+                ds.apply_fast_scroll(self)
+            except Exception:  # noqa: BLE001 - 滚动优化失败不影响页面
+                pass
+        return self._real
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._ensure()
+
+    def __getattr__(self, name):
+        # 转发到真面板（首次触发构建）；下划线属性不转发避免递归
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._ensure(), name)
+
+
 def build_navigation(window, services, theme_mgr):
-    """创建全部页面并注册到 FluentWindow（即时加载，增加视觉优化）。"""
+    """创建全部页面并注册到 FluentWindow（首页即时加载，其余懒加载）。"""
     pages = {}
+    lazy_pages = []
     nav = window.navigationInterface
     prev_pos = None  # 用于判断是否需要加分隔线
 
     for idx, (group, items) in enumerate(nav_registry.NAV_GROUPS):
-        is_bottom = (group == tr("管理中心", "Manage"))
+        is_bottom = (group == "管理中心")
         pos = (NavigationItemPosition.BOTTOM if is_bottom
                else (NavigationItemPosition.TOP if idx == 0
                      else NavigationItemPosition.SCROLL))
@@ -139,17 +183,27 @@ def build_navigation(window, services, theme_mgr):
         if idx > 0:
             g_label = nav_registry.group_label(group)
             header = nav.addItemHeader(g_label, pos)
-            _style_nav_header(header, g_label)
+            # 色板匹配用中文原文（group_key_for_name 与 NAV_GROUPS 中文常量比较）
+            _style_nav_header(header, group)
 
         for item in items:
-            page = item["factory"](window, services)
+            key = item["key"]
+            # 首页立即构建（用户第一眼看到）；其余懒加载到首次切换
+            if key == "home":
+                page = item["factory"](window, services)
+            else:
+                page = LazyPage(item["factory"], window, services)
+                lazy_pages.append(page)
             if not page.objectName():
-                page.setObjectName(f"page_{item['key']}")
-            pages[item["key"]] = page
+                page.setObjectName(f"page_{key}")
+            pages[key] = page
             window.addSubInterface(page, item["icon"],
                                    nav_registry.label(item), pos)
 
         prev_pos = pos
+
+    # 挂载懒加载页面列表，供启动后分帧预热（消除首次点击卡顿）
+    window._lazy_pages = lazy_pages
 
     # ── 键盘快捷键 Ctrl+1~9 切页 ────────────────────────
     _setup_shortcuts(window, pages.keys())
@@ -164,7 +218,14 @@ def build_navigation(window, services, theme_mgr):
     panel.topLayout.setSpacing(1)
     panel.bottomLayout.setSpacing(1)
     panel.scrollLayout.setSpacing(1)
-    panel.expandAni.setDuration(200)  # 展开/折叠动画 200ms
+    # 展开/折叠动画禁用（duration=0 = 即时展开）：
+    # 展开期间所有导航项宽度渐变 + 自定义 paintEvent 逐帧重绘
+    # （qfluentwidgets FluentIconBase 每次绘制重新渲染 SVG，43 项/帧），
+    # 任何动画时长在真实环境都会卡顿（200ms/150ms/80ms 均实测不流畅）。
+    # 即时展开一次布局完成、零逐帧重绘，最流畅；无动画过渡是代价。
+    from PySide6.QtCore import QEasingCurve
+    panel.expandAni.setDuration(0)
+    panel.expandAni.setEasingCurve(QEasingCurve.OutCubic)
     # 展开宽度 322 → 200：配合导航项紧凑绘制（图标/文字左移），留白最小化
     nav.setExpandWidth(152)
 
@@ -181,6 +242,51 @@ def build_navigation(window, services, theme_mgr):
         pass
 
     return pages
+
+
+def start_prewarm(window):
+    """启动后分帧预热所有懒加载页面，消除首次点击侧边栏功能时的卡顿。
+
+    首次点击某功能页时，LazyPage 会在 showEvent 里现场构建整个面板
+    （控件多者达数百 ms），造成「卡一下」的观感。这里用 QTimer 在
+    启动后、事件循环空闲时逐帧构建（每 ~120ms 一个），把构建开销
+    平滑分摊到启动后的几秒内；用户点到时目标页通常已就绪。
+    """
+    from PySide6.QtCore import QTimer
+    lazy = list(getattr(window, "_lazy_pages", []) or [])
+    # 重面板优先预热：构建耗时 >50ms 的面板（实测 video/settings/pdf_editor/
+    # pdf/plugins 等）先构建，降低"点击到未预热重面板"时的卡顿概率；
+    # 轻面板按原顺序靠后（即使未预热，点击也只卡几十 ms 内）。
+    _HEAVY = {"video", "settings", "pdf_editor", "pdf", "plugins", "m3u8",
+              "lan_transfer", "download", "watermark", "image",
+              "video_tools", "id_photo", "ocr"}
+    queue = sorted(
+        lazy,
+        key=lambda p: 0 if p.objectName().replace("page_", "") in _HEAVY else 1)
+
+    timer = QTimer(window)
+    # 150ms 间隔 + 低精度定时器：原 100ms 会在启动后数秒内占 ~50% CPU
+    # （每帧构建一个 ~50ms 面板），期间用户操作偶发卡顿。放宽到 150ms
+    # 后 CPU 占用降到 ~30%，13 个重面板仍在前 ~2 秒内完成（重面板优先），
+    # 轻面板随点随建（<50ms）不感知。
+    timer.setInterval(150)
+    timer.setTimerType(Qt.TimerType.CoarseTimer)
+
+    def _tick():
+        if not queue:
+            timer.stop()
+            timer.deleteLater()
+            return
+        page = queue.pop(0)
+        try:
+            page._ensure()
+        except Exception:  # noqa: BLE001 - 单个面板构建失败不影响其余预热
+            pass
+
+    timer.timeout.connect(_tick)
+    timer.start()
+    # 挂到 window 防 GC；预热完成前保持引用
+    window._prewarm_timer = timer
 
 
 def _setup_shortcuts(window, keys):

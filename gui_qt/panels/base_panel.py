@@ -25,7 +25,7 @@ class BaseQtPanel(ScrollArea):
 
     def __init__(self, window, services, parent=None):
         super().__init__(parent)
-        self.window = window
+        self.main_window = window
         self.services = services
         self.setObjectName(f"panel_{self.panel_key}")
         self.setWidgetResizable(True)
@@ -40,7 +40,17 @@ class BaseQtPanel(ScrollArea):
 
         self.build()
         self.content_layout.addStretch(1)
+        # 快速滚动：面板自身 + 全部嵌套滚动区域关闭 SmoothScroll 动画
+        # （NO_SMOOTH + 像素滚动），否则 qfluentwidgets ScrollArea 的
+        # LINEAR 400ms 动画引擎会让滚轮每格要 400ms 才滚完（滚得慢）。
+        try:
+            ds.apply_fast_scroll(self)
+        except Exception:  # noqa: BLE001 - 滚动优化失败不影响面板功能
+            pass
         self.apply_prefs(self._load_prefs())
+        # 统一回填"输出目录"记忆：即使子类 apply_prefs 未覆盖 out_dir，
+        # 有 out_row 的面板也自动恢复上次选择的目录（重进面板不用重新浏览）。
+        self._apply_out_dir_prefs(self._load_prefs())
         # 应用"默认输出目录"偏好（设置中心配置）：仅兜底，绝不改变
         # 面板当前的"与源文件同目录"选择；只在用户已选"自定义目录"
         # 且路径为空时，用全局默认目录作为初始值。
@@ -84,14 +94,42 @@ class BaseQtPanel(ScrollArea):
         """
         try:
             import os
-            if not hasattr(self, "out_row"):
+            orow = getattr(self, "out_row", None)
+            if orow is None or not hasattr(orow, "mode"):
                 return
-            if self.out_row.mode() != self.out_row.MODE_CUSTOM:
+            if orow.mode() != orow.MODE_CUSTOM:
                 return  # 保持"与源文件同目录"不变
             d = self.services.get_pref("default_out_dir", "")
-            if d and os.path.isdir(d) and not self.out_row.path():
-                self.out_row.set_state(self.out_row.MODE_CUSTOM, d)
+            if d and os.path.isdir(d) and not orow.path():
+                orow.set_state(orow.MODE_CUSTOM, d)
         except Exception:  # noqa: BLE001 - 偏好应用失败不影响面板
+            pass
+
+    # ── 输出目录统一记忆（所有有 out_row 的面板自动生效）──
+    def _out_dir_prefs(self) -> dict:
+        """收集当前输出目录状态（供 save_prefs 自动补存）。
+
+        用 duck-typing 判断真实 OutputDirRow：部分面板（如 hash）的
+        out_row 是 _NoOutRow 占位类（无 mode/path），必须跳过。
+        """
+        orow = getattr(self, "out_row", None)
+        if orow is not None and hasattr(orow, "mode") and hasattr(orow, "path"):
+            return {"out_dir_combo": orow.mode(),
+                    "out_dir_path": orow.path()}
+        return {}
+
+    def _apply_out_dir_prefs(self, prefs: dict):
+        """回填上次记忆的输出目录（子类 apply_prefs 未覆盖时兜底）。"""
+        try:
+            orow = getattr(self, "out_row", None)
+            if orow is None or not prefs or not hasattr(orow, "set_state"):
+                return
+            combo = prefs.get("out_dir_combo")
+            if combo == orow.MODE_CUSTOM:
+                orow.set_state(orow.MODE_CUSTOM, prefs.get("out_dir_path", ""))
+            elif combo == orow.MODE_SAME:
+                orow.set_state(orow.MODE_SAME)
+        except Exception:  # noqa: BLE001 - 回填失败不影响面板
             pass
 
     # ── 子类约定 ─────────────────────────────────
@@ -113,19 +151,25 @@ class BaseQtPanel(ScrollArea):
         return PageHeader(text)
 
     def make_subtitle(self, text):
-        """创建面板副标题。"""
+        """创建面板副标题。
+
+        颜色不写死：交给全局 QSS 的 QLabel[sec=true] 规则（ink_sec 令牌），
+        主题切换时全局 QSS 自动刷新，避免实例快照残留浅色字。
+        """
         from qfluentwidgets import CaptionLabel
         label = CaptionLabel(text)
-        label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+        label.setProperty("sec", True)
+        label.setStyleSheet("font-size: 12px;")
         return label
 
     def make_section_label(self, text):
-        """创建统一风格的区块小标题。"""
+        """创建统一风格的区块小标题。
+
+        颜色交给全局 QSS 的 QLabel 规则（ink 令牌），主题切换自动跟随。
+        """
         from qfluentwidgets import BodyLabel
         label = BodyLabel(text)
-        label.setStyleSheet(
-            f"font-size: 14px; font-weight: 600; color: {ds.ink()};")
+        label.setStyleSheet("font-size: 14px; font-weight: 600;")
         return label
 
     def make_section_header(self, text, icon=None):
@@ -161,8 +205,16 @@ class BaseQtPanel(ScrollArea):
         return f"panel_{self.panel_key}"
 
     def _load_prefs(self) -> dict:
-        return self.services.prefs.get(QT_PREFS_PANEL, self._prefs_key(), {}) or {}
+        p = self.services.prefs.get(QT_PREFS_PANEL, self._prefs_key(), {}) or {}
+        # 防御：配置文件被手改/损坏时可能返回非 dict（str/list/int），
+        # 直接传给 apply_prefs 会 AttributeError/ValueError 导致面板构建崩溃。
+        return p if isinstance(p, dict) else {}
 
     def save_prefs(self):
-        self.services.prefs.set(QT_PREFS_PANEL, self._prefs_key(),
-                                self.collect_prefs())
+        prefs = self.collect_prefs()
+        # 自动补存输出目录：子类 collect_prefs 未包含 out_dir 时统一补上，
+        # 保证所有有 out_row 的面板输出目录都记忆（重进面板不用重新浏览）。
+        od = self._out_dir_prefs()
+        if od and "out_dir_combo" not in prefs:
+            prefs = {**prefs, **od}
+        self.services.prefs.set(QT_PREFS_PANEL, self._prefs_key(), prefs)

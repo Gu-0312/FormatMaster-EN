@@ -7,8 +7,10 @@
 import os
 
 from PySide6.QtCore import QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView,
-                               QTableWidget, QTableWidgetItem, QWidget)
+                               QTableWidget, QTableWidgetItem, QVBoxLayout,
+                               QWidget)
 from qfluentwidgets import CaptionLabel, FluentIcon, PushButton
 
 from gui_qt.components import toast
@@ -23,7 +25,7 @@ MEDIA_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v",
               ".jpeg", ".bmp", ".gif", ".tiff", ".webp"}
 
 
-class _InfoWorker(QThread):
+class _InfoWorker(SafeWorker):
     """后台读取媒体信息，避免大文件 ffprobe 阻塞 UI。"""
 
     sig_done = Signal(str, object)  # (路径, sections 或 None)
@@ -32,7 +34,7 @@ class _InfoWorker(QThread):
         super().__init__(parent)
         self._fp = fp
 
-    def run(self):
+    def work(self):
         from core.mediainfo import get_mediainfo
         try:
             sections = get_mediainfo(self._fp)
@@ -73,9 +75,8 @@ class MediaInfoPanelPage(BaseQtPanel):
         bar.addStretch(1)
         lay.addLayout(bar)
 
-        # 信息表格
-        card = FormSection(tr("详细信息", "Details"), FluentIcon.INFO)
-        self.table = QTableWidget(0, 2, card)
+        # 详细信息表格（质量分析/码率图表已按需求移除）
+        self.table = QTableWidget(0, 2, self)
         self.table.setHorizontalHeaderLabels(
             [tr("字段", "Field"), tr("值", "Value")])
         self.table.verticalHeader().setVisible(False)
@@ -84,12 +85,18 @@ class MediaInfoPanelPage(BaseQtPanel):
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.setMinimumHeight(280)
+        self.table.setMinimumHeight(300)
         self.table.setAlternatingRowColors(True)
-        card.add_widget(self.table)
-        lay.addWidget(card)
+        lay.addWidget(self.table)
 
         self._worker = None
+
+    @staticmethod
+    def _holder(layout):
+        """QHBoxLayout → QWidget 容器（FormSection.add_widget 只收 QWidget）。"""
+        w = QWidget()
+        w.setLayout(layout)
+        return w
 
     def _ink_sec(self):
         from gui_qt.components import design_system as ds

@@ -1,18 +1,19 @@
 """视频格式转换"""
 import os
 import re
-import subprocess
-import json
 import threading
-from utils.config import get_ffmpeg_path, get_ffprobe_path, translate_ffmpeg_error
+from utils.config import get_ffmpeg_path, get_ffprobe_path
 from utils.hardware_accel import get_best_hw_accel, detect_hardware_acceleration
-from core.ffmpeg_progress import FFmpegProgressReader, _parse_time_line
+from core.ffmpeg_progress import run_ffmpeg, _parse_time_line
 from core.ffmpeg_executor import get_ffprobe_raw
 
 class VideoConverter:
+    # NOTE: ffprobe 结果缓存已提升到 ffmpeg_executor 模块级，
+    # 按 (路径, mtime, 文件大小) 失效，跨 VideoConverter / AudioConverter
+    # / VideoCompressor 等实例共享，不再需要实例缓存。
+
     def __init__(self):
         self._cancel = False
-        self._info_cache = {}
 
     def cancel(self):
         self._cancel = True
@@ -21,10 +22,8 @@ class VideoConverter:
         return get_ffprobe_raw(filepath, timeout=30)
 
     def _get_or_load_info(self, filepath):
-        """带缓存的 ffprobe：同一文件只调一次 ffprobe。"""
-        if filepath not in self._info_cache:
-            self._info_cache[filepath] = get_ffprobe_raw(filepath, timeout=10)
-        return self._info_cache.get(filepath)
+        """获取 ffprobe 原始数据（经模块级缓存，mtime+size 失效）。"""
+        return get_ffprobe_raw(filepath, timeout=10)
 
     def get_duration(self, filepath):
         info = self._get_or_load_info(filepath)
@@ -67,17 +66,25 @@ class VideoConverter:
     def convert(self, input_path, output_path, fmt_ext, codec=None, preset=None,
                 resolution=None, bitrate=None, fps=None, progress_callback=None,
                 copy_mode=False, selected_streams=None, hw_accel=None,
-                subtitle_path=None):
+                subtitle_path=None, sub_font_size=None, max_threads=0,
+                metadata=None):
         """视频格式转换。
 
         启用硬件加速但转换失败时（驱动/设备不可用等），
         自动降级为 CPU 软编重试一次，避免任务直接失败。
+        max_threads: ffmpeg -threads 值，0=自动（不限制），>0 用于并行场景
+                     按核数分配避免多任务同时争抢核心资源。
+        sub_font_size: 字幕烧录字号（>0 时经 subtitles 滤镜 force_style 生效）。
+        metadata: dict（如 {"title": "...", "artist": "..."}），写入输出元数据。
         """
         self._cancel = False
         ok = self._convert_once(input_path, output_path, fmt_ext, codec, preset,
                                 resolution, bitrate, fps, progress_callback,
                                 copy_mode, selected_streams, hw_accel,
-                                subtitle_path=subtitle_path)
+                                subtitle_path=subtitle_path,
+                                sub_font_size=sub_font_size,
+                                max_threads=max_threads,
+                                metadata=metadata)
         if not ok and hw_accel and not self._cancel:
             # 硬件加速失败：降级纯 CPU 软编重试（-y 会覆盖残留的部分输出）
             if progress_callback:
@@ -85,13 +92,17 @@ class VideoConverter:
             ok = self._convert_once(input_path, output_path, fmt_ext, codec, preset,
                                     resolution, bitrate, fps, progress_callback,
                                     copy_mode, selected_streams, None,
-                                    subtitle_path=subtitle_path)
+                                    subtitle_path=subtitle_path,
+                                    sub_font_size=sub_font_size,
+                                    max_threads=max_threads,
+                                    metadata=metadata)
         return ok
 
     def _convert_once(self, input_path, output_path, fmt_ext, codec=None, preset=None,
                       resolution=None, bitrate=None, fps=None, progress_callback=None,
                       copy_mode=False, selected_streams=None, hw_accel=None,
-                      subtitle_path=None):
+                      subtitle_path=None, sub_font_size=None, max_threads=0,
+                      metadata=None):
         self._cancel = False
         ffmpeg = get_ffmpeg_path()
         if not ffmpeg:
@@ -180,7 +191,16 @@ class VideoConverter:
                                .replace("]", "\\]")
                                .replace("%", "\\%")
                                .replace(",", "\\,"))
-                vf_parts.append(f"subtitles='{sub_escaped}'")
+                vf_part = f"subtitles='{sub_escaped}'"
+                # 字号：force_style 追加在滤镜参数末尾（路径引号已闭合）：
+                # subtitles='path':force_style='FontSize=24'
+                try:
+                    fs = int(sub_font_size) if sub_font_size else 0
+                except (TypeError, ValueError):
+                    fs = 0
+                if fs > 0:
+                    vf_part = vf_part + ":force_style='FontSize=%d'" % fs
+                vf_parts.append(vf_part)
 
             if vf_parts:
                 cmd.extend(["-vf", ",".join(vf_parts)])
@@ -189,12 +209,16 @@ class VideoConverter:
             if fps:
                 cmd.extend(["-r", str(fps)])
 
-            if self.has_audio_stream(input_path):
-                cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-            else:
-                cmd.append("-an")
-            
-            cmd.extend(["-threads", "0"])
+            if not selected_streams:
+                # 未指定流选择：按源是否含音轨决定音频输出
+                if self.has_audio_stream(input_path):
+                    cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+                else:
+                    cmd.append("-an")
+            # 指定了 selected_streams 时流选择完全由 map 控制，此处不加
+            # -an/-c:a（否则 -an 会把下面 map 选中的音频流也禁掉）
+
+            cmd.extend(["-threads", str(max_threads or 0)])
         
         if selected_streams:
             has_video = False
@@ -207,42 +231,31 @@ class VideoConverter:
                         has_video = True
                     elif stype == "audio":
                         has_audio = True
-            
+
+            # 只选了音频流 → 禁视频（-vn），否则 -an 会把选中的音频也禁用
             if not has_video:
-                cmd.append("-an")
-        
+                cmd.append("-vn" if has_audio else "-an")
+
+        # 元数据写入（标题/艺术家等）
+        if isinstance(metadata, dict):
+            for _k in ("title", "artist", "album", "comment", "description"):
+                _v = (metadata.get(_k) or "").strip()
+                if _v:
+                    cmd.extend(["-metadata", f"{_k}={_v}"])
+
         cmd.append(output_path)
 
-        try:
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            reader = FFmpegProgressReader(process, duration, label="转换中",
-                                           done_message="转换完成", fail_message="转换失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-                speed_enabled=True,
-            )
-            if result is True:
-                return True
-            if result is None:
-                return False
-            err = ''.join(reader.error_output[-5:])
-            chn_msg = translate_ffmpeg_error(err)
-            detail = err.strip()[-80:] if err.strip() else ""
-            if progress_callback:
-                progress_callback(-1, f"转换失败：{chn_msg}")
-                if detail and chn_msg not in detail:
-                    progress_callback(-1, f"详细信息：{detail}")
+        result = run_ffmpeg(cmd, duration=duration, label="转换中",
+                            cancel_check=lambda: self._cancel,
+                            progress_callback=progress_callback,
+                            speed_enabled=True, translate_error=True)
+        if result.success:
+            return True
+        if result.cancelled:
             return False
-
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
-            return False
+        if progress_callback:
+            progress_callback(-1, f"转换失败：{result.error_cn}")
+        return False
 
     def crop(self, input_path, output_path, start_time, end_time, copy_mode=False, progress_callback=None):
         self._cancel = False
@@ -263,31 +276,16 @@ class VideoConverter:
 
         cmd.append(output_path)
 
-        try:
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            reader = FFmpegProgressReader(process, duration, label="裁剪中",
-                                           done_message="裁剪完成", fail_message="裁剪失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-            )
-            if result is True:
-                return True
-            if result is None:
-                return False
-            err = ''.join(reader.error_output[-5:])
-            if progress_callback:
-                progress_callback(-1, f"裁剪失败: {err[:200]}")
+        result = run_ffmpeg(cmd, duration=duration, label="裁剪中",
+                            cancel_check=lambda: self._cancel,
+                            progress_callback=progress_callback)
+        if result.success:
+            return True
+        if result.cancelled:
             return False
-
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
-            return False
+        if progress_callback:
+            progress_callback(-1, f"裁剪失败：{result.error_cn}")
+        return False
 
     def concat(self, input_files, output_path, copy_mode=True, progress_callback=None):
         self._cancel = False
@@ -297,74 +295,59 @@ class VideoConverter:
                 progress_callback(-1, "错误: FFmpeg未安装")
             return False
 
-        try:
-            if copy_mode:
-                import tempfile
-                list_path = os.path.join(tempfile.gettempdir(), f"formatmaster_concat_{os.getpid()}.txt")
-                try:
-                    with open(list_path, 'w', encoding='utf-8') as f:
-                        for filepath in input_files:
-                            abs_path = os.path.abspath(filepath)
-                            f.write(f"file '{abs_path}'\n")
-                    cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", list_path]
-                    cmd.extend(["-c", "copy"])
-                    cmd.append(output_path)
-                finally:
-                    if os.path.exists(list_path):
-                        try:
-                            os.remove(list_path)
-                        except Exception:
-                            pass
-            else:
-                cmd = [ffmpeg, "-y", "-nostats", "-progress", "pipe:2"]
-                for filepath in input_files:
-                    cmd.extend(["-i", os.path.abspath(filepath)])
-                num_files = len(input_files)
-                
-                filter_parts = []
-                scaled_v = []
-                scaled_a = []
-                
-                for i in range(num_files):
-                    filter_parts.append(f"[{i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2[v{i}]")
-                    filter_parts.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]")
-                    scaled_v.append(f"[v{i}]")
-                    scaled_a.append(f"[a{i}]")
-                
-                v_concat_input = "".join(scaled_v)
-                a_concat_input = "".join(scaled_a)
-                filter_complex = ";".join(filter_parts) + \
-                    f";{v_concat_input}concat=n={num_files}:v=1:a=0[outv];{a_concat_input}concat=n={num_files}:v=0:a=1[outa]"
-                cmd.extend(["-filter_complex", filter_complex])
-                cmd.extend(["-map", "[outv]", "-map", "[outa]"])
-                cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-threads", "0"])
+        if copy_mode:
+            import tempfile
+            list_path = os.path.join(tempfile.gettempdir(), f"formatmaster_concat_{os.getpid()}.txt")
+            try:
+                with open(list_path, 'w', encoding='utf-8') as f:
+                    for filepath in input_files:
+                        abs_path = os.path.abspath(filepath)
+                        f.write(f"file '{abs_path}'\n")
+                cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", list_path]
+                cmd.extend(["-c", "copy"])
                 cmd.append(output_path)
+            finally:
+                if os.path.exists(list_path):
+                    try:
+                        os.remove(list_path)
+                    except Exception:
+                        pass
+        else:
+            cmd = [ffmpeg, "-y", "-nostats", "-progress", "pipe:2"]
+            for filepath in input_files:
+                cmd.extend(["-i", os.path.abspath(filepath)])
+            num_files = len(input_files)
 
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
+            filter_parts = []
+            scaled_v = []
+            scaled_a = []
+
+            for i in range(num_files):
+                filter_parts.append(f"[{i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2[v{i}]")
+                filter_parts.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]")
+                scaled_v.append(f"[v{i}]")
+                scaled_a.append(f"[a{i}]")
+
+            v_concat_input = "".join(scaled_v)
+            a_concat_input = "".join(scaled_a)
+            filter_complex = ";".join(filter_parts) + \
+                f";{v_concat_input}concat=n={num_files}:v=1:a=0[outv];{a_concat_input}concat=n={num_files}:v=0:a=1[outa]"
+            cmd.extend(["-filter_complex", filter_complex])
+            cmd.extend(["-map", "[outv]", "-map", "[outa]"])
+            cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-threads", "0"])
+            cmd.append(output_path)
 
             total_duration = sum(self.get_duration(f) for f in input_files)
 
-            reader = FFmpegProgressReader(process, total_duration, label="拼接中",
-                                           done_message="拼接完成", fail_message="拼接失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-            )
-            if result is True:
+            result = run_ffmpeg(cmd, duration=total_duration, label="拼接中",
+                                cancel_check=lambda: self._cancel,
+                                progress_callback=progress_callback)
+            if result.success:
                 return True
-            if result is None:
+            if result.cancelled:
                 return False
-            err = ''.join(reader.error_output[-5:])
             if progress_callback:
-                progress_callback(-1, f"拼接失败: {err[:200]}")
-            return False
-
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
+                progress_callback(-1, f"拼接失败：{result.error_cn}")
             return False
 
     def crop_multi_segment(self, input_path, output_path, segments, progress_callback=None):
@@ -383,59 +366,44 @@ class VideoConverter:
         if len(segments) == 1:
             return self.crop(input_path, output_path, segments[0][0], segments[0][1], False, progress_callback)
 
-        try:
-            filter_parts = []
-            segment_labels = []
-            
-            for i, (start, end) in enumerate(segments):
-                start_sec = self._parse_time(start)
-                end_sec = self._parse_time(end)
-                
-                filter_parts.append(f"[0:v]trim=start={start_sec}:end={end_sec},setpts=PTS-STARTPTS[v{i}]")
-                filter_parts.append(f"[0:a]atrim=start={start_sec}:end={end_sec},asetpts=PTS-STARTPTS[a{i}]")
-                segment_labels.append(f"[v{i}][a{i}]")
-            
-            concat_input = "".join(segment_labels)
-            num_segments = len(segments)
-            
-            filter_complex = ";".join(filter_parts) + \
-                f";{concat_input}concat=n={num_segments}:v=1:a=1[outv][outa]"
-            
-            cmd = [
-                ffmpeg, "-y", "-nostats", "-progress", "pipe:2",
-                "-hwaccel", "auto", "-i", input_path,
-                "-filter_complex", filter_complex,
-                "-map", "[outv]", "-map", "[outa]",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-threads", "0",
-                output_path
-            ]
+        filter_parts = []
+        segment_labels = []
 
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
+        for i, (start, end) in enumerate(segments):
+            start_sec = self._parse_time(start)
+            end_sec = self._parse_time(end)
 
-            total_segment_duration = sum(self._parse_time(e) - self._parse_time(s) for s, e in segments)
+            filter_parts.append(f"[0:v]trim=start={start_sec}:end={end_sec},setpts=PTS-STARTPTS[v{i}]")
+            filter_parts.append(f"[0:a]atrim=start={start_sec}:end={end_sec},asetpts=PTS-STARTPTS[a{i}]")
+            segment_labels.append(f"[v{i}][a{i}]")
 
-            reader = FFmpegProgressReader(process, total_segment_duration, label="裁剪中",
-                                           done_message="裁剪完成", fail_message="裁剪失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-            )
-            if result is True:
-                return True
-            if result is None:
-                return False
-            err = ''.join(reader.error_output[-5:])
-            if progress_callback:
-                progress_callback(-1, f"裁剪失败: {err[:200]}")
+        concat_input = "".join(segment_labels)
+        num_segments = len(segments)
+
+        filter_complex = ";".join(filter_parts) + \
+            f";{concat_input}concat=n={num_segments}:v=1:a=1[outv][outa]"
+
+        cmd = [
+            ffmpeg, "-y", "-nostats", "-progress", "pipe:2",
+            "-hwaccel", "auto", "-i", input_path,
+            "-filter_complex", filter_complex,
+            "-map", "[outv]", "-map", "[outa]",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-threads", "0",
+            output_path
+        ]
+
+        total_segment_duration = sum(self._parse_time(e) - self._parse_time(s) for s, e in segments)
+
+        result = run_ffmpeg(cmd, duration=total_segment_duration, label="裁剪中",
+                            cancel_check=lambda: self._cancel,
+                            progress_callback=progress_callback)
+        if result.success:
+            return True
+        if result.cancelled:
             return False
-
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
-            return False
+        if progress_callback:
+            progress_callback(-1, f"裁剪失败：{result.error_cn}")
+        return False
 
     def _parse_time(self, time_str):
         parts = time_str.split(':')
@@ -470,40 +438,20 @@ class VideoConverter:
                     progress_callback(-1, f"错误: 无法创建输出目录 {out_dir}")
                 return False
 
-        cmd = [ffmpeg, "-y", "-i", input_path, "-vn", "-c:a", ac, "-b:a", bitrate, output_path]
+        cmd = [ffmpeg, "-y", "-nostats", "-progress", "pipe:2",
+               "-i", input_path, "-vn", "-c:a", ac, "-b:a", bitrate,
+               "-map_metadata", "0", output_path]
 
-        try:
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            reader = FFmpegProgressReader(process, duration, label="提取中",
-                                           done_message="提取完成", fail_message="提取失败")
-            result = reader.read_loop(
-                cancel_check=lambda: self._cancel,
-                progress_callback=progress_callback,
-            )
-            if result is True:
-                return True
-            if result is None:
-                return False
-            # 优先给出 FFmpeg 的错误原因
-            reason = ""
-            for s in reversed(reader.error_output):
-                sl = s.strip().lower()
-                if "error" in sl or "失败" in sl or "invalid" in sl:
-                    reason = s.strip()
-                    break
-            if not reason and reader.error_output:
-                reason = reader.error_output[-1].strip()
-            msg = f"提取失败: {reason}" if reason else "提取失败"
-            if progress_callback:
-                progress_callback(-1, msg)
+        result = run_ffmpeg(cmd, duration=duration, label="提取中",
+                            cancel_check=lambda: self._cancel,
+                            progress_callback=progress_callback,
+                            translate_error=True)
+        if result.success:
+            return True
+        if result.cancelled:
             return False
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"错误: {e}")
-            return False
+        if progress_callback:
+            progress_callback(-1, f"提取失败：{result.error_cn}")
+        return False
 
 

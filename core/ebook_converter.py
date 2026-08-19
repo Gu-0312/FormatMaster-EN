@@ -1,0 +1,306 @@
+# -*- coding: utf-8 -*-
+"""ebook_converter — 电子书互转（EPUB/MOBI/PRC/AZW3/TXT/HTML）。
+
+能力矩阵（2026-08-18 新增）：
+- .mobi/.prc/.azw → .epub：mobi 库解包（mobi8 结构直接产 epub，mobi7 产 html 再打包）
+- .epub → .txt/.html：ebooklib 提取纯文本 / 单文件 HTML
+- .mobi/.prc/.azw → .txt/.html：mobi 解包后提取
+- .txt/.html → .epub：ebooklib 打包（文件名做标题，段落做章节）
+- 任意 → .mobi/.azw3：检测系统 Calibre 的 ebook-convert 时走它，否则报错提示
+
+依赖：ebooklib（EPUB 读写）、mobi（MOBI 解包），纯 Python，可离线。
+"""
+import os
+import re
+import shutil
+
+try:
+    from ebooklib import epub
+    from ebooklib.epub import EpubReader
+    import ebooklib as _ebooklib
+    ITEM_DOCUMENT = _ebooklib.ITEM_DOCUMENT
+except Exception:  # noqa: BLE001 - 依赖缺失时降级
+    epub = None
+    ITEM_DOCUMENT = None
+
+try:
+    import mobi
+except Exception:  # noqa: BLE001
+    mobi = None
+
+SRC_EXTS = {".epub", ".mobi", ".prc", ".azw", ".azw3", ".txt", ".html", ".htm"}
+DST_EXTS = {".epub", ".mobi", ".azw3", ".txt", ".html", ".htm"}
+_MOBI_EXTS = {".mobi", ".prc", ".azw"}
+
+
+def _missing_dep(name):
+    return f"缺少依赖 {name}，请先安装：pip install {name}"
+
+
+def _strip_html(text):
+    """HTML → 纯文本（保留段落换行）。"""
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", "", text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</(p|div|h[1-6]|li|tr)>", "\n", text)
+    text = re.sub(r"(?s)<[^>]+>", "", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&") \
+               .replace("&lt;", "<").replace("&gt;", ">") \
+               .replace("&quot;", '"').replace("&#39;", "'")
+    lines = [ln.strip() for ln in text.splitlines()]
+    return "\n".join(ln for ln in lines if ln)
+
+
+def _title_from(src):
+    return os.path.splitext(os.path.basename(src))[0] or "Untitled"
+
+
+def _mobi_extract(src):
+    """mobi/prc/azw → (tempdir, epub_or_html_path)。"""
+    if mobi is None:
+        raise RuntimeError(_missing_dep("mobi"))
+    try:
+        tempdir, out = mobi.extract(src)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"MOBI 解包失败：{exc}") from exc
+    if not out or not os.path.isfile(out):
+        raise RuntimeError("MOBI 解包后未找到内容文件（可能是不支持的版本）")
+    return tempdir, out
+
+
+def _epub_to_files(src):
+    """epub → [(uid, html), ...] 章节列表。"""
+    if epub is None:
+        raise RuntimeError(_missing_dep("ebooklib"))
+    try:
+        book = EpubReader(src).load()
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"EPUB 读取失败：{exc}") from exc
+    chapters = []
+    for item in book.get_items():
+        if item.get_type() == ITEM_DOCUMENT:
+            chapters.append((item.get_name(), item.get_content().decode(
+                "utf-8", "replace")))
+    return chapters
+
+
+def _extract_text(src):
+    """任意电子书源 → 纯文本。"""
+    ext = os.path.splitext(src)[1].lower()
+    if ext in _MOBI_EXTS:
+        tempdir, out = _mobi_extract(src)
+        try:
+            with open(out, "r", encoding="utf-8", errors="replace") as f:
+                html = f.read()
+            return _strip_html(html)
+        finally:
+            shutil.rmtree(tempdir, ignore_errors=True)
+    if ext == ".epub":
+        return "\n\n".join(_strip_html(h) for _, h in _epub_to_files(src))
+    if ext in (".txt",):
+        with open(src, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    if ext in (".html", ".htm"):
+        with open(src, "r", encoding="utf-8", errors="replace") as f:
+            return _strip_html(f.read())
+    raise RuntimeError(f"不支持的源格式：{ext}")
+
+
+def _extract_html(src):
+    """任意电子书源 → 单文件 HTML。"""
+    ext = os.path.splitext(src)[1].lower()
+    if ext in _MOBI_EXTS:
+        tempdir, out = _mobi_extract(src)
+        try:
+            with open(out, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+        finally:
+            shutil.rmtree(tempdir, ignore_errors=True)
+    if ext == ".epub":
+        body = "\n".join(h for _, h in _epub_to_files(src))
+        title = _title_from(src)
+        return (f"<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                f"<title>{title}</title></head><body>{body}</body></html>")
+    if ext in (".html", ".htm"):
+        with open(src, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    if ext == ".txt":
+        with open(src, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        return (f"<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                f"<title>{_title_from(src)}</title></head><body>"
+                f"<pre>{text}</pre></body></html>")
+    raise RuntimeError(f"不支持的源格式：{ext}")
+
+
+def _build_epub_from_text(text, title):
+    """纯文本 → EPUB（按段落 2000 字左右切章）。"""
+    if epub is None:
+        raise RuntimeError(_missing_dep("ebooklib"))
+    book = epub.EpubBook()
+    book.set_identifier(f"fm-{abs(hash(title))}")
+    book.set_title(title)
+    book.set_language("zh")
+    book.add_author("FormatMaster")
+    book.add_metadata("DC", "description",
+                      "Generated by FormatMaster")
+    paras = [p.strip() for p in text.splitlines() if p.strip()]
+    chapters = []
+    # 简单分章：累计 ~2500 字符一章节
+    cur, acc = [], 0
+    for p in paras:
+        cur.append(p)
+        acc += len(p)
+        if acc >= 2500:
+            chapters.append("\n\n".join(cur))
+            cur, acc = [], 0
+    if cur:
+        chapters.append("\n\n".join(cur))
+    if not chapters:
+        chapters = [text or " "]
+    for i, chunk in enumerate(chapters, 1):
+        c = epub.EpubHtml(title=f"第 {i} 章", file_name=f"chap_{i}.xhtml",
+                          lang="zh")
+        c.content = ("<h1>" + f"第 {i} 章" + "</h1><div>" +
+                     "<p>" + "</p><p>".join(
+                         chunk.split("\n\n")) + "</p></div>")
+        book.add_item(c)
+    # toc 直接放章节对象（ebooklib 会取 item.title 生成目录）
+    book.toc = [c for c in book.items
+                if c.get_type() == ITEM_DOCUMENT]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    style = "BODY{font-family:serif;line-height:1.6}h1{font-size:1.4em}"
+    nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css",
+                            media_type="text/css", content=style)
+    book.add_item(nav_css)
+    return book
+
+
+def _find_calibre_convert():
+    """探测系统 Calibre 的 ebook-convert（PATH 或常见安装路径）。"""
+    import shutil as _sh
+    exe = _sh.which("ebook-convert")
+    if exe:
+        return exe
+    candidates = [
+        r"C:\Program Files\Calibre2\ebook-convert.exe",
+        r"C:\Program Files (x86)\Calibre2\ebook-convert.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Calibre\ebook-convert.exe"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def convert_ebook(src, dst, progress_cb=None):
+    """电子书互转统一入口；返回 (ok, msg)。
+
+    progress_cb(pct, msg) 进度回调（工作线程调用）。
+    """
+    if not os.path.isfile(src):
+        return False, "源文件不存在"
+    src_ext = os.path.splitext(src)[1].lower()
+    dst_ext = os.path.splitext(dst)[1].lower()
+    if src_ext not in SRC_EXTS:
+        return False, f"不支持的源格式：{src_ext}"
+    if dst_ext not in DST_EXTS:
+        return False, f"不支持的目标格式：{dst_ext}"
+    if src_ext == dst_ext:
+        return False, "源与目标格式相同，无需转换"
+
+    def _pct(p, m):
+        if progress_cb:
+            try:
+                progress_cb(p, m)
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+
+        # ── 目标：MOBI / AZW3（走 Calibre）──
+        if dst_ext in (".mobi", ".azw3"):
+            exe = _find_calibre_convert()
+            if not exe:
+                return False, (
+                    "转换 MOBI/AZW3 需要安装 Calibre（免费开源），"
+                    "装好后自动可用。EPUB/TXT/HTML 互转无需额外软件。")
+            import subprocess
+            _pct(10, "调用 Calibre 转换…")
+            result = subprocess.run(
+                [exe, src, dst],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                creationflags=(subprocess.CREATE_NO_WINDOW
+                               if os.name == "nt" else 0),
+                timeout=600)
+            if result.returncode == 0 and os.path.isfile(dst):
+                _pct(100, "转换完成")
+                return True, "转换完成"
+            err = (result.stderr or b"").decode("utf-8", "replace")[-200:]
+            return False, f"Calibre 转换失败：{err}"
+
+        # ── 目标：TXT ──
+        if dst_ext == ".txt":
+            _pct(20, "提取文本…")
+            text = _extract_text(src)
+            _pct(80, "写入…")
+            with open(dst, "w", encoding="utf-8") as f:
+                f.write(text)
+            _pct(100, "转换完成")
+            return True, "转换完成"
+
+        # ── 目标：HTML ──
+        if dst_ext in (".html", ".htm"):
+            _pct(20, "提取内容…")
+            html = _extract_html(src)
+            _pct(80, "写入…")
+            with open(dst, "w", encoding="utf-8") as f:
+                f.write(html)
+            _pct(100, "转换完成")
+            return True, "转换完成"
+
+        # ── 目标：EPUB ──
+        if dst_ext == ".epub":
+            if src_ext in _MOBI_EXTS:
+                _pct(20, "解包 MOBI…")
+                tempdir, out = _mobi_extract(src)
+                try:
+                    if os.path.splitext(out)[1].lower() == ".epub":
+                        _pct(70, "拷贝 EPUB…")
+                        shutil.copyfile(out, dst)
+                    else:
+                        _pct(50, "打包 EPUB…")
+                        with open(out, "r", encoding="utf-8",
+                                  errors="replace") as f:
+                            text = _strip_html(f.read())
+                        book = _build_epub_from_text(text, _title_from(src))
+                        epub.write_epub(dst, book)
+                finally:
+                    shutil.rmtree(tempdir, ignore_errors=True)
+                if os.path.isfile(dst):
+                    _pct(100, "转换完成")
+                    return True, "转换完成"
+                return False, "EPUB 生成失败"
+            if src_ext in (".txt", ".html", ".htm"):
+                _pct(30, "读取内容…")
+                text = _extract_text(src)
+                _pct(60, "打包 EPUB…")
+                book = _build_epub_from_text(text, _title_from(src))
+                epub.write_epub(dst, book)
+                if os.path.isfile(dst):
+                    _pct(100, "转换完成")
+                    return True, "转换完成"
+                return False, "EPUB 生成失败"
+            if src_ext == ".epub":
+                _pct(40, "拷贝…")
+                shutil.copyfile(src, dst)
+                _pct(100, "转换完成")
+                return True, "转换完成"
+
+        return False, f"不支持的转换组合：{src_ext} → {dst_ext}"
+    except RuntimeError as exc:
+        return False, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"转换失败：{exc}"

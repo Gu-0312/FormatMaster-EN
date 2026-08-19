@@ -175,8 +175,9 @@ class ImageCanvasDialog(QDialog):
         self.setWindowTitle(tr("图片画布编辑器", "Image Canvas Editor"))
         self.resize(920, 640)
         self.setMinimumSize(760, 520)
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QVBoxLayout(self)
         main.setContentsMargins(14, 14, 14, 14)
@@ -200,6 +201,8 @@ class ImageCanvasDialog(QDialog):
                 self._result = self._img
         self._on_tool_changed()
         self._update_size_hint()
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── UI ──────────────────────────────────────
     def _build_toolbar(self):
@@ -211,8 +214,6 @@ class ImageCanvasDialog(QDialog):
         self.cb_tool.setCurrentIndex(0)
         bar.addWidget(self.cb_tool)
         self.lb_file = CaptionLabel(os.path.basename(self._path) or "")
-        self.lb_file.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_file, 1)
         return bar
 
@@ -273,8 +274,6 @@ class ImageCanvasDialog(QDialog):
         root = QHBoxLayout()
         root.setSpacing(8)
         self.lb_size = CaptionLabel("")
-        self.lb_size.setStyleSheet(
-            "font-size: 11px; color: #666C80; background: transparent;")
         root.addWidget(self.lb_size, 1)
         self.btn_preview = PushButton(FluentIcon.PLAY, tr("预览效果", "Preview"))
         self.btn_preview.setFixedHeight(32)
@@ -291,12 +290,14 @@ class ImageCanvasDialog(QDialog):
     def _label(self, text):
         lb = CaptionLabel(text)
         lb.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
+            f"font-size: 12px; color: {self._tokens['ink_sec']};"
+            " background: transparent;")
         return lb
 
-    def _apply_dark_style(self):
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{ background: {t['page_bg']}; }}
             PushButton {{
                 background: {t['card_hover']}; color: {t['ink']};
@@ -321,7 +322,23 @@ class ImageCanvasDialog(QDialog):
             QSlider::handle:horizontal {{ width: 12px; height: 12px;
                 margin: -4px 0; border-radius: 6px;
                 background: {t['accent']}; }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 hasattr 保护）
+        if hasattr(self, "lb_file"):
+            self.lb_file.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_size"):
+            self.lb_size.setStyleSheet(
+                f"font-size: 11px; color: {t['ink_dis']};"
+                " background: transparent;")
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 逻辑 ────────────────────────────────────
     def _wire(self):

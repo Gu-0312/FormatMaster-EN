@@ -1,6 +1,6 @@
 """图片格式转换"""
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageOps, ImageFilter
 
 # HEIC/HEIF 支持（iPhone 照片格式；未安装 pillow-heif 时自动降级，不影响其他格式）
 try:
@@ -59,10 +59,20 @@ class ImageConverter:
                 watermark_text=None, watermark_position="右下角",
                 rotate=0, crop_mode="原始比例", grayscale=False,
                 resize_factor=1.0, strip_exif=False,
-                progress_callback=None):
+                progress_callback=None,
+                contrast=1.0, saturation=1.0, sharpness=1.0, effect=""):
+        """图片格式转换。
+
+        contrast/saturation/sharpness: 增强系数（1.0=不变）。
+        effect: 特效滤镜（"" 无 / hflip 水平翻转 / vflip 垂直翻转 /
+                invert 反色 / emboss 浮雕 / edges 边缘检测 / sharpen 锐化）。
+        """
         self._cancel = False
         try:
-            img = Image.open(input_path)
+            # with + copy：完整解码后释放句柄，后续处理链与源文件解耦
+            # （输出可能覆盖 input_path，Windows 下未关句柄会 PermissionError）
+            with Image.open(input_path) as _f:
+                img = _f.copy()
 
             if self._cancel:
                 if progress_callback:
@@ -125,6 +135,20 @@ class ImageConverter:
                 if progress_callback:
                     progress_callback(50, "添加水印...")
 
+            # 增强（对比度/饱和度/锐度）
+            if abs(contrast - 1.0) > 0.01:
+                img = ImageEnhance.Contrast(img).enhance(float(contrast))
+            if abs(saturation - 1.0) > 0.01:
+                img = ImageEnhance.Color(img).enhance(float(saturation))
+            if abs(sharpness - 1.0) > 0.01:
+                img = ImageEnhance.Sharpness(img).enhance(float(sharpness))
+
+            # 特效滤镜
+            if effect:
+                img = self._apply_effect(img, effect)
+                if progress_callback:
+                    progress_callback(55, f"特效 {effect}...")
+
             if self._cancel:
                 if progress_callback:
                     progress_callback(-1, "已取消")
@@ -179,6 +203,27 @@ class ImageConverter:
             if progress_callback:
                 progress_callback(-1, f"错误：{e}")
             return False
+
+    @staticmethod
+    def _apply_effect(img, effect):
+        """应用一键特效（翻转/反色/浮雕/边缘/锐化）。"""
+        img = img.convert("RGB")
+        try:
+            if effect == "hflip":
+                return ImageOps.mirror(img)
+            if effect == "vflip":
+                return ImageOps.flip(img)
+            if effect == "invert":
+                return ImageOps.invert(img)
+            if effect == "emboss":
+                return img.filter(ImageFilter.EMBOSS)
+            if effect == "edges":
+                return img.filter(ImageFilter.FIND_EDGES).point(lambda p: 255 - p)
+            if effect == "sharpen":
+                return img.filter(ImageFilter.UnsharpMask(radius=2, percent=150))
+        except Exception:
+            return img
+        return img
 
     def batch_convert(self, files, output_dir, fmt_ext, quality=95,
                       resize=None, rotate=0, crop_mode="原始比例", grayscale=False,

@@ -70,8 +70,12 @@ def table_to_csv(input_path, output_path, progress_cb=None):
     return True
 
 
-def table_to_xlsx(input_path, output_path, progress_cb=None):
-    """识别表格并保存为 XLSX。"""
+def table_to_xlsx(input_path, output_path, progress_cb=None, chart_type=None):
+    """识别表格并保存为 XLSX。
+
+    chart_type: None 不生成图表 / "bar" 柱状 / "line" 折线 / "pie" 饼图。
+    图表取首行为表头、首列为分类、其余列为数值（需 ≥2 行 ≥2 列）。
+    """
     from openpyxl import Workbook
     rows = recognize_rows(input_path, progress_cb)
     if not rows:
@@ -85,15 +89,36 @@ def table_to_xlsx(input_path, output_path, progress_cb=None):
     ws.title = "表格"
     for row in rows:
         ws.append(row)
+    if chart_type:
+        try:
+            from openpyxl.chart import BarChart, LineChart, PieChart
+            from openpyxl.chart.reference import Reference
+            ncols = max(len(r) for r in rows)
+            if len(rows) >= 2 and ncols >= 2:
+                cls = {"bar": BarChart, "line": LineChart,
+                       "pie": PieChart}[chart_type]
+                chart = cls()
+                data = Reference(ws, min_col=2, min_row=1,
+                                 max_col=ncols, max_row=len(rows))
+                cats = Reference(ws, min_col=1, min_row=2,
+                                 max_row=len(rows))
+                chart.add_data(data, titles_from_data=True)
+                chart.set_categories(cats)
+                chart.title = "数据图表"
+                ws.add_chart(chart, f"H{len(rows) + 3}")
+            elif progress_cb:
+                progress_cb(90, "数据不足，跳过图表")
+        except Exception:  # noqa: BLE001 - 图表失败不影响表格数据
+            pass
     wb.save(output_path)
     if progress_cb:
         progress_cb(100, "识别完成")
     return True
 
 
-def recognize_table(input_path, output_path, progress_cb=None):
+def recognize_table(input_path, output_path, progress_cb=None, chart_type=None):
     """按输出扩展名自动选择 CSV / XLSX。"""
     ext = os.path.splitext(output_path)[1].lower()
     if ext in XLSX_EXTS:
-        return table_to_xlsx(input_path, output_path, progress_cb)
+        return table_to_xlsx(input_path, output_path, progress_cb, chart_type)
     return table_to_csv(input_path, output_path, progress_cb)

@@ -1,9 +1,15 @@
 """FFprobe 元数据读取工具
 统一封装 ffprobe 调用，强制 timeout 防止大文件卡顿。
+
+跨模块共享的 ffprobe 结果缓存：以 (路径, mtime, 文件大小) 为键，
+LRU 淘汰（上限 200），避免转换管线中 video/audio/img 转换器各自
+重复启动 ffprobe 子进程（每个 ~50-200ms）。
 """
 import os
 import json
 import subprocess
+import threading
+from collections import OrderedDict
 
 from utils.config import get_ffprobe_path
 
@@ -14,6 +20,45 @@ FFPROBE_TIMEOUT = 3
 
 # 转换管线用超时（秒）— 允许更大文件，但仍防止卡死
 FFPROBE_TIMEOUT_LONG = 10
+
+# 全局 ffprobe 结果缓存：上限 200，LRU 淘汰
+_FFPROBE_CACHE_MAX = 200
+_FFPROBE_CACHE = OrderedDict()
+_FFPROBE_CACHE_LOCK = threading.Lock()
+
+
+def _ffprobe_cache_key(filepath):
+    """生成缓存键：(filepath, mtime, size)。文件修改后自动失效。"""
+    try:
+        st = os.stat(filepath)
+        return (os.path.abspath(filepath), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _ffprobe_cache_get(key):
+    with _FFPROBE_CACHE_LOCK:
+        if key in _FFPROBE_CACHE:
+            _FFPROBE_CACHE.move_to_end(key)
+            return _FFPROBE_CACHE[key]
+    return None
+
+
+def _ffprobe_cache_set(key, value):
+    with _FFPROBE_CACHE_LOCK:
+        if key in _FFPROBE_CACHE:
+            _FFPROBE_CACHE.move_to_end(key)
+            _FFPROBE_CACHE[key] = value
+        else:
+            _FFPROBE_CACHE[key] = value
+            if len(_FFPROBE_CACHE) > _FFPROBE_CACHE_MAX:
+                _FFPROBE_CACHE.popitem(last=False)
+
+
+def invalidate_ffprobe_cache():
+    """清空 ffprobe 缓存（ffmpeg 版本变更等场景调用）。"""
+    with _FFPROBE_CACHE_LOCK:
+        _FFPROBE_CACHE.clear()
 
 
 def get_ffprobe_info(filepath):
@@ -72,8 +117,15 @@ def get_ffprobe_raw(filepath, timeout=None):
 
     用于转换管线中需要 duration / codec / has_audio 等原始字段的场景。
     timeout 默认 FFPROBE_TIMEOUT_LONG（10 秒），可自定义。
-    获取失败返回 None。
+    结果经模块级缓存（按 mtime+size 失效），获取失败返回 None。
     """
+    # 1) 查缓存
+    cache_key = _ffprobe_cache_key(filepath)
+    if cache_key:
+        cached = _ffprobe_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     ffprobe = get_ffprobe_path()
     if not ffprobe:
         return None
@@ -89,7 +141,21 @@ def get_ffprobe_raw(filepath, timeout=None):
         )
         if result.returncode != 0 or not result.stdout:
             return None
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        # 清洗：部分流媒体/损坏文件的 duration 可能是 "N/A" 或空字符串，
+        # 下游 float(...) 会 ValueError。统一归一为 "0"。
+        try:
+            _fmt = data.get("format") or {}
+            _d = _fmt.get("duration")
+            if not isinstance(_d, (int, float)) and (
+                    _d is None or not str(_d).strip().lstrip("-").replace(".", "", 1).isdigit()):
+                _fmt["duration"] = "0"
+        except Exception:  # noqa: BLE001 - 清洗失败不影响原数据
+            pass
+        # 2) 写缓存（文件存在时）
+        if cache_key:
+            _ffprobe_cache_set(cache_key, data)
+        return data
     except Exception:
         return None
 

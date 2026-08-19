@@ -8,6 +8,7 @@ import hashlib
 import os
 
 from PySide6.QtCore import QThread, QTimer, Qt, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout,
                                QLabel)
@@ -27,7 +28,7 @@ CLIP_ACTIONS = [
 ]
 
 
-class _OcrWorker(QThread):
+class _OcrWorker(SafeWorker):
     """后台 OCR：RapidOCR 推理耗时，不能阻塞 UI 线程。"""
 
     sig_done = Signal(str, bool)   # (输出 txt 路径, 是否成功)
@@ -37,13 +38,14 @@ class _OcrWorker(QThread):
         self._img = img_path
         self._out = out_path
 
-    def run(self):
+    def work(self):
         from core.ocr_tool import ocr_to_file
         try:
             ok = ocr_to_file(self._img, self._out)
         except Exception:  # noqa: BLE001
             ok = False
         self.sig_done.emit(self._out, ok)
+
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
 AUDIO_EXTS = {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a", ".wma"}
@@ -224,10 +226,21 @@ class MonitorPanelPage(BaseQtPanel):
         lay.addWidget(clip_sec)
 
     def _kind_changed(self):
-        """大类切换 → 更新目标格式下拉选项。"""
+        """大类切换 → 更新目标格式下拉选项。
+
+        监视运行中切换目标类型时，重建 _seen 快照，避免该类型下已存在的
+        文件被当成「新文件」批量误转（_seen 是旧类型扩展名的集合）。
+        """
         kind = list(FORMAT_OPTIONS)[self.cb_kind.currentIndex()]
         self.cb_fmt.clear()
         self.cb_fmt.addItems([opt[0] for opt in FORMAT_OPTIONS[kind]])
+        if self._running and getattr(self, "_dir", None):
+            exts = INPUT_EXTS[kind]
+            try:
+                self._seen = {f for f in self._list_files(self._dir)
+                              if f.lower().endswith(tuple(exts))}
+            except OSError:
+                pass
 
     def _clip_kind_changed(self):
         """剪贴板监视独立的目标类型切换 → 联动格式下拉。"""
@@ -295,13 +308,22 @@ class MonitorPanelPage(BaseQtPanel):
     def _scan(self):
         if not self._running:
             return
+        # 实时读取监视目录：运行中改目录（浏览按钮）立即生效，无需重启。
+        # 历史 bug：目录只在启动时快照到 self._dir，运行中修改 ed_dir 不生效，
+        # 扫描的仍是旧目录（与局域网接收目录同款「运行中配置不生效」）。
+        d = self.ed_dir.text().strip()
+        if not d or not os.path.isdir(d):
+            d = self._dir
         kind, _ext, _codec = self._target()
         exts = INPUT_EXTS[kind]
-        now = {f for f in self._list_files(self._dir)
+        now = {f for f in self._list_files(d)
                if f.lower().endswith(tuple(exts))}
         new = now - self._seen
         for f in sorted(new):
-            self._convert(f)
+            try:
+                self._convert(f)
+            except Exception:  # noqa: BLE001 - 单个文件提交失败不阻塞扫描，
+                pass           # 且已标记为已见，避免下次扫描重复提交
         self._seen = now
 
     def _convert(self, path):
@@ -487,3 +509,27 @@ class MonitorPanelPage(BaseQtPanel):
         else:
             self.clip_status.setText(tr("OCR 未识别到文字", "OCR no text"))
             toast.show_warning(self, tr("OCR 未识别到文字", "No text recognized"))
+
+    def collect_prefs(self) -> dict:
+        """记忆监视目录/目标类型/剪贴板设置，重进面板自动恢复。"""
+        return {"dir": self.ed_dir.text().strip(),
+                "kind": self.cb_kind.currentIndex(),
+                "fmt": self.cb_fmt.currentIndex(),
+                "clip_dir": self.ed_clip_dir.text().strip(),
+                "clip_kind": self.cb_clip_kind.currentIndex(),
+                "clip_fmt": self.cb_clip_fmt.currentIndex(),
+                "clip_act": self.cb_clip_act.currentIndex()}
+
+    def apply_prefs(self, prefs: dict):
+        if not prefs:
+            return
+        if prefs.get("dir"):
+            self.ed_dir.setText(prefs["dir"])
+        if prefs.get("clip_dir"):
+            self.ed_clip_dir.setText(prefs["clip_dir"])
+        for k in ("kind", "fmt", "clip_kind", "clip_fmt", "clip_act"):
+            idx = prefs.get(k)
+            cb = getattr(self, f"cb_{k}")
+            if isinstance(idx, int) and 0 <= idx < cb.count():
+                cb.setCurrentIndex(idx)
+

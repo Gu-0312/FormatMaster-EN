@@ -7,8 +7,8 @@ HEVC（libx265）恒定质量重编码 + 可选分辨率缩放，把大视频压
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QVBoxLayout
-from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon,
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
+from qfluentwidgets import (CaptionLabel, ComboBox, FluentIcon, PushButton,
                             SubtitleLabel)
 
 from gui_qt import task_manager as tm
@@ -50,6 +50,16 @@ class VideoCompressPanelPage(BaseQtPanel):
         self.file_card = FileListCard(tr("文件列表", "Files"), file_exts=VIDEO_EXTS)
         lay.addWidget(self.file_card)
         self.file_card.set_target_fmt(tr("压缩", "Compress"))
+
+        # 预览按钮行（QtMultimedia 内嵌播放器）
+        prev_row = QHBoxLayout()
+        prev_row.setSpacing(8)
+        self.btn_preview = PushButton(FluentIcon.PLAY, tr("预览视频", "Preview video"))
+        self.btn_preview.setToolTip(tr("内嵌播放器预览选中视频", "Built-in player for selected video"))
+        self.btn_preview.clicked.connect(self._preview_video)
+        prev_row.addWidget(self.btn_preview)
+        prev_row.addStretch(1)
+        lay.addLayout(prev_row)
 
         lay.addWidget(self._build_params_card())
 
@@ -94,6 +104,16 @@ class VideoCompressPanelPage(BaseQtPanel):
                                     tr("压缩后", "Compressed"))
         except OSError:  # noqa: BLE001
             self.size_bar.clear()
+
+    def _preview_video(self):
+        """内嵌播放器预览选中的视频（QtMultimedia）。"""
+        files = self.file_card.files()
+        if not files:
+            toast.show_warning(self, tr("请先添加视频文件", "Add video files first"))
+            return
+        from gui_qt.components.video_preview import VideoPreviewDialog
+        dlg = VideoPreviewDialog(files[0], self.window())
+        dlg.exec()
 
     def _build_params_card(self):
         from gui_qt.components.form_widgets import FormSection, FormGrid

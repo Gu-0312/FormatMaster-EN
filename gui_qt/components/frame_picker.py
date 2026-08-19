@@ -44,8 +44,9 @@ class FramePickerDialog(QDialog):
         self.setWindowTitle(tr("视频抽帧取景器", "Frame Picker"))
         self.resize(960, 640)
         self.setMinimumSize(760, 520)
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QVBoxLayout(self)
         main.setContentsMargins(14, 14, 14, 14)
@@ -74,6 +75,8 @@ class FramePickerDialog(QDialog):
             self.player.audio_out.setVolume(0)
             self.player.set_source(self._path, autoplay=True)
         self._sync_play(self.player.player.playbackState())
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── UI ──────────────────────────────────────
     def _build_top_bar(self):
@@ -84,14 +87,9 @@ class FramePickerDialog(QDialog):
         bar.addWidget(self.btn_play)
         self.lb_status = CaptionLabel(tr("拖动播放头定位，点「导出此帧」保存图片",
                                          "Drag playhead, then export frame"))
-        self.lb_status.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_status)
         bar.addStretch(1)
         self.lb_top_time = CaptionLabel("--:-- / --:--")
-        self.lb_top_time.setStyleSheet(
-            "font-size: 13px; color: #E6E8F2; font-family: Consolas;"
-            "background: transparent;")
         bar.addWidget(self.lb_top_time)
         return bar
 
@@ -105,8 +103,6 @@ class FramePickerDialog(QDialog):
         self.btn_export.setFixedHeight(32)
         bar.addWidget(self.btn_export)
         self.lb_dir = CaptionLabel(tr("输出到", "Output") + f"  {self._out_dir}")
-        self.lb_dir.setStyleSheet(
-            "font-size: 11px; color: #666C80; background: transparent;")
         bar.addWidget(self.lb_dir, 1)
         self.btn_close = PushButton(tr("完成", "Done"))
         self.btn_close.setFixedHeight(32)
@@ -118,9 +114,10 @@ class FramePickerDialog(QDialog):
         root.addWidget(self.timeline)
         return root
 
-    def _apply_dark_style(self):
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{ background: {t['page_bg']}; }}
             PushButton {{
                 background: {t['card_hover']}; color: {t['ink']};
@@ -140,7 +137,27 @@ class FramePickerDialog(QDialog):
                 border-radius: 6px;
             }}
             TransparentToolButton:hover {{ background: {t['card_hover']}; }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 hasattr 保护）
+        if hasattr(self, "lb_status"):
+            self.lb_status.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_top_time"):
+            self.lb_top_time.setStyleSheet(
+                f"font-size: 13px; color: {t['ink']};"
+                " font-family: Consolas; background: transparent;")
+        if hasattr(self, "lb_dir"):
+            self.lb_dir.setStyleSheet(
+                f"font-size: 11px; color: {t['ink_dis']};"
+                " background: transparent;")
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 对外 ──
     def export_paths(self):

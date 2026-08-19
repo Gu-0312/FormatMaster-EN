@@ -59,6 +59,13 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
         act_row.setSpacing(8)
         act_row.addWidget(self.btn_detect)
         act_row.addWidget(self.detect_label)
+        # HTML 内置预览（QtWebEngine，懒加载）
+        self.btn_preview_html = PushButton(FluentIcon.VIEW,
+                                           tr("预览 HTML", "Preview HTML"))
+        self.btn_preview_html.setToolTip(
+            tr("内置 Chromium 预览，适合 HTML/网页文件", "Built-in preview for HTML files"))
+        self.btn_preview_html.clicked.connect(self._preview_html)
+        act_row.addWidget(self.btn_preview_html)
         act_row.addStretch(1)
         sec.add_layout(act_row)
         lay.addWidget(sec)
@@ -76,6 +83,20 @@ class DocPanelPage(BaseQtPanel, TaskPanelMixin):
         self.btn_detect.clicked.connect(self._detect)
         self.file_card.files_changed.connect(self._on_files_changed)
         self._wire_tasks()
+
+    # ── HTML 预览（QtWebEngine）──────────────
+    def _preview_html(self):
+        files = self.file_card.files()
+        if not files:
+            toast.show_warning(self, tr("请先添加文件", "Add files first"))
+            return
+        fp = files[0]
+        if os.path.splitext(fp)[1].lower() not in (".html", ".htm"):
+            toast.show_warning(self, tr("仅支持预览 HTML 文件", "Only HTML files can be previewed"))
+            return
+        from gui_qt.components.html_preview import HtmlPreviewDialog
+        dlg = HtmlPreviewDialog(fp, self.window())
+        dlg.exec()
 
     # ── 格式检测（对应 tkinter 版 main._detect）──
     def _detect(self):

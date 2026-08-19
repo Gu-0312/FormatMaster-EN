@@ -4,8 +4,8 @@
 """
 
 import os
-import subprocess
 import tempfile
+from core.ffmpeg_progress import run_ffmpeg
 from utils.config import get_ffmpeg_path
 
 
@@ -34,21 +34,14 @@ def generate_thumbnail_sheet(video_path, output_path, cols=4, rows=4, width=1600
         return False
 
     # 获取视频时长
-    from utils.config import get_ffprobe_path
-    ffprobe = get_ffprobe_path()
+    from core.ffmpeg_executor import get_ffprobe_raw
     duration = 0
-    if ffprobe:
-        try:
-            import json
-            cmd = [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", video_path]
-            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                               errors="ignore", timeout=10,
-                               creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-            if r.returncode == 0 and r.stdout:
-                d = json.loads(r.stdout)
-                duration = float(d.get("format", {}).get("duration", 0))
-        except Exception:
-            duration = 0
+    try:
+        info = get_ffprobe_raw(video_path, timeout=10)
+        if info and "format" in info:
+            duration = float(info["format"].get("duration", 0))
+    except Exception:
+        duration = 0
 
     if duration <= 0:
         if progress_cb:
@@ -78,8 +71,7 @@ def generate_thumbnail_sheet(video_path, output_path, cols=4, rows=4, width=1600
                 ffmpeg, "-y", "-ss", ts, "-i", video_path,
                 "-vframes", "1", "-vf", f"scale={thumb_w}:-1", frame_path
             ]
-            subprocess.run(cmd, capture_output=True,
-                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            run_ffmpeg(cmd, duration=0, label="提取帧", translate_error=False)
             if os.path.exists(frame_path):
                 frame_files.append(frame_path)
             pct = 5 + int((i + 1) / total_frames * 70)
@@ -103,17 +95,18 @@ def generate_thumbnail_sheet(video_path, output_path, cols=4, rows=4, width=1600
         cell_w = 0
         cell_h = 0
         for fp in frame_files:
-            img = Image.open(fp)
+            with Image.open(fp) as _f:
+                img = _f.copy()
             cell_w = max(cell_w, img.size[0])
             cell_h = max(cell_h, img.size[1])
-            img.close()
 
         # 创建画布
         canvas = Image.new("RGB", (cell_w * actual_cols, cell_h * actual_rows), (30, 30, 30))
 
         for i, fp in enumerate(frame_files):
             r, c = divmod(i, actual_cols)
-            img = Image.open(fp)
+            with Image.open(fp) as _f:
+                img = _f.copy()
             x = c * cell_w + (cell_w - img.size[0]) // 2
             y = r * cell_h + (cell_h - img.size[1]) // 2
             canvas.paste(img, (x, y))

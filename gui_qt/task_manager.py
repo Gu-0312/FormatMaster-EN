@@ -16,10 +16,11 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 
 from app.exceptions import _hint_ex
-from utils.config import SUPPORTED_VIDEO, VIDEO_CODECS, VIDEO_PRESETS, RESOLUTIONS
+from utils.config import (SUPPORTED_VIDEO, VIDEO_CODECS, VIDEO_PRESETS,
+                          RESOLUTIONS, USER_PREFS)
 
 
 # ── 任务状态 ─────────────────────────────────────
@@ -68,18 +69,24 @@ class Task:
     runner_key: str = ""      # runner 重建标识（持久化恢复后按 key 重建，空=不可重建）
 
 
-def make_output_path(file_path: str, out_dir: str, ext: str, name: str = None) -> str:
-    """生成输出路径：目标目录 + 源文件名新扩展名，自动避开同名冲突。
+def make_output_path(file_path: str, out_dir: str, ext: str, name: str = None,
+                     conflict: str | None = None) -> str:
+    """生成输出路径：目标目录 + 源文件名新扩展名，按冲突策略处理同名。
 
     name: 可选自定义主文件名（不含扩展名），缺省用源文件名。
-    与 tkinter 版 _go 的行为对齐：源目同路径时追加 _1；
-    已存在时追加 _N 计数。目录不存在时由调用方在任务启动前创建。
+    conflict: 输出已存在时的处理策略——
+      - "auto_rename"（默认）：追加 _N 计数避开（源目同路径时也走 _1）；
+      - "overwrite"：直接返回同名路径，任务运行时覆盖旧文件。
+      未指定时读用户偏好 qt_app/conflict_policy（设置页「转换」可配）。
+    目录不存在时由调用方在任务启动前创建。
     """
+    policy = conflict or USER_PREFS.get("qt_app", "conflict_policy",
+                                        "auto_rename")
     nm = name if name else os.path.splitext(os.path.basename(file_path))[0]
     output_path = os.path.join(out_dir or os.path.dirname(file_path), nm + ext)
     if output_path.lower() == os.path.abspath(file_path).lower():
         output_path = os.path.splitext(output_path)[0] + "_1" + ext
-    if os.path.exists(output_path):
+    if os.path.exists(output_path) and policy != "overwrite":
         base, e = os.path.splitext(output_path)
         counter = 1
         while os.path.exists(f"{base}_{counter}{e}"):
@@ -88,8 +95,28 @@ def make_output_path(file_path: str, out_dir: str, ext: str, name: str = None) -
     return output_path
 
 
+def _threads_per_task(max_parallel):
+    """按并行度分配 ffmpeg 线程数，避免多任务抢占全部核心。
+
+    单任务 max_parallel=1 返回 0（自动，用满全核）；
+    并行 >1 时按「总核数/并行度」均分，至少 1。
+    """
+    if max_parallel <= 1:
+        return 0
+    import os as _os
+    try:
+        ncpu = _os.cpu_count() or 4
+    except Exception:
+        ncpu = 4
+    return max(1, ncpu // max_parallel)
+
+
 class TaskManager(QObject):
     """并行任务队列 + 信号通知（可配置 N 路并发）。"""
+
+    # 内存中保留的任务记录上限：超出后删除最旧终态任务，
+    # 防止长期使用导致 _tasks / 任务中心卡片无限累积
+    MAX_TASKS = 200
 
     # (task_id, pct, msg, speed)
     sig_progress = Signal(int, int, str, str)
@@ -99,6 +126,8 @@ class TaskManager(QObject):
     sig_log = Signal(str, str)
     # 批量任务全部完成（无正在运行/等待的任务时发射）
     sig_batch_done = Signal()
+    # 任务记录被清理（超出保留上限删除最旧终态任务）时发射
+    sig_task_pruned = Signal(int)
 
     def __init__(self, services, parent=None):
         super().__init__(parent)
@@ -109,6 +138,12 @@ class TaskManager(QObject):
         self._lock = threading.Lock()
         self._currents = []         # 运行中的 Task 列表（并行度上限内）
         self._workers = []          # 运行中的工作线程
+        self._pause_events = {}     # task_id → threading.Event（暂停/恢复通知）
+        # 快照持久化防抖定时器：批量任务频繁状态变化时合并写盘
+        self._snapshot_timer = QTimer(self)
+        self._snapshot_timer.setSingleShot(True)
+        self._snapshot_timer.setInterval(2000)  # 2s 防抖
+        self._snapshot_timer.timeout.connect(self._save_snapshot_now)
         # 并行度：默认 1（串行），可从偏好读取
         try:
             self.max_parallel = int(services.get_pref("parallel", 1))
@@ -131,7 +166,18 @@ class TaskManager(QObject):
             self._runner_factories[runner_key] = factory
 
     def save_snapshot(self):
-        """保存未完成任务（WAITING/RUNNING/PAUSED）的元数据。"""
+        """触发快照保存（2s 防抖合并，批量任务高频写盘场景友好）。
+        调用 flush_snapshot() 可立即写入（退出前兜底）。
+        """
+        self._snapshot_timer.start()
+
+    def flush_snapshot(self):
+        """立即写入快照（退出前兜底，跳过防抖）。"""
+        self._snapshot_timer.stop()
+        self._save_snapshot_now()
+
+    def _save_snapshot_now(self):
+        """实际写盘（防抖定时器到期后执行）。"""
         try:
             pending = [t for t in self._tasks.values()
                        if t.state in (WAITING, RUNNING, PAUSED)]
@@ -212,6 +258,26 @@ class TaskManager(QObject):
     def is_idle(self) -> bool:
         return not self._currents and not self._queue
 
+    # ── 内存控制 ─────────────────────────────────
+    def _prune_tasks(self):
+        """任务记录上限控制：超出 MAX_TASKS 时删除最旧的终态任务。
+
+        仅删除终态任务（SUCCESS/FAILED/CANCELLED），保证进行中任务安全；
+        被删任务的 runner/canceller 闭包一并释放，避免其捕获的大对象
+        长期驻留内存（这是转换类应用后台内存持续增长的常见来源）。
+        """
+        if len(self._tasks) <= self.MAX_TASKS:
+            return
+        finished = [t for t in self._tasks.values()
+                    if t.state in (SUCCESS, FAILED, CANCELLED)]
+        finished.sort(key=lambda t: t.created_at)
+        excess = len(self._tasks) - self.MAX_TASKS
+        for t in finished[:excess]:
+            self._tasks.pop(t.task_id, None)
+            t.runner = None
+            t.canceller = None
+            self.sig_task_pruned.emit(t.task_id)
+
     # ── 入队 ─────────────────────────────────────
     def add_task(self, name, task_type, file_path, output_path, params,
                  runner, canceller=None, history_type="", history_target="",
@@ -248,6 +314,7 @@ class TaskManager(QObject):
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
         self.save_snapshot()
+        self._prune_tasks()
         return task_id
 
     def add_video_task(self, file_path, output_path, params, priority=0,
@@ -277,6 +344,7 @@ class TaskManager(QObject):
         self.sig_state.emit(task_id, WAITING)
         self._schedule_next()
         self.save_snapshot()
+        self._prune_tasks()
         return task_id
 
     # ── 调度 ─────────────────────────────────────
@@ -313,9 +381,24 @@ class TaskManager(QObject):
         task.state = state
         if state in (SUCCESS, FAILED, CANCELLED):
             task.ended_at = time.time()   # 终态时间，供 batch 失败统计限定本次
+        # 业务日志落盘（debug.log，设置页「运行日志」可查看）：
+        # 转换失败/成功/取消都记录，否则转换结果不写日志、日志页空白。
+        try:
+            from app import logger as _logger
+            if state == FAILED:
+                _logger.error(
+                    f"[{task.task_type}] {task.name} 失败: "
+                    f"{task.error or '未知错误'}")
+            elif state == SUCCESS:
+                _logger.info(f"[{task.task_type}] {task.name} 完成")
+            elif state == CANCELLED:
+                _logger.warning(f"[{task.task_type}] {task.name} 已取消")
+        except Exception:  # noqa: BLE001 - 日志失败不影响任务状态
+            pass
         self.sig_state.emit(task.task_id, state)
         self._check_batch_done()
         self.save_snapshot()
+        self._prune_tasks()
 
     def _check_batch_done(self):
         """检查是否所有任务都已结束，若是则发射 sig_batch_done。"""
@@ -323,6 +406,62 @@ class TaskManager(QObject):
                   if t.state in (WAITING, RUNNING, PAUSED)]
         if not active and self._tasks:
             self.sig_batch_done.emit()
+
+    # ── 进度回调工厂（_run_video / _run_generic 共享）─────
+    def _make_progress_callback(self, task, fn, track_speed=False):
+        """创建统一的进度回调闭包：暂停冻结 / 取消拦截 / UI 节流。
+
+        track_speed=True 时附带预估速度（视频任务用，依赖 task.input_size）。
+        返回 (prog_fn, error_holder_dict)。error_holder 的 "err" 键在
+        progress_callback(-1, msg) 时写入，供 runner 返回 False 后取具体原因。
+        """
+        pause_ev = self._pause_events.setdefault(task.task_id, threading.Event())
+        # 非暂停状态下清除 event（避免上次暂停的残余信号导致立即跳过）
+        if task.state != PAUSED:
+            pause_ev.clear()
+
+        th = {"ts": 0.0, "msg": "", "err": ""}
+        last = {"pct": 0, "ts": time.time()}
+
+        # 标志：pause_event.wait() 返回 True 表示被取消（由 cancel_task 设置），
+        # 返回 False 表示超时（被 resume_task 的 set 唤醒）
+        _cancel_flag = [False]
+
+        def prog(pct, msg):
+            # 暂停：等待 Event 通知（resume/cancel），~150ms 响应而非 500ms
+            while task.state == PAUSED:
+                if _cancel_flag[0]:
+                    raise InterruptedError(tr("已取消", "Cancelled"))
+                pause_ev.wait(0.15)
+            if _cancel_flag[0] or task.state == CANCELLED:
+                raise InterruptedError(tr("已取消", "Cancelled"))
+            if pct < 0:
+                th["err"] = msg
+            speed = ""
+            if pct >= 0:
+                now = time.time()
+                if track_speed:
+                    dpct = pct - last["pct"]
+                    dt = now - last["ts"]
+                    if dpct > 0 and dt > 0.3 and task.input_size > 0:
+                        mb = task.input_size / 1048576 * dpct / 100
+                        speed = f"{mb / dt:.1f} MB/s"
+                        task.speed = speed
+                last["pct"], last["ts"] = pct, now
+            task.progress = max(0, pct)
+            # UI 节流：终态/错误/阶段消息变化强制刷新，其余 ~12fps
+            now_e = time.time()
+            if (pct < 0 or pct >= 100 or msg != th["msg"]
+                    or now_e - th["ts"] >= 0.08):
+                self.sig_progress.emit(task.task_id, max(0, pct),
+                                       f"{fn}  {msg}", speed)
+                th["ts"] = now_e
+                th["msg"] = msg
+
+        # 返回 cancel 注入句柄，供 cancel_task 设置取消标志
+        prog._cancel_flag = _cancel_flag
+        prog._pause_ev = pause_ev
+        return prog, th
 
     # ── 工作线程 ─────────────────────────────────
     def _worker_run(self, task):
@@ -339,7 +478,6 @@ class TaskManager(QObject):
         except Exception as ex:  # noqa: BLE001 - 任务线程必须兜底
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(os.path.basename(task.file_path), hint), "error")
             self._set_state(task, FAILED)
             self._record_history(task, False)
         finally:
@@ -350,6 +488,12 @@ class TaskManager(QObject):
                 if not getattr(task, "_retrying", False) \
                         and task.task_id in self._queue:
                     self._queue.remove(task.task_id)
+                # 清理已结束的工作线程引用，避免 _workers 无限累积
+                cur = threading.current_thread()
+                if cur in self._workers:
+                    self._workers.remove(cur)
+                # 清理已完成任务的 pause event，避免内存泄漏
+                self._pause_events.pop(task.task_id, None)
             self._schedule_next()
 
     def _maybe_retry(self, task) -> bool:
@@ -381,7 +525,9 @@ class TaskManager(QObject):
             try:
                 os.makedirs(out_dir, exist_ok=True)
             except OSError as e:
-                task.error = tr("无法创建输出目录：{}", "Cannot create output folder: {}").format(out_dir)
+                task.error = tr("无法创建输出目录：{}（{}）",
+                                "Cannot create output folder: {} ({})").format(
+                    out_dir, e)
                 self.sig_log.emit(task.error, "error")
                 self._set_state(task, FAILED)
                 self._record_history(task, False)
@@ -389,51 +535,31 @@ class TaskManager(QObject):
 
         fn = os.path.basename(task.file_path)
         fmt_ext = SUPPORTED_VIDEO.get(params.get("fmt", "MP4"), ".mp4")
-        br = params.get("br", tr("自动", "Auto"))
-        fps = params.get("fps", tr("原始帧率", "Original FPS"))
-        last = {"pct": 0, "ts": time.time()}
-        th = {"ts": 0.0, "msg": ""}   # UI 节流状态（~12fps）
+        prog, th = self._make_progress_callback(task, fn, track_speed=True)
 
-        def prog(pct, msg):
-            # 暂停冻结：ffmpeg 无法原生暂停，回调内轮询等待（进程随管道阻塞而停摆）
-            while task.state == PAUSED:
-                time.sleep(0.5)
-            if task.state == CANCELLED:
-                raise InterruptedError(tr("已取消", "Cancelled"))
-            speed = ""
-            if pct >= 0:
-                now = time.time()
-                dpct = pct - last["pct"]
-                dt = now - last["ts"]
-                if dpct > 0 and dt > 0.3 and task.input_size > 0:
-                    mb = task.input_size / 1048576 * dpct / 100
-                    speed = f"{mb / dt:.1f} MB/s"
-                    task.speed = speed
-                last["pct"], last["ts"] = pct, now
-            task.progress = max(0, pct)
-            # UI 节流：终态/错误/阶段消息变化强制刷新，其余合并到 ~12fps，
-            # 避免 FFmpeg 高频进度回调淹没 UI 线程（界面卡顿的直接来源）
-            now_e = time.time()
-            if (pct < 0 or pct >= 100 or msg != th["msg"]
-                    or now_e - th["ts"] >= 0.08):
-                self.sig_progress.emit(task.task_id, max(0, pct),
-                                       f"{fn}  {msg}", speed)
-                th["ts"] = now_e
-                th["msg"] = msg
+        def convert_fn(input_path, output_path, params_override=None):
+            """调用视频转换器；params_override 供自动恢复时传降级参数。"""
+            p = params_override or task.params
+            p_br = p.get("br", tr("自动", "Auto"))
+            p_fps = p.get("fps", tr("原始帧率", "Original FPS"))
+            return self.services.video_conv.convert(
+                input_path, output_path, fmt_ext,
+                VIDEO_CODECS.get(p.get("codec", tr("默认", "Default"))),
+                VIDEO_PRESETS.get(p.get("preset", tr("原始质量", "Original quality"))),
+                RESOLUTIONS.get(p.get("res", tr("原始分辨率", "Original resolution"))),
+                None if p_br == tr("自动", "Auto") else p_br,
+                None if p_fps == tr("原始帧率", "Original FPS") else int(p_fps),
+                prog,
+                copy_mode=bool(p.get("copy_mode", False)),
+                selected_streams=p.get("selected_streams"),
+                hw_accel=p.get("hw_accel"),
+                subtitle_path=p.get("subtitle_path"),
+                sub_font_size=p.get("sub_font_size"),
+                max_threads=_threads_per_task(self.max_parallel),
+                metadata=p.get("metadata"))
 
         try:
-            ok = self.services.video_conv.convert(
-                task.file_path, task.output_path, fmt_ext,
-                VIDEO_CODECS.get(params.get("codec", tr("默认", "Default"))),
-                VIDEO_PRESETS.get(params.get("preset", tr("原始质量", "Original quality"))),
-                RESOLUTIONS.get(params.get("res", tr("原始分辨率", "Original resolution"))),
-                None if br == tr("自动", "Auto") else br,
-                None if fps == tr("原始帧率", "Original FPS") else int(fps),
-                prog,
-                copy_mode=bool(params.get("copy_mode", False)),
-                selected_streams=params.get("selected_streams"),
-                hw_accel=params.get("hw_accel"),
-                subtitle_path=params.get("subtitle_path"))
+            ok = convert_fn(task.file_path, task.output_path)
         except InterruptedError:
             self.sig_log.emit(tr("文件 {} 已取消", "File {} cancelled").format(fn), "info")
             self._set_state(task, CANCELLED)
@@ -445,7 +571,10 @@ class TaskManager(QObject):
                 return
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(tr("文件 {} 处理失败：{}", "File {} failed: {}").format(fn, hint), "error")
+            # 自动恢复：修复源文件损坏 / 降级参数规避程序自身 bug
+            if self._try_auto_recover_video(task, f"{hint} {str(ex)}",
+                                            convert_fn, prog):
+                return
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -458,8 +587,10 @@ class TaskManager(QObject):
             self.sig_log.emit(tr("{} 转换完成", "{} converted").format(fn), "success")
             self._set_state(task, SUCCESS)
         else:
-            task.error = task.error or tr("转换失败", "Failed")
-            self.sig_log.emit(tr("文件 {} 转换失败：{}", "File {} failed: {}").format(fn, task.error), "error")
+            task.error = task.error or th["err"] or tr("转换失败", "Failed")
+            if self._try_auto_recover_video(task, task.error,
+                                            convert_fn, prog):
+                return
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -480,23 +611,7 @@ class TaskManager(QObject):
                 self._record_history(task, False)
                 return
 
-        th = {"ts": 0.0, "msg": ""}   # UI 节流状态（~12fps）
-
-        def prog(pct, msg):
-            # 与视频任务一致的暂停冻结 / 取消拦截语义
-            while task.state == PAUSED:
-                time.sleep(0.5)
-            if task.state == CANCELLED:
-                raise InterruptedError(tr("已取消", "Cancelled"))
-            task.progress = max(0, pct)
-            # UI 节流（同视频分支）：终态/阶段消息变化强制刷新，其余 ~12fps
-            now_e = time.time()
-            if (pct < 0 or pct >= 100 or msg != th["msg"]
-                    or now_e - th["ts"] >= 0.08):
-                self.sig_progress.emit(task.task_id, max(0, pct),
-                                       f"{fn}  {msg}", "")
-                th["ts"] = now_e
-                th["msg"] = msg
+        prog, th = self._make_progress_callback(task, fn)
 
         try:
             ok = bool(task.runner(task, prog))
@@ -511,7 +626,9 @@ class TaskManager(QObject):
                 return
             hint = _hint_ex(ex) or str(ex)
             task.error = hint
-            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(fn, hint), "error")
+            # 自动恢复：源文件损坏 → 修复副本后重跑
+            if self._try_auto_recover_generic(task, f"{hint} {str(ex)}", prog):
+                return
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
@@ -529,16 +646,90 @@ class TaskManager(QObject):
             self.sig_log.emit(tr("{} 完成", "{} done").format(task.name), "success")
             self._set_state(task, SUCCESS)
         else:
-            task.error = task.error or tr("处理失败", "Failed")
-            self.sig_log.emit(tr("{} 处理失败：{}", "{} failed: {}").format(fn, task.error), "error")
+            # 优先用 runner 通过 prog(-1, msg) 上报的具体原因
+            task.error = task.error or th["err"] or tr("处理失败", "Failed")
+            # toast 提示由 _on_state(FAILED) 统一发出，此处不再重复 sig_log
+            if self._try_auto_recover_generic(task, task.error, prog):
+                return
             if self._maybe_retry(task):
                 return
             self._set_state(task, FAILED)
         self._record_history(task, ok)
 
+    # ── 转换失败自动恢复（规避程序自身 bug / 修复源文件损坏）──
+    def _try_auto_recover_video(self, task, error_text, convert_fn, prog):
+        """视频转换失败自动恢复；返回 True 表示已处理（成功或已置终态）。
+
+        经 core/auto_recover 分类：源文件损坏 → 修复副本重转；
+        程序 bug/未知 → 降级参数（去字幕/关硬件加速）重转一次。
+        """
+        # 设置里关闭「失败自动修复」时跳过（仅提示失败）
+        try:
+            if not self.services.get_pref("auto_recover", True):
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+        from core.auto_recover import recover_video_failure
+        fn = os.path.basename(task.file_path)
+        outcome = recover_video_failure(
+            task.file_path, task.output_path, task.params, error_text,
+            convert_fn, prog)
+        if not outcome.handled:
+            return False
+        if outcome.success:
+            task.progress = 100
+            self.sig_progress.emit(task.task_id, 100,
+                                   tr("{} 转换完成", "{} converted").format(fn), "")
+            self.sig_log.emit(outcome.message, "success")
+            self._set_state(task, SUCCESS)
+            self._record_history(task, True)
+            return True
+        return False
+
+    def _try_auto_recover_generic(self, task, error_text, prog):
+        """通用任务失败自动恢复；返回 True 表示已处理（成功或已置终态）。
+
+        源文件损坏时经 core/auto_recover 修复副本后重跑 runner 一次。
+        """
+        # 设置里关闭「失败自动修复」时跳过（仅提示失败）
+        try:
+            if not self.services.get_pref("auto_recover", True):
+                return False
+        except Exception:  # noqa: BLE001
+            pass
+        from core.auto_recover import recover_generic_failure
+        fn = os.path.basename(task.file_path)
+
+        def run_fn(t):
+            return bool(t.runner(t, prog))
+
+        outcome = recover_generic_failure(task, error_text, run_fn, prog)
+        if not outcome.handled:
+            return False
+        if outcome.success:
+            task.progress = 100
+            self.sig_progress.emit(task.task_id, 100,
+                                   tr("{} 处理完成", "{} done").format(fn), "")
+            self.sig_log.emit(outcome.message, "success")
+            self._set_state(task, SUCCESS)
+            self._record_history(task, True)
+            return True
+        return False
+
     def _record_history(self, task, ok):
         if not task.history_type:
             return
+        saved_bytes = 0
+        if ok and task.output_path:
+            # 节省空间：源文件 - 输出文件（转换后变小才算节省）
+            try:
+                src = (os.path.getsize(task.file_path)
+                       if os.path.isfile(task.file_path) else 0)
+                out = (os.path.getsize(task.output_path)
+                       if os.path.isfile(task.output_path) else 0)
+                saved_bytes = max(0, src - out)
+            except OSError:
+                saved_bytes = 0
         try:
             self.services.history.add({
                 "type": task.history_type,
@@ -546,6 +737,7 @@ class TaskManager(QObject):
                 "target": task.history_target,
                 "status": "success" if ok else "failed",
                 "output_path": task.output_path,
+                "saved_bytes": saved_bytes,
             })
         except Exception:  # noqa: BLE001
             pass
@@ -565,11 +757,14 @@ class TaskManager(QObject):
         task = self._tasks.get(task_id)
         if task is None or task.state != PAUSED:
             return
+        # 通知暂停中的回调线程继续执行
+        ev = self._pause_events.get(task_id)
+        if ev:
+            ev.set()
+            ev.clear()
         if task in self._currents:
-            # 运行中被冻结：解除回调等待即可继续
             self._set_state(task, RUNNING)
         else:
-            # 等待中被暂停：重新入队
             self._set_state(task, WAITING)
             with self._lock:
                 if task_id not in self._queue:
@@ -581,10 +776,18 @@ class TaskManager(QObject):
         if task is None or task.state in (SUCCESS, FAILED, CANCELLED):
             return
         if task.state == PAUSED and task in self._currents:
-            # 冻结中取消：先解冻让回调抛出取消
+            # 通知暂停中的回调线程退出（设置取消标志 + 唤醒 Event）
+            ev = self._pause_events.get(task_id)
+            if ev:
+                ev.set()
             task.state = RUNNING
         if task in self._currents:
             self._set_state(task, CANCELLED)
+            # 注入取消标志到回调闭包，确保下次 prog 调用时立即抛 InterruptedError
+            # 同时唤醒暂停中的回调（通过 Event）
+            ev = self._pause_events.get(task_id)
+            if ev:
+                ev.set()
             if task.canceller is not None:
                 try:
                     task.canceller()

@@ -21,7 +21,8 @@ from PIL import Image, ImageOps
 
 def _load_gray(path):
     """读取图片为归一化 0~1 的灰度 float32 数组。"""
-    img = Image.open(path)
+    with Image.open(path) as _f:
+        img = _f.copy()
     img = ImageOps.exif_transpose(img)
     return img.convert("L"), np.asarray(img.convert("L"),
                                         dtype=np.float32) / 255.0
@@ -40,8 +41,9 @@ def make_phantom(white_path, black_path, out_path):
     target = w_img.size
     scale = min(target[0] / b.shape[1], target[1] / b.shape[0])
     nw, nh = max(1, int(b.shape[1] * scale)), max(1, int(b.shape[0] * scale))
-    b_img = Image.open(black_path).convert("L").resize(
-        (nw, nh), Image.Resampling.LANCZOS)
+    with Image.open(black_path) as _f:
+        b_img = _f.convert("L").resize(
+            (nw, nh), Image.Resampling.LANCZOS)
     canvas = Image.new("L", target, 0)
     canvas.paste(b_img, ((target[0] - nw) // 2, (target[1] - nh) // 2))
     b = np.asarray(canvas, dtype=np.float32) / 255.0
@@ -61,7 +63,8 @@ def make_phantom(white_path, black_path, out_path):
 
 def decode_phantom(phantom_path, white_out, black_out):
     """解密幻影坦克：分别合成到白底与黑底，输出两张可查看图。"""
-    img = Image.open(phantom_path).convert("RGBA")
+    with Image.open(phantom_path) as _f:
+        img = _f.convert("RGBA")
     arr = np.asarray(img, dtype=np.float32) / 255.0
     rgb, alpha = arr[..., :3], arr[..., 3:4]
     white = np.clip(rgb * alpha + (1.0 - alpha), 0.0, 1.0)

@@ -183,8 +183,9 @@ class SubtitleTimelineDialog(QDialog):
         self.setWindowTitle(tr("字幕时间轴编辑器", "Subtitle Timeline Editor"))
         self.resize(980, 620)
         self.setMinimumSize(780, 500)
-        self._dark_tokens = ds.DARK
-        self._apply_dark_style()
+        self._tokens = ds.tokens()
+        self._apply_theme_style()
+        ds.bind_theme(self, self._refresh_theme)
 
         main = QVBoxLayout(self)
         main.setContentsMargins(14, 14, 14, 14)
@@ -230,6 +231,8 @@ class SubtitleTimelineDialog(QDialog):
                 self._duration = 0.0
         self.track.set_items(self._items, self._duration)
         self._refresh_status()
+        # 子控件全部就绪后按当前主题统一刷新
+        self._apply_theme_style()
 
     # ── UI ──────────────────────────────────────
     def _build_top_bar(self):
@@ -241,14 +244,9 @@ class SubtitleTimelineDialog(QDialog):
         self.lb_status = CaptionLabel(
             tr("拖动字幕块调整时间；点「设起点/终点」用播放头对齐",
                "Drag subtitle blocks; use playhead to set start/end"))
-        self.lb_status.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         bar.addWidget(self.lb_status)
         bar.addStretch(1)
         self.lb_time = CaptionLabel("--:-- / --:--")
-        self.lb_time.setStyleSheet(
-            "font-size: 13px; color: #E6E8F2; font-family: Consolas;"
-            "background: transparent;")
         bar.addWidget(self.lb_time)
         return bar
 
@@ -258,8 +256,6 @@ class SubtitleTimelineDialog(QDialog):
         row1 = QHBoxLayout()
         row1.setSpacing(8)
         self.lb_sel = CaptionLabel(tr("未选中字幕", "No subtitle selected"))
-        self.lb_sel.setStyleSheet(
-            "font-size: 12px; color: #9BA1B4; background: transparent;")
         row1.addWidget(self.lb_sel)
         row1.addStretch(1)
         self.btn_set_start = PushButton(FluentIcon.PIN, tr("设起点", "Set Start"))
@@ -273,7 +269,7 @@ class SubtitleTimelineDialog(QDialog):
         row2.setSpacing(8)
         row2.addWidget(CaptionLabel(tr("整体偏移(秒)", "Offset (sec)")))
         self.ed_offset = LineEdit()
-        self.ed_offset.setPlaceholderText("如 0.5 或 -1")
+        self.ed_offset.setPlaceholderText(tr("如 0.5 或 -1", "e.g. 0.5 or -1"))
         self.ed_offset.setFixedWidth(90)
         row2.addWidget(self.ed_offset)
         self.btn_offset = PushButton(tr("应用偏移", "Apply offset"))
@@ -281,8 +277,6 @@ class SubtitleTimelineDialog(QDialog):
         row2.addWidget(self.btn_offset)
         row2.addStretch(1)
         self.lb_count = CaptionLabel("")
-        self.lb_count.setStyleSheet(
-            "font-size: 11px; color: #666C80; background: transparent;")
         row2.addWidget(self.lb_count)
         self.btn_save = PrimaryPushButton(
             FluentIcon.SAVE, tr("保存字幕", "Save SRT"))
@@ -294,9 +288,10 @@ class SubtitleTimelineDialog(QDialog):
         root.addLayout(row2)
         return root
 
-    def _apply_dark_style(self):
-        t = self._dark_tokens
-        self.setStyleSheet(f"""
+    def _apply_theme_style(self):
+        """按当前主题应用对话框与子控件样式（返回 QSS 供 bind_theme 刷新）。"""
+        t = self._tokens
+        qss = f"""
             QDialog {{ background: {t['page_bg']}; }}
             PushButton {{
                 background: {t['card_hover']}; color: {t['ink']};
@@ -316,7 +311,31 @@ class SubtitleTimelineDialog(QDialog):
                 border: 1px solid {t['border']}; border-radius: 6px;
                 padding: 4px 8px; font-size: 12px;
             }}
-        """)
+        """
+        self.setStyleSheet(qss)
+        # 子控件样式（构造完成后才创建，用 hasattr 保护）
+        if hasattr(self, "lb_status"):
+            self.lb_status.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_time"):
+            self.lb_time.setStyleSheet(
+                f"font-size: 13px; color: {t['ink']};"
+                " font-family: Consolas; background: transparent;")
+        if hasattr(self, "lb_sel"):
+            self.lb_sel.setStyleSheet(
+                f"font-size: 12px; color: {t['ink_sec']};"
+                " background: transparent;")
+        if hasattr(self, "lb_count"):
+            self.lb_count.setStyleSheet(
+                f"font-size: 11px; color: {t['ink_dis']};"
+                " background: transparent;")
+        return qss
+
+    def _refresh_theme(self):
+        """主题切换时刷新颜色令牌与对话框样式。"""
+        self._tokens = ds.tokens()
+        return self._apply_theme_style()
 
     # ── 联动 ──
     def _on_duration(self, ms):

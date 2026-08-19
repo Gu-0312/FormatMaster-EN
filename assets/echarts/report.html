@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>格式大师 · 数据大屏</title>
+<script src="echarts.min.js"></script>
+<style>
+  body { margin: 0; padding: 12px; font-family: "Microsoft YaHei", sans-serif; }
+  .title { font-size: 16px; font-weight: 500; color: #333; margin: 4px 0 8px 4px; }
+  .chart { width: 100%; height: 240px; }
+  .row { display: flex; gap: 8px; }
+  .row .chart { width: 50%; height: 220px; }
+</style>
+</head>
+<body>
+<div class="title">近 30 天转换趋势</div>
+<div id="trend" class="chart"></div>
+<div class="title">转换类型分布</div>
+<div class="row">
+  <div id="typebar" class="chart"></div>
+  <div id="typepie" class="chart"></div>
+</div>
+<script>
+const D = __DATA__;
+const ACCENT = '#5B5BD6';
+const OK = '#2FC99A';
+const FAIL = '#E24B4A';
+
+// 趋势折线：成功/失败双线
+(function () {
+  const el = document.getElementById('trend');
+  const chart = echarts.init(el);
+  chart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['成功', '失败'], top: 0 },
+    grid: { left: 40, right: 16, top: 30, bottom: 24 },
+    xAxis: { type: 'category', data: D.days, axisLabel: { rotate: 45, fontSize: 10 } },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [
+      { name: '成功', type: 'line', smooth: true, data: D.ok, itemStyle: { color: OK }, areaStyle: { opacity: 0.12, color: OK } },
+      { name: '失败', type: 'line', smooth: true, data: D.fail, itemStyle: { color: FAIL } }
+    ]
+  });
+  window.__resize = function () { chart.resize(); };
+})();
+
+// 类型柱状图
+(function () {
+  const el = document.getElementById('typebar');
+  const chart = echarts.init(el);
+  chart.setOption({
+    tooltip: {},
+    grid: { left: 40, right: 16, top: 20, bottom: 28 },
+    xAxis: { type: 'category', data: D.types, axisLabel: { rotate: 30, fontSize: 10 } },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [{ type: 'bar', data: D.typeCounts, itemStyle: { color: ACCENT, borderRadius: [4, 4, 0, 0] }, barMaxWidth: 28 }]
+  });
+})();
+
+// 类型饼图
+(function () {
+  const el = document.getElementById('typepie');
+  const chart = echarts.init(el);
+  const palette = ['#5B5BD6', '#2FC99A', '#F0A63A', '#EC4899', '#378ADD', '#639922', '#D85A30'];
+  chart.setOption({
+    tooltip: { trigger: 'item' },
+    legend: { orient: 'vertical', right: 0, top: 'middle', textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie', radius: ['35%', '68%'], center: ['38%', '50%'],
+      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 1 },
+      label: { show: false },
+      data: D.types.map((t, i) => ({ name: t, value: D.typeCounts[i], itemStyle: { color: palette[i % palette.length] } }))
+    }]
+  });
+})();
+
+window.addEventListener('resize', function () { if (window.__resize) window.__resize(); });
+</script>
+</body>
+</html>

@@ -8,7 +8,8 @@ ActionBar：面板底部操作栏（Prism 风格开始按钮 + 进度条）。
 import os
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent
+from gui_qt.components.safe_worker import SafeWorker
+from PySide6.QtGui import QColor, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout,
                                QHeaderView, QLabel, QMenu, QStackedWidget,
                                QTableWidget, QTableWidgetItem, QVBoxLayout,
@@ -34,6 +35,45 @@ def _fmt_size(n):
     return f"{n:.1f} TB"
 
 
+class _FolderScanThread:
+    """后台线程扫描目录中的匹配文件，避免主线程阻塞。"""
+
+    def __init__(self, folder, exts, parent=None):
+        from PySide6.QtCore import QThread, Signal as _Signal
+        from PySide6.QtWidgets import QWidget
+
+        class _Worker(SafeWorker):
+            done = _Signal(list)
+
+            def __init__(self, folder, exts):
+                super().__init__()
+                self._folder = folder
+                self._exts = exts
+
+            def run(self):
+                found = []
+                for root, _, files in os.walk(self._folder):
+                    for f in files:
+                        if not self._exts or os.path.splitext(f)[1].lower() in self._exts:
+                            found.append(os.path.join(root, f))
+                self.done.emit(found)
+
+        self._worker = _Worker(folder, exts)
+        self.finished = self._worker.done
+        self._parent = parent
+        # 防止 GC 回收线程
+        if parent is not None:
+            if not hasattr(parent, '_bg_threads'):
+                parent._bg_threads = []
+            parent._bg_threads.append(self._worker)
+
+    def start(self):
+        self._worker.start()
+
+    def connect(self, *args, **kwargs):
+        self.finished.connect(*args, **kwargs)
+
+
 class FileListCard(Card):
     """文件列表卡片（视频转换等面板共用）。"""
 
@@ -55,11 +95,11 @@ class FileListCard(Card):
         head = QHBoxLayout()
         title_label = SubtitleLabel(title)
         title_label.setStyleSheet(
-            f"font-size: 15px; font-weight: 600; color: {ds.ink()};")
+            f"font-size: 15px; font-weight: 600;")
         head.addWidget(title_label)
         self.count_label = CaptionLabel(tr("0 个文件", "0 files"))
         self.count_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+            f"font-size: 12px;")
         head.addWidget(self.count_label)
         head.addStretch(1)
         self.btn_add = PushButton(FluentIcon.ADD, tr("添加文件", "Add files"))
@@ -101,7 +141,7 @@ class FileListCard(Card):
         self.empty_label = QLabel(tr("拖拽文件到此处，或点击上方「添加文件」", "Drag files here, or click the add button above"))
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet(
-            f"font-size: 13px; color: {ds.ink_dis()};"
+            f"font-size: 13px;"
             "border: none; background: transparent;")
         self.stack = QStackedWidget()
         self.stack.addWidget(self.table)
@@ -115,9 +155,13 @@ class FileListCard(Card):
         # 接受拖拽并转发到 FileListCard 的统一处理，保证全卡片区域可拖入。
         self.table.setAcceptDrops(True)
         self.table.viewport().setAcceptDrops(True)
+        # enter/move/drop 全量转发：缺 move 时 Qt 在移动期间默认忽略，
+        # 表格显示后第二次拖拽会失效（第一次拖到空态提示上因冒泡成功）。
         self.table.dragEnterEvent = self.dragEnterEvent
+        self.table.dragMoveEvent = self.dragMoveEvent
         self.table.dropEvent = self.dropEvent
         self.table.viewport().dragEnterEvent = self.dragEnterEvent
+        self.table.viewport().dragMoveEvent = self.dragMoveEvent
         self.table.viewport().dropEvent = self.dropEvent
 
         # 初始化计数与空态页（无文件时显示拖拽提示）
@@ -125,7 +169,7 @@ class FileListCard(Card):
 
     # ── 文件增删 ─────────────────────────────────
     def _pick_files(self):
-        ft = tr("媒体文件 (*)", "Media files (*)") if not self._exts else \
+        ft = tr("所有文件 (*)", "All files (*)") if not self._exts else \
             tr("支持的文件 (", "Supported files (") + " ".join("*" + e for e in sorted(self._exts)) + ")"
         paths, _ = QFileDialog.getOpenFileNames(self, tr("选择文件", "Pick file"), "", ft)
         if paths:
@@ -135,12 +179,15 @@ class FileListCard(Card):
         d = QFileDialog.getExistingDirectory(self, tr("选择文件夹", "Pick folder"))
         if not d:
             return
-        found = []
-        for root, _, files in os.walk(d):
-            for f in files:
-                if self._accept(f):
-                    found.append(os.path.join(root, f))
-        self.add_files(sorted(found))
+        # 后台线程扫描目录，避免主线程阻塞
+        self._folder_scan_thread = _FolderScanThread(d, self._exts, self)
+        self._folder_scan_thread.finished.connect(self._on_folder_scan_done)
+        self._folder_scan_thread.start()
+
+    def _on_folder_scan_done(self, paths):
+        """目录扫描完成回调（主线程）。"""
+        if paths:
+            self.add_files(sorted(paths))
 
     def _accept(self, path):
         if not self._exts:
@@ -267,6 +314,14 @@ class FileListCard(Card):
             e.acceptProposedAction()
         else:
             super().dragEnterEvent(e)
+
+    def dragMoveEvent(self, e: QDragMoveEvent):
+        """拖拽移动期间持续接受（缺此方法时 Qt 默认忽略，
+        导致表格显示后第二次拖拽无效）。"""
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+        else:
+            super().dragMoveEvent(e)
 
     def dropEvent(self, e: QDropEvent):
         paths = []
@@ -426,7 +481,14 @@ class OutputDirRow(QWidget):
             self.path_edit.setText(d)
 
     def _open_folder(self):
-        import os
+        """打开目标文件夹；路径缺失/不存在时自动创建后打开，失败给提示。
+
+        原实现静默失败（目录不存在或 os.startfile 被拦时无任何反馈）——
+        用户反馈「点打开文件夹没反应」。现改为：可创建目录就创建再打开，
+        startfile 失败回退 explorer，仍失败则弹提示。
+        """
+        import subprocess
+        from gui_qt.components import toast
         d = ""
         if self.mode_combo.currentText() == self.MODE_CUSTOM:
             d = self.path_edit.text().strip()
@@ -434,8 +496,25 @@ class OutputDirRow(QWidget):
             d = self._open_dir
         if not d:
             d = os.path.expanduser("~/Downloads")
-        if d and os.path.isdir(d):
+        # 目录不存在：尝试创建（用户意图是打开输出位置）
+        if d and not os.path.isdir(d):
+            try:
+                os.makedirs(d, exist_ok=True)
+            except OSError:
+                pass
+        if not d or not os.path.isdir(d):
+            toast.show_warning(
+                self, tr("无法打开文件夹：目录不存在", "Cannot open: folder missing"))
+            return
+        try:
             os.startfile(d)
+            return
+        except Exception:  # noqa: BLE001 - startfile 被拦截/异常时回退 explorer
+            pass
+        try:
+            subprocess.Popen(["explorer", d])
+        except Exception:  # noqa: BLE001
+            toast.show_error(self, tr("无法打开文件夹", "Cannot open folder"))
 
     # ── 状态读写 ─────────────────────────────────
     def mode(self):
@@ -487,7 +566,7 @@ class ActionBar(QWidget):
         self.bar_total.setFixedHeight(12)
         self.status_label = CaptionLabel(tr("就绪", "Ready"), self)
         self.status_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};")
+            f"font-size: 12px;")
 
         # 进度条随窗口宽度伸缩（stretch=1），状态文本右对齐
         h.addWidget(self.btn_go)

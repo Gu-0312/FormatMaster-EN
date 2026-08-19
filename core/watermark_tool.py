@@ -118,7 +118,8 @@ def add_image_watermark(
         img = img.convert("RGBA")
 
     try:
-        wm = Image.open(watermark_path).convert("RGBA")
+        with Image.open(watermark_path) as _f:
+            wm = _f.convert("RGBA")
     except Exception:
         return img
 
@@ -166,7 +167,8 @@ def process_watermark(
     if progress_cb:
         progress_cb(20, "打开图片...")
     try:
-        img = Image.open(input_path)
+        with Image.open(input_path) as _f:
+            img = _f.copy()
     except Exception as e:
         if progress_cb:
             progress_cb(-1, f"错误：无法打开图片 - {e}")
@@ -258,7 +260,8 @@ def generate_preview(
 ) -> Optional[Image.Image]:
     """生成预览图（缩小后添加水印），返回 PIL Image 对象。"""
     try:
-        img = Image.open(input_path)
+        with Image.open(input_path) as _f:
+            img = _f.copy()
     except Exception:
         return None
 

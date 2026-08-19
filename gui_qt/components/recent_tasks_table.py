@@ -8,7 +8,7 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
                                QWidget)
-from qfluentwidgets import CaptionLabel
+from qfluentwidgets import CaptionLabel, InfoBadge
 
 from gui_qt.i18n import tr
 from gui_qt.components import design_system as ds
@@ -56,6 +56,7 @@ class RecentTasksTable(Card):
         super().__init__(parent, radius=12)
         self._rows = []
         self._empty_widget = None
+        self._last_sig = None   # 上次渲染的任务快照指纹（去重，切页不重建）
 
         v = QVBoxLayout(self)
         v.setContentsMargins(16, 16, 16, 12)
@@ -65,9 +66,14 @@ class RecentTasksTable(Card):
         header = QHBoxLayout()
         title = QLabel(tr("最近任务", "Recent tasks"))
         title.setStyleSheet(
-            f"font-size: 15px; font-weight: 700; color: {ds.ink()};"
+            f"font-size: 15px; font-weight: 700"
             "border: none; background: transparent;")
         header.addWidget(title)
+        # 进行中任务数徽章（InfoBadge，随 TaskManager 状态刷新）
+        self.badge_active = InfoBadge.custom(
+            "0", "#5B5BD6", "#7C7CE0")  # 亮/暗主题各一色
+        self.badge_active.setFixedHeight(20)
+        header.addWidget(self.badge_active)
         header.addStretch(1)
         v.addLayout(header)
 
@@ -115,7 +121,7 @@ class RecentTasksTable(Card):
         for text, stretch in ((tr("文件", "File"), 1), (tr("格式", "Format"), 0), (tr("状态", "Status"), 0), (tr("时间", "Time"), 0)):
             lbl = CaptionLabel(text, self)
             lbl.setStyleSheet(
-                f"font-size: 11px; color: {ds.ink_dis()}; font-weight: 600;"
+                f"font-size: 11px font-weight: 600;"
                 "border: none; background: transparent;")
             if stretch:
                 h.addWidget(lbl, 1)
@@ -125,8 +131,15 @@ class RecentTasksTable(Card):
         v.addLayout(h)
 
     def set_tasks(self, tasks):
-        self._clear_list()
         tasks = tasks or []
+        # 去重：任务集合未变化（id/状态/时间戳一致）时不重建控件。
+        # 首页 showEvent 每次切回都会调用，之前无脑重建 6 行 widget
+        # （每行 ~8 个 QWidget/QLabel）→ 切页卡顿源之一。
+        sig = [(t.task_id, t.state, t.created_at) for t in tasks[:6]]
+        if sig == self._last_sig:
+            return
+        self._last_sig = sig
+        self._clear_list()
         if not tasks:
             self._empty_widget = self._empty_hint()
             self.list_box.addWidget(self._empty_widget)
@@ -147,10 +160,10 @@ class RecentTasksTable(Card):
         lay.setSpacing(8)
         icon = IconWidget(FluentIcon.ACCEPT, box)
         icon.setFixedSize(16, 16)
-        icon.setStyleSheet(f"color: {ds.ink_dis()};")
+        icon.setStyleSheet(f"")
         lbl = CaptionLabel(tr("暂无任务记录，完成一次转换后会自动显示在这里", "No tasks yet — completed conversions will appear here"), box)
         lbl.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_dis()};"
+            f"font-size: 12px"
             "border: none; background: transparent;")
         lay.addStretch(1)
         lay.addWidget(icon)
@@ -165,6 +178,10 @@ class _TaskTableRow(QWidget):
     def __init__(self, task, parent=None):
         super().__init__(parent)
         self.setFixedHeight(40)
+        # hover 背景 QSS 预生成（避免每次 enter/leave 重建样式表字符串）
+        self._qss_hover = (
+            f"background: {ds.tokens()['card_hover']}; border-radius: 8px;")
+        self._qss_plain = "background: transparent;"
 
         h = QHBoxLayout(self)
         h.setContentsMargins(12, 4, 12, 4)
@@ -175,7 +192,7 @@ class _TaskTableRow(QWidget):
             name = name[:29] + "…"
         self.name_label = CaptionLabel(name, self)
         self.name_label.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; color: {ds.ink()};"
+            f"font-size: 13px; font-weight: 600"
             "border: none; background: transparent;")
         h.addWidget(self.name_label, 1)
 
@@ -183,7 +200,7 @@ class _TaskTableRow(QWidget):
         self.ext_label = CaptionLabel(ext, self)
         self.ext_label.setFixedWidth(56)
         self.ext_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};"
+            f"font-size: 12px"
             "border: none; background: transparent;")
         h.addWidget(self.ext_label)
 
@@ -201,15 +218,14 @@ class _TaskTableRow(QWidget):
         self.time_label = CaptionLabel(_time_str(task.created_at) or "—", self)
         self.time_label.setFixedWidth(72)
         self.time_label.setStyleSheet(
-            f"font-size: 11px; color: {ds.ink_dis()};"
+            f"font-size: 11px"
             "border: none; background: transparent;")
         h.addWidget(self.time_label)
 
     def enterEvent(self, e):
-        self.setStyleSheet(
-            f"background: {ds.tokens()['card_hover']}; border-radius: 8px;")
+        self.setStyleSheet(self._qss_hover)
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        self.setStyleSheet("background: transparent;")
+        self.setStyleSheet(self._qss_plain)
         super().leaveEvent(e)

@@ -3,14 +3,13 @@
 对应 tkinter 版 app/context.py 的角色，但不依赖 tkinter：
 集中持有转换器、FFmpeg 管理器、偏好与历史记录，供面板/页面注入使用。
 依赖方向：gui_qt -> core/ + utils/，严格单向。
+
+转换器采用懒加载：首次访问时才 import 重库（PIL/docx/openpyxl）并实例化，
+避免启动时加载不需要的依赖，减少冷启动时间。
 """
 from gui_qt.i18n import tr
 import time
 
-from core.audio_converter import AudioConverter
-from core.video_compress import VideoCompressor
-from core.doc_converter import DocumentConverter
-from core.image_converter import ImageConverter
 from core.video_converter import VideoConverter
 from utils.config import USER_PREFS, CONV_HISTORY
 from utils.ffmpeg_manager import FFmpegManager
@@ -36,21 +35,54 @@ class _HistoryStats:
 
 
 class QtServices:
-    """全局服务容器，主窗口创建一次后注入各页面/面板。"""
+    """全局服务容器，主窗口创建一次后注入各页面/面板。
+
+    转换器属性懒加载：首次访问时才实例化（含重库 import），
+    避免启动时加载全部依赖。
+    """
 
     def __init__(self):
         self.video_conv = VideoConverter()
-        self.audio_conv = AudioConverter()
-        self.image_conv = ImageConverter()
-        self.doc_conv = DocumentConverter()
         self.ffmpeg_mgr = FFmpegManager()
-        self.video_compressor = VideoCompressor()
         self.prefs = USER_PREFS
         self.history = CONV_HISTORY
         self.stats = _HistoryStats(self.history)
         self.start_time = time.time()
         # 上次使用的输出目录（与 tkinter 版 last_output_dir 语义一致）
         self.last_output_dir = self.prefs.get(QT_PREFS_PANEL, "last_output_dir", "")
+        # 懒加载缓存
+        self._audio_conv = None
+        self._image_conv = None
+        self._doc_conv = None
+        self._video_compressor = None
+
+    @property
+    def audio_conv(self):
+        if self._audio_conv is None:
+            from core.audio_converter import AudioConverter
+            self._audio_conv = AudioConverter()
+        return self._audio_conv
+
+    @property
+    def image_conv(self):
+        if self._image_conv is None:
+            from core.image_converter import ImageConverter
+            self._image_conv = ImageConverter()
+        return self._image_conv
+
+    @property
+    def doc_conv(self):
+        if self._doc_conv is None:
+            from core.doc_converter import DocumentConverter
+            self._doc_conv = DocumentConverter()
+        return self._doc_conv
+
+    @property
+    def video_compressor(self):
+        if self._video_compressor is None:
+            from core.video_compress import VideoCompressor
+            self._video_compressor = VideoCompressor()
+        return self._video_compressor
 
     # ── 偏好便捷读写（统一前缀）──────────────────
     def get_pref(self, key, default=None):
@@ -64,10 +96,6 @@ class QtServices:
     # ── FFmpeg 状态 ──────────────────────────────
     def ffmpeg_ready(self) -> bool:
         return self.ffmpeg_mgr.is_available()
-
-    def get(self, key, default=None):
-        """Generic service accessor used by pages and panels."""
-        return {"stats": self.stats}.get(key, default)
 
     def uptime_str(self) -> str:
         """运行时长文案（首页统计卡片用）。"""

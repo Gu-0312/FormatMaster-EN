@@ -65,6 +65,23 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         card.add_form(grid)
         lay.addWidget(card)
 
+        # 胶片视图：预览 + 胶片条选时间段，一键回填开始/时长
+        from PySide6.QtWidgets import QHBoxLayout, QWidget
+        from qfluentwidgets import PushButton
+        film_row = QWidget()
+        fr = QHBoxLayout(film_row)
+        fr.setContentsMargins(0, 0, 0, 0)
+        fr.setSpacing(8)
+        self.btn_film = PushButton(
+            FluentIcon.PHOTO, tr("打开胶片视图", "Open Filmstrip"))
+        self.btn_film.setToolTip(
+            tr("预览视频并在胶片条上拖动游标，精确选择要转 GIF 的时间段",
+               "Preview video, drag in/out handles on the filmstrip to pick a range"))
+        self.btn_film.clicked.connect(self._open_filmstrip)
+        fr.addWidget(self.btn_film)
+        fr.addStretch(1)
+        lay.addWidget(film_row)
+
         out_card = FormSection(tr("输出目录", "Output folder"), FluentIcon.FOLDER)
         self.out_row = OutputDirRow()
         self.out_row.bind_file_list(self.file_card)
@@ -112,6 +129,40 @@ class GifPanelPage(BaseQtPanel, TaskPanelMixin):
         if prefs.get("out_dir_combo") == OutputDirRow.MODE_CUSTOM:
             self.out_row.set_state(OutputDirRow.MODE_CUSTOM,
                                    prefs.get("out_dir_path", ""))
+
+    # ── 胶片视图 ─────────────────────────────────
+    def _open_filmstrip(self):
+        """打开胶片视图，选定区间后回填开始/时长。"""
+        files = self.file_card.files()
+        if not files:
+            from gui_qt.components import toast
+            toast.show_info(self, tr("请先添加视频文件", "Add a video first"))
+            return
+        video = files[0]
+        from gui_qt.components.gif_filmstrip import GifFilmstripDialog
+        dlg = GifFilmstripDialog(video, self)
+        dlg.move(self.main_window.frameGeometry().center()
+                 - dlg.rect().center())
+        dlg.exec()
+        rng = dlg.range_secs()
+        if rng is None:
+            return
+        start, end = rng
+        # 回填：开始取整秒（ffmpeg -ss 支持小数），时长 = end - start
+        s_val = f"{int(start)}" if abs(start - int(start)) < 0.01 \
+            else f"{start:.1f}"
+        d_val = f"{end - start:.1f}"
+        if self.cb_start.findText(s_val) < 0:
+            self.cb_start.addItem(s_val)
+        self.cb_start.setCurrentText(s_val)
+        if self.cb_dur.findText(d_val) < 0:
+            self.cb_dur.addItem(d_val)
+        self.cb_dur.setCurrentText(d_val)
+        from gui_qt.components import toast
+        toast.show_success(
+            self, tr("已应用区间：开始 {}s · 时长 {}s",
+                     "Range applied: start {}s · duration {}s")
+            .format(s_val, d_val))
 
     # ── 任务执行器 ───────────────────────────────
     def _runner(self, task, prog):

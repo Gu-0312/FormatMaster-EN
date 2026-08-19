@@ -7,6 +7,7 @@ import os
 import re
 
 from PySide6.QtCore import QThread, Signal
+from gui_qt.components.safe_worker import SafeWorker
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QWidget,
                                QVBoxLayout)
 from qfluentwidgets import (FluentIcon, CaptionLabel, CheckBox, ComboBox,
@@ -33,7 +34,7 @@ def _clean_url(raw):
     return re.sub(r"[^\x00-\x7f]", "", raw).strip()
 
 
-class _ParseWorker(QThread):
+class _ParseWorker(SafeWorker):
     """后台解析视频格式（yt-dlp 联网，可能耗时）。"""
 
     sig_done = Signal(list, str, object)   # (formats, title, playlist)
@@ -43,7 +44,7 @@ class _ParseWorker(QThread):
         super().__init__(parent)
         self._url, self._cookie, self._proxy = url, cookie, proxy
 
-    def run(self):
+    def work(self):
         try:
             from core.video_downloader import VideoDownloader
             dl = VideoDownloader()
@@ -51,6 +52,7 @@ class _ParseWorker(QThread):
             self.sig_done.emit(fmts or [], title or "", playlist)
         except Exception as e:  # noqa: BLE001
             self.sig_fail.emit(str(e))
+
 
 
 class DownloadPanelPage(BaseQtPanel):
@@ -132,6 +134,15 @@ class DownloadPanelPage(BaseQtPanel):
         self.ed_proxy = adv_grid.add_field(
             tr("代理", "Proxy"), self._line_edit(150, ""),
             hint=tr("HTTP/HTTPS 代理地址", "HTTP/HTTPS proxy"))
+        # 设置里「网络代理」开启时预填为默认值（用户可手动覆盖）
+        try:
+            if self.services.get_pref("proxy_mode", "off") == "manual":
+                _host = self.services.get_pref("proxy_host", "")
+                _port = self.services.get_pref("proxy_port", 0)
+                if _host and int(_port) > 0:
+                    self.ed_proxy.setText(f"{_host}:{int(_port)}")
+        except (TypeError, ValueError, Exception):  # noqa: BLE001 - 默认值失败不影响
+            pass
         self.cb_speed = adv_grid.add_field(
             tr("限速 MB/s", "Speed limit MB/s"), self._combo(SPEED_VALUES, tr("不限", "Unlimited")),
             hint=tr("下载速度上限，不限为 0", "Download speed limit, 0 = unlimited"))
@@ -139,7 +150,8 @@ class DownloadPanelPage(BaseQtPanel):
             "Header", self._line_edit(0, "Key:Val,Key:Val"),
             hint=tr("自定义请求头，逗号分隔", "Custom headers, comma separated"))
         self.ed_template = adv_grid.add_field(
-            tr("文件名模板", "Filename template"), self._line_edit(200, "留空=默认"),
+            tr("文件名模板", "Filename template"),
+            self._line_edit(200, tr("留空=默认", "blank = default")),
             hint=tr("输出文件名模板，留空使用默认", "Output name template, blank = default"))
         r3 = QHBoxLayout()
         r3.setSpacing(8)
@@ -153,6 +165,10 @@ class DownloadPanelPage(BaseQtPanel):
         r3.addWidget(self.cb_audio_fmt)
         self.cb_subtitles = CheckBox(tr("下载字幕", "Download subtitles"))
         r3.addWidget(self.cb_subtitles)
+        self.cb_thumb = CheckBox(tr("保存封面", "Thumbnail"))
+        r3.addWidget(self.cb_thumb)
+        self.cb_video_only = CheckBox(tr("仅视频(无音频)", "Video only"))
+        r3.addWidget(self.cb_video_only)
         r3.addStretch(1)
         r3_box = QWidget()
         r3_box.setLayout(r3)
@@ -171,7 +187,7 @@ class DownloadPanelPage(BaseQtPanel):
         btn_browse = PushButton(tr("浏览", "Browse"))
         btn_browse.clicked.connect(self._browse_dir)
         drow.addWidget(btn_browse)
-        btn_open_dir = PushButton(tr("打开文件夹", "Open folder"))
+        btn_open_dir = PushButton(tr("打开输出文件夹", "Open output folder"))
         btn_open_dir.clicked.connect(self._open_output_folder)
         drow.addWidget(btn_open_dir)
         lay.addLayout(drow)
@@ -400,6 +416,7 @@ class DownloadPanelPage(BaseQtPanel):
     def _show_favorites(self):
         from core.m3u8_downloader import M3U8Store
         from gui_qt.panels.url_list_dialog import UrlListDialog
+        store = M3U8Store()
 
         def use(url, name):
             if url and not any(q["url"] == url for q in self._queue):
@@ -409,19 +426,26 @@ class DownloadPanelPage(BaseQtPanel):
                 self.lst_queue.addItem(display)
                 self._update_count()
 
-        dlg = UrlListDialog(tr("收藏链接", "Saved links"), M3U8Store().get_favorites(), use, self)
+        dlg = UrlListDialog(tr("收藏链接", "Saved links"), store.get_favorites(),
+                            use, self, kind="favorites",
+                            delete_fn=store.remove_favorite,
+                            clear_fn=store.clear_favorites)
         dlg.exec()
 
     def _show_history(self):
         from core.m3u8_downloader import M3U8Store
         from gui_qt.panels.url_list_dialog import UrlListDialog
+        store = M3U8Store()
 
         def use(url, name):
             if url:
                 self._title = name
                 self.txt_url.setPlainText(url)
 
-        dlg = UrlListDialog(tr("下载历史", "Download history"), M3U8Store().get_history(), use, self)
+        dlg = UrlListDialog(tr("下载历史", "Download history"), store.get_history(),
+                            use, self, kind="history",
+                            delete_fn=store.remove_history,
+                            clear_fn=store.clear_history)
         dlg.exec()
 
     # ── 队列操作 ─────────────────────────────────
@@ -499,6 +523,8 @@ class DownloadPanelPage(BaseQtPanel):
             "audio_only": self.cb_audio_only.isChecked(),
             "audio_format": self.cb_audio_fmt.currentText(),
             "subtitles": self.cb_subtitles.isChecked(),
+            "thumbnail": self.cb_thumb.isChecked(),
+            "video_only": self.cb_video_only.isChecked(),
             "output_template": self.ed_template.text().strip() or None,
             "headers": self._parse_headers(),
             "out_dir": out_dir,
@@ -556,7 +582,9 @@ class DownloadPanelPage(BaseQtPanel):
             audio_only=p.get("audio_only", False),
             audio_format=p.get("audio_format", "mp3"),
             subtitles=p.get("subtitles", False),
-            output_template=p.get("output_template"))
+            output_template=p.get("output_template"),
+            thumbnail=p.get("thumbnail", False),
+            video_only=p.get("video_only", False))
 
     def _cancel_all(self):
         mgr = self.services.task_manager

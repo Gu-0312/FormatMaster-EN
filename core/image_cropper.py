@@ -21,7 +21,9 @@ PRESETS = {
 
 def crop_to_preset(input_path, output_path, preset_size, mode="cover", progress_cb=None):
     try:
-        img = Image.open(input_path)
+        # with + copy：完整解码后释放句柄（裁剪输出可能覆盖源文件）
+        with Image.open(input_path) as _f:
+            img = _f.copy()
     except FileNotFoundError:
         if progress_cb:
             progress_cb(-1, "错误：找不到图片文件")

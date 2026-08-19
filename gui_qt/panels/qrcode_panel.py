@@ -4,6 +4,8 @@
 支持自定义尺寸、边距与前后颜色，实时预览并可保存为图片。
 生成为毫秒级纯内存操作，直接在主线程同步执行。
 """
+import os
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel,
@@ -81,7 +83,37 @@ class QrcodePanelPage(BaseQtPanel):
         self.cb_size = g2.add_field(
             tr("尺寸", "Size"), self._combo(SIZE_VALUES, "400"),
             hint=tr("二维码像素尺寸", "QR pixel size"))
+        self.cb_style = g2.add_field(
+            tr("模块样式", "Module style"),
+            self._combo([tr("经典方块", "Square"),
+                         tr("圆角方块", "Rounded"),
+                         tr("圆点", "Dots"),
+                         tr("菱形", "Diamond")], tr("经典方块", "Square")),
+            hint=tr("二维码图案样式", "QR module style"))
+        self.cb_grad = g2.add_field(
+            tr("渐变", "Gradient"),
+            self._combo([tr("无", "None"), tr("垂直", "Vertical"),
+                         tr("对角", "Diagonal")], tr("无", "None")),
+            hint=tr("前景色渐变（搭配主题色更精致）", "Foreground gradient"))
         sec_style.add_form(g2)
+
+        # Logo 行：选择 Logo 图片（可选，圆形遮罩+白边）
+        logo_row = QHBoxLayout()
+        logo_row.setSpacing(8)
+        self.btn_logo = PushButton(FluentIcon.PHOTO, tr("选择 Logo…", "Pick Logo…"))
+        self.btn_logo.clicked.connect(self._pick_logo)
+        self.btn_logo_clear = PushButton(FluentIcon.CANCEL, tr("清除", "Clear"))
+        self.btn_logo_clear.clicked.connect(self._clear_logo)
+        self.btn_logo_clear.setEnabled(False)
+        logo_row.addWidget(self.btn_logo)
+        logo_row.addWidget(self.btn_logo_clear)
+        self.lb_logo = CaptionLabel(tr("未选择（可选）", "None (optional)"))
+        logo_row.addWidget(self.lb_logo)
+        logo_row.addStretch(1)
+        logo_holder = QWidget()
+        logo_holder.setLayout(logo_row)
+        sec_style.add_widget(logo_holder)
+
         adv = CollapsibleSection(
             tr("高级设置", "Advanced"),
             hint=tr("边距 / 前景色 / 背景色（通常无需调整）",
@@ -97,15 +129,50 @@ class QrcodePanelPage(BaseQtPanel):
             tr("背景色", "Background"), self._make_color_edit(DEFAULT_BG),
             hint=tr("二维码背景颜色", "QR background color"))
         adv.add_layout(adv_grid)
+        # 取色按钮行：前景/背景一键取色（qfw ColorDialog）
+        color_bar = QHBoxLayout()
+        color_bar.setSpacing(8)
+        from qfluentwidgets import ToolButton
+        self.btn_fg_pick = ToolButton(FluentIcon.PALETTE)
+        self.btn_fg_pick.setToolTip(tr("取前景色", "Pick foreground color"))
+        self.btn_fg_pick.clicked.connect(lambda: self._pick_color(self.ed_fg))
+        color_bar.addWidget(self.btn_fg_pick)
+        color_bar.addWidget(CaptionLabel(tr("取前景色", "Foreground")))
+        color_bar.addSpacing(12)
+        self.btn_bg_pick = ToolButton(FluentIcon.PALETTE)
+        self.btn_bg_pick.setToolTip(tr("取背景色", "Pick background color"))
+        self.btn_bg_pick.clicked.connect(lambda: self._pick_color(self.ed_bg))
+        color_bar.addWidget(self.btn_bg_pick)
+        color_bar.addWidget(CaptionLabel(tr("取背景色", "Background")))
+        color_bar.addStretch(1)
+        _holder = QWidget()
+        _holder.setLayout(color_bar)
+        adv.add_widget(_holder)
         sec_style.add_widget(adv)
         lay.addWidget(sec_style)
 
-        # 预览区
+        # 预览区（ImageLabel：平滑缩放 + 圆角；外包居中容器——ImageLabel 自绘
+        # 忽略 QLabel alignment，靠左显示，须用布局 stretch 水平垂直居中）
         sec_prev = FormSection(tr("预览", "Preview"), FluentIcon.VIEW)
-        self.lb_preview = QLabel(tr("点击「生成二维码」预览", "Click \"Generate QR\" to preview"))
-        self.lb_preview.setAlignment(Qt.AlignCenter)
+        from qfluentwidgets import ImageLabel
+        from PySide6.QtWidgets import (QHBoxLayout as _HL,
+                                       QVBoxLayout as _VL, QWidget as _QW)
+        self.lb_preview = ImageLabel(
+            tr("点击「生成二维码」预览", "Click \"Generate QR\" to preview"), self)
         self.lb_preview.setMinimumHeight(220)
-        sec_prev.add_widget(self.lb_preview)
+        self.lb_preview.setBorderRadius(12, 12, 12, 12)
+        holder = _QW()
+        hv = _VL(holder)
+        hv.setContentsMargins(0, 8, 0, 8)
+        hv.addStretch(1)
+        hh = _HL()
+        hh.addStretch(1)
+        hh.addWidget(self.lb_preview)
+        hh.addStretch(1)
+        hv.addLayout(hh)
+        hv.addStretch(1)
+        holder.setMinimumHeight(260)
+        sec_prev.add_widget(holder)
         lay.addWidget(sec_prev)
 
         # 操作按钮
@@ -123,6 +190,7 @@ class QrcodePanelPage(BaseQtPanel):
         lay.addLayout(brow)
 
         self._qr_img = None  # PIL Image，保存用（保持引用）
+        self._logo_path = None  # 可选 Logo 图片路径
 
     # ── 表单辅助 ─────────────────────────────────
     def _combo(self, items, default):
@@ -136,6 +204,32 @@ class QrcodePanelPage(BaseQtPanel):
         ed.setText(text)
         ed.setFixedWidth(90)
         return ed
+
+    def _pick_color(self, edit):
+        """弹 Qt 原生 QColorDialog 取色并写回输入框。
+
+        为什么弃用 qfw ColorDialog（实测 1.11.3 反复出"选了没变化"）：
+        - 依赖遮罩层 + show 淡入 200ms + done 淡出 100ms 动画（异步关闭）；
+        - 主类 colorChanged 只在点 OK 且颜色 != oldColor 时发一次；
+        - 真实 GUI 环境下取色结果易在动画/时序缝隙丢失。
+        Qt 原生 QColorDialog.getColor() 是标准模态对话框，直接返回 QColor，
+        取消返回无效色，行为 100% 可预期——功能可靠性优先于 Fluent 外观。
+        另注意：DEFAULT_FG 本就是 #000000（标准黑色二维码），未取色时
+        输入框显示 #000000 属正常初始状态，并非取色失效。
+        """
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QColorDialog
+        init = QColor(edit.text().strip()) if edit.text().strip() else QColor("#000000")
+        if not init.isValid():
+            init = QColor("#000000")
+        color = QColorDialog.getColor(init, self.window(), tr("选择颜色", "Pick color"))
+        if color.isValid():
+            edit.setText(color.name())
+            self._generate()
+            from gui_qt.components import toast
+            toast.show_success(
+                self,
+                tr("已应用颜色 {}", "Color applied {}").format(color.name()))
 
     # ── 交互 ─────────────────────────────────────
     def _set_wifi_visible(self, visible):
@@ -161,12 +255,6 @@ class QrcodePanelPage(BaseQtPanel):
                 self.txt_content.setPlainText("Hello World")
 
     def _generate(self):
-        try:
-            import qrcode
-        except ImportError:
-            toast.show_error(self, tr("缺少 qrcode 库，请先执行 pip install qrcode[pil]", "Missing qrcode lib, run: pip install qrcode[pil]"))
-            return
-
         t = self.cb_type.currentText()
         if t == "WiFi":
             ssid = self.ed_ssid.text().strip()
@@ -182,18 +270,26 @@ class QrcodePanelPage(BaseQtPanel):
                 return
 
         try:
+            from core.qr_maker import (make_fancy_qr, GRAD_NONE, GRAD_VERTICAL,
+                                       GRAD_DIAGONAL, STYLE_SQUARE,
+                                       STYLE_ROUNDED, STYLE_DOT, STYLE_DIAMOND)
             fg = self.ed_fg.text().strip() or DEFAULT_FG
             bg = self.ed_bg.text().strip() or DEFAULT_BG
             size = int(self.cb_size.currentText())
             border = int(self.cb_border.currentText())
-
-            qr = qrcode.QRCode(version=None,
-                               error_correction=qrcode.constants.ERROR_CORRECT_H,
-                               box_size=10, border=border)
-            qr.add_data(content)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color=fg, back_color=bg).convert("RGB")
-            img = img.resize((size, size), resample=0)
+            style_map = {tr("经典方块", "Square"): STYLE_SQUARE,
+                         tr("圆角方块", "Rounded"): STYLE_ROUNDED,
+                         tr("圆点", "Dots"): STYLE_DOT,
+                         tr("菱形", "Diamond"): STYLE_DIAMOND}
+            grad_map = {tr("无", "None"): GRAD_NONE,
+                        tr("垂直", "Vertical"): GRAD_VERTICAL,
+                        tr("对角", "Diagonal"): GRAD_DIAGONAL}
+            img = make_fancy_qr(
+                content, size=size, fg=fg, bg=bg,
+                style=style_map.get(self.cb_style.currentText(), STYLE_SQUARE),
+                gradient=grad_map.get(self.cb_grad.currentText(), GRAD_NONE),
+                logo_path=getattr(self, "_logo_path", None) or "",
+                border=border)
         except Exception as e:  # noqa: BLE001
             toast.show_error(self, f"生成失败：{e}")
             self.lb_status.setText(tr("生成失败", "Failed"))
@@ -203,6 +299,38 @@ class QrcodePanelPage(BaseQtPanel):
         self._show_preview(img)
         self.lb_status.setText(tr("已生成 {}×{} 二维码", "QR generated {}x{}").format(size, size))
         self.save_prefs()
+
+    # ── Logo 选择 ─────────────────────────────────
+    def _pick_logo(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("选择 Logo 图片", "Pick logo image"), "",
+            tr("图片文件 (*.png *.jpg *.jpeg *.webp *.bmp);;所有文件 (*.*)",
+               "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*.*)"))
+        if not path:
+            return
+        self._logo_path = path
+        self.lb_logo.setText(tr("Logo：{}", "Logo: {}").format(
+            os.path.basename(path)))
+        self.btn_logo_clear.setEnabled(True)
+        # 有内容时立即重新生成预览
+        if self._has_content():
+            self._generate()
+        else:
+            toast.show_info(self, tr("已选择 Logo，填写内容后生成",
+                                     "Logo set, fill content then generate"))
+
+    def _clear_logo(self):
+        self._logo_path = None
+        self.lb_logo.setText(tr("未选择（可选）", "None (optional)"))
+        self.btn_logo_clear.setEnabled(False)
+        if self._has_content():
+            self._generate()
+
+    def _has_content(self) -> bool:
+        """当前是否有可生成的内容（WiFi 或文本）。"""
+        if self.cb_type.currentText() == "WiFi":
+            return bool(self.ed_ssid.text().strip())
+        return bool(self.txt_content.toPlainText().strip())
 
     def _show_preview(self, img):
         """PIL Image → QPixmap 显示到预览区。"""
@@ -242,6 +370,9 @@ class QrcodePanelPage(BaseQtPanel):
             "border": self.cb_border.currentText(),
             "fg": self.ed_fg.text(),
             "bg": self.ed_bg.text(),
+            "style": self.cb_style.currentText(),
+            "gradient": self.cb_grad.currentText(),
+            "logo": getattr(self, "_logo_path", None) or "",
         }
 
     def collect_prefs(self) -> dict:
@@ -251,6 +382,8 @@ class QrcodePanelPage(BaseQtPanel):
             "qr_border": self.cb_border.currentText(),
             "qr_fg": self.ed_fg.text(),
             "qr_bg": self.ed_bg.text(),
+            "qr_style": self.cb_style.currentIndex(),
+            "qr_grad": self.cb_grad.currentIndex(),
         }
 
     def apply_prefs(self, prefs: dict):
@@ -267,3 +400,9 @@ class QrcodePanelPage(BaseQtPanel):
             self.ed_fg.setText(prefs["qr_fg"])
         if prefs.get("qr_bg"):
             self.ed_bg.setText(prefs["qr_bg"])
+        si = prefs.get("qr_style")
+        if isinstance(si, int) and 0 <= si < self.cb_style.count():
+            self.cb_style.setCurrentIndex(si)
+        gi = prefs.get("qr_grad")
+        if isinstance(gi, int) and 0 <= gi < self.cb_grad.count():
+            self.cb_grad.setCurrentIndex(gi)

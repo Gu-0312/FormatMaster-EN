@@ -11,7 +11,7 @@ class PlaceholderPage(ScrollArea):
     def __init__(self, feature_name, window, services=None, parent=None):
         super().__init__(parent)
         self.setObjectName(f"placeholder_{feature_name}")
-        self.window = window
+        self.main_window = window
         self.services = services
         self.setWidgetResizable(True)
         self.setViewportMargins(0, 0, 0, 0)

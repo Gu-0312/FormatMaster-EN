@@ -17,7 +17,8 @@ def _load(files, progress_callback=None):
     total = len(files)
     for i, f in enumerate(files):
         try:
-            im = Image.open(f).convert("RGB")
+            with Image.open(f) as _f:
+                im = _f.convert("RGB")
             imgs.append(im)
         except (OSError, IOError):
             if progress_callback:

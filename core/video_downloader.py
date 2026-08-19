@@ -20,12 +20,19 @@ _SHORT_DOMAINS = {
 
 
 def _find_ytdlp_exe():
-    """查找 yt-dlp.exe 便携版"""
-    from utils.config import get_bin_dir
+    """查找 yt-dlp.exe 便携版：用户可写 bin → 内置 bin（打包资源）→ PATH。"""
+    from utils.config import get_bin_dir, get_resource_path
     for name in ("yt-dlp.exe", "yt-dlp"):
         path = os.path.join(get_bin_dir(), name)
         if os.path.exists(path):
             return path
+        # 内置 bin：打包后 _MEIPASS/bin（--add-data bin;bin），开发即项目根
+        try:
+            bundled = get_resource_path(os.path.join("bin", name))
+            if os.path.exists(bundled):
+                return bundled
+        except Exception:  # noqa: BLE001
+            pass
     import shutil
     return shutil.which("yt-dlp")
 
@@ -206,7 +213,7 @@ class VideoDownloader:
     def download(self, url, output_path, format_id=None, progress_callback=None,
                  cookie=None, headers=None, proxy=None, speed_limit=0,
                  audio_only=False, audio_format="mp3", subtitles=False,
-                 output_template=None):
+                 output_template=None, thumbnail=False, video_only=False):
         self._cancel = False
         self._last_error = ""
         from utils.config import get_ffmpeg_path
@@ -235,6 +242,13 @@ class VideoDownloader:
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": audio_format,
             }]
+        elif video_only:
+            # 仅视频画面（无音频）：只取最佳视频流，不做合并
+            ydl_opts["format"] = "bestvideo/best"
+            ydl_opts["postprocessors"] = [{
+                "key": "FFmpegVideoRemuxer",
+                "preferedformat": "mp4",
+            }]
         elif format_id:
             ydl_opts["format"] = format_id
         else:
@@ -244,6 +258,9 @@ class VideoDownloader:
             ydl_opts["writeautomaticsub"] = True
             ydl_opts["subtitleslangs"] = ["all"]
             ydl_opts["embedsubs"] = False
+        if thumbnail:
+            ydl_opts["writethumbnail"] = True
+            ydl_opts["skip_download"] = False
 
         start = time.time()
 

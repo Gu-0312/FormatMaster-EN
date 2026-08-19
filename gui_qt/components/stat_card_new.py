@@ -14,6 +14,19 @@ from gui_qt.components import design_system as ds
 from gui_qt.components.card import Card
 
 
+def _dpi_scale():
+    """Windows 逻辑 DPI 缩放（125% → 1.25，150% → 1.5）。"""
+    try:
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is None:
+            return 1.0
+        s = app.primaryScreen()
+        return max(1.0, s.logicalDotsPerInch() / 96.0) if s else 1.0
+    except Exception:  # noqa: BLE001
+        return 1.0
+
+
 class _CardIcon(QWidget):
     """圆角图标方块。"""
 
@@ -42,7 +55,9 @@ class StatCard(Card):
 
     def __init__(self, title, value, delta, accent, icon, parent=None):
         super().__init__(parent, radius=12)
-        self.setMinimumHeight(96)
+        # 按 DPI 缩放预留高度：Windows 150% 缩放下 21px 大字实际约 31px，
+        # 固定 96px 会导致 value 与下方 title 重叠（视觉上"大数字两遍"）
+        self.setMinimumHeight(max(96, int(96 * _dpi_scale())))
 
         h = QHBoxLayout(self)
         h.setContentsMargins(16, 14, 16, 14)
@@ -57,15 +72,16 @@ class StatCard(Card):
         h.addWidget(icon_box)
 
         v = QVBoxLayout()
-        v.setSpacing(1)
+        v.setSpacing(4)
         self.value_label = QLabel(value, self)
+        self.value_label.setWordWrap(False)
         self.value_label.setStyleSheet(
-            f"font-size: 21px; font-weight: 700; color: {ds.ink()};"
+            f"font-size: 21px; font-weight: 700;"
             "border: none; background: transparent;")
         v.addWidget(self.value_label)
         self.title_label = CaptionLabel(title, self)
         self.title_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()};"
+            f"font-size: 12px;"
             "border: none; background: transparent;")
         v.addWidget(self.title_label)
         self.delta_label = CaptionLabel(delta, self)
@@ -75,6 +91,25 @@ class StatCard(Card):
         v.addWidget(self.delta_label)
         v.addStretch(1)
         h.addLayout(v, 1)
+        # 主题切换时重刷文字颜色（QSS 创建时写死，深色下不会自动变浅）
+        try:
+            from qfluentwidgets import qconfig
+            qconfig.themeChanged.connect(self._apply_theme)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _apply_theme(self, *args):
+        """主题切换后重刷 value/title/delta 颜色（深色模式保持可读）。"""
+        try:
+            self.value_label.setStyleSheet(
+                f"font-size: 21px; font-weight: 700;"
+                "border: none; background: transparent;")
+            self.title_label.setStyleSheet(
+                f"font-size: 12px;"
+                "border: none; background: transparent;")
+            self._set_delta_style(self.delta_label.text())
+        except Exception:  # noqa: BLE001
+            pass
 
     def _set_delta_style(self, delta):
         text = str(delta or "")

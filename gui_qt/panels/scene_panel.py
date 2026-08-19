@@ -106,3 +106,15 @@ class ScenePanelPage(BaseQtPanel, TaskPanelMixin):
 
     def _empty_hint(self):
         return tr("请先添加要处理的文件", "Add media files first")
+
+    def collect_prefs(self) -> dict:
+        """记忆场景选择，重进面板自动恢复。"""
+        return {"scene": self.cb_scene.currentIndex()}
+
+    def apply_prefs(self, prefs: dict):
+        if not prefs:
+            return
+        idx = prefs.get("scene")
+        if isinstance(idx, int) and 0 <= idx < self.cb_scene.count():
+            self.cb_scene.setCurrentIndex(idx)
+

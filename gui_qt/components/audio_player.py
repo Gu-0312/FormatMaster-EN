@@ -51,7 +51,7 @@ class AudioPlayerBar(QWidget):
         self.status_label = CaptionLabel(
             tr("未加载音频", "No audio loaded"), self)
         self.status_label.setStyleSheet(
-            f"font-size: 12px; color: {ds.ink_sec()}; background: transparent;")
+            f"font-size: 12px; background: transparent;")
         self.status_label.setWordWrap(False)
         h.addWidget(self.status_label, 1)
 

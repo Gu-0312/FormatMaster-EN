@@ -52,7 +52,7 @@ class QuickFunctionItem(HoverCard):
         v.addWidget(self._icon_box, 0, Qt.AlignHCenter)
         self.title_label = CaptionLabel(title, self)
         self.title_label.setStyleSheet(
-            f"font-size: 12px; font-weight: 600; color: {ds.ink()};"
+            f"font-size: 12px; font-weight: 600;"
             "border: none; background: transparent;")
         self.title_label.setAlignment(Qt.AlignCenter)
         v.addWidget(self.title_label)
@@ -65,7 +65,7 @@ class QuickFunctionItem(HoverCard):
 
     def leaveEvent(self, e):
         self.title_label.setStyleSheet(
-            f"font-size: 12px; font-weight: 600; color: {ds.ink()};"
+            f"font-size: 12px; font-weight: 600;"
             "border: none; background: transparent;")
         super().leaveEvent(e)
 

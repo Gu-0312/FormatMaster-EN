@@ -34,6 +34,9 @@ class TaskPanelMixin:
     def _empty_hint(self) -> str:
         return tr("请先添加要处理的文件", "Add files to process first")
 
+    # 是否需要 FFmpeg 就绪（加密/哈希等非 FFmpeg 功能设为 False，避免被拦）
+    need_ffmpeg = True
+
     # ── 提交 ─────────────────────────────────────
     def _submit_files(self):
         """公共提交流程；成功入队至少 1 个任务返回 True。"""
@@ -41,9 +44,10 @@ class TaskPanelMixin:
         if not files:
             toast.show_warning(self, self._empty_hint())
             return False
-        if not self.services.ffmpeg_ready():
-            toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
-            return False
+        if not self.need_ffmpeg or not self.services.ffmpeg_ready():
+            if self.need_ffmpeg:
+                toast.show_error(self, tr("FFmpeg 未就绪，请稍后重试", "FFmpeg not ready"))
+                return False
         if self.out_row.mode() == OutputDirRow.MODE_CUSTOM and not self.out_row.path():
             toast.show_warning(self, tr("请先选择自定义输出目录", "Choose an output folder first"))
             return False
@@ -66,7 +70,7 @@ class TaskPanelMixin:
             self.action_bar.set_running(True)
             self.action_bar.set_status(tr("已提交 {} 个任务", "Submitted {} tasks").format(added))
             return True
-        toast.show_error(self, tr("任务提交失败：FFmpeg 未就绪", "Submit failed: FFmpeg not ready"))
+        toast.show_error(self, tr("任务提交失败，请检查参数", "Submit failed, check settings"))
         return False
 
     def _cancel_all(self):
@@ -101,9 +105,11 @@ class TaskPanelMixin:
                                             tm.state_text(state))
         self.file_card.set_row_state(idx, tm.state_text(state))
         task = self.services.task_manager.get_task(task_id)
-        if state == tm.SUCCESS and task:
-            toast.show_success(self, tr("处理完成：{}", "Done: {}").format(os.path.basename(task.file_path)))
-        elif state == tm.FAILED and task:
+        # 单任务成功不再弹 toast：任务列表行内已显示「成功」状态字，
+        # app._on_batch_done 的「全部转换完成（N 个任务）」批量汇总已足够；
+        # 否则 N 个文件会弹 N+1 个成功通知，造成刷屏。
+        # 失败/取消则立即提示（用户需要立刻知道哪个出错/原因）。
+        if state == tm.FAILED and task:
             toast.show_error(self,
                              tr("处理失败：{}", "Failed: {}").format(os.path.basename(task.file_path)) +
                              tr("（{}）", " ({})").format(task.error or tr("未知错误", "unknown error")))

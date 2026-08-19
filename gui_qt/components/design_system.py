@@ -11,15 +11,42 @@
 - set_app_style() 全局样式应用入口
 """
 from gui_qt.i18n import tr
-from PySide6.QtCore import (QEasingCurve, QPointF, QPropertyAnimation,
-                            Qt, QRectF, QTimer)
+from PySide6.QtCore import (QPointF, QPropertyAnimation, Qt, QRectF, QTimer)
 from PySide6.QtGui import (QBrush, QColor, QFont, QLinearGradient, QPainter,
                             QPen, QPainterPath)
 from PySide6.QtWidgets import (QApplication, QGraphicsDropShadowEffect,
-                                QHBoxLayout, QPushButton, QVBoxLayout,
+                                QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
                                 QWidget)
-from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, TitleLabel,
-                            isDarkTheme, setThemeColor)
+from qfluentwidgets import (FluentIcon, isDarkTheme)
+import math
+import os
+import re
+
+# ─────────────────────────────────────────────────────
+#  SpinBox 微调箭头资源（修复 qfw 资源包缺 spin_box SVG → 灰色方块）
+# ─────────────────────────────────────────────────────
+_SPIN_ICON_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "assets", "icons")
+_SPIN_UP_SVG = os.path.join(_SPIN_ICON_DIR, "spin_up.svg").replace("\\", "/")
+_SPIN_DOWN_SVG = os.path.join(_SPIN_ICON_DIR, "spin_down.svg").replace("\\", "/")
+
+
+def _patch_qfw_spinbox_icons():
+    """修复 qfw SpinBox 上下箭头图标缺失（resource.py 缺 spin_box SVG）。
+
+    SpinIcon.UP/DOWN 的 path 指向不存在的 qrc 资源，QSvgRenderer 渲染空 →
+    微调按钮显示灰色方块。改指项目本地 SVG 箭头。
+    """
+    try:
+        from qfluentwidgets.components.widgets import spin_box as _sb
+        _sb.SpinIcon.UP.path = lambda theme=None: _SPIN_UP_SVG
+        _sb.SpinIcon.DOWN.path = lambda theme=None: _SPIN_DOWN_SVG
+    except Exception:  # noqa: BLE001 - 库结构变化时静默跳过
+        pass
+
+
+_patch_qfw_spinbox_icons()
 
 # ─────────────────────────────────────────────────────
 #  令牌边界（重要）
@@ -38,17 +65,37 @@ RADIUS_CARD = 12
 RADIUS_CTRL = 8
 
 # ─────────────────────────────────────────────────────
-#  字体层级（全站统一；不引入外部字体文件，用字重/字号制造层次）
+#  外观运行时状态（外观设置页写入，全局生效）
 # ─────────────────────────────────────────────────────
-FONT_BODY = "Microsoft YaHei UI"          # 正文（中文友好，系统自带）
-FONT_MONO = "Cascadia Code, Consolas, Microsoft YaHei UI"  # 代码/路径/日志
-# 字号阶梯（px）
+_animations = True          # 界面动画开关
+_card_radius = RADIUS_CARD  # 卡片圆角（12 圆角 / 0 直角）
+
+# ─────────────────────────────────────────────────────
+#  字体层级（全站统一：系统默认字体 Microsoft YaHei）
+# ─────────────────────────────────────────────────────
+FONT_BODY = "Microsoft YaHei"   # 正文（Windows 系统默认中文 UI 字体）
+FONT_MONO = "Cascadia Code, Consolas, Microsoft YaHei"  # 代码/路径/日志
+# 字号阶梯（px，基准值；全局缩放见 ui_scale()）
 FONT_DISPLAY = 27    # Hero 主标题
 FONT_H1 = 20         # 页面大标题
 FONT_H2 = 16         # 区块/卡片标题
 FONT_BODY_SZ = 13    # 正文默认
 FONT_CAPTION = 12    # 辅助说明/状态
 
+
+def ui_scale() -> float:
+    """全局界面缩放系数（0.85~1.5，默认 1.0）。
+
+    读用户偏好 qt_app/ui_scale；缩放作用于 QSS 字号与 QApplication
+    默认字体，改动后需重启生效（QSS 在启动时生成）。
+    """
+    try:
+        from utils.config import USER_PREFS
+        v = USER_PREFS.get("qt_app", "ui_scale", 1.0)
+        v = float(v)
+        return 0.85 if v < 0.85 else (1.5 if v > 1.5 else v)
+    except Exception:  # noqa: BLE001 - 读取失败用默认
+        return 1.0
 
 # ─────────────────────────────────────────────────────
 #  色彩令牌
@@ -168,16 +215,95 @@ def tokens():
     return DARK if isDarkTheme() else LIGHT
 
 
+def _accent_tokens(t):
+    """若设置了自定义主题色，基于它派生整套 accent 令牌（覆盖默认）。
+
+    保持 HSL 饱和度/亮度关系，确保 QSS 里滚动条/进度条/菜单/表格选中态/
+    日志等所有用到 accent 系列的样式都能跟随用户主题色，而不仅 qfluentwidgets
+    控件（后者由 qconfig.themeColor 独立驱动）。
+    """
+    if not _accent_override:
+        return t
+    c = QColor(_accent_override)
+    dark = isDarkTheme()
+    h, s, l, _ = c.getHslF()
+
+    def hsl(h_, s_, l_):
+        return QColor.fromHslF(
+            h_ % 1.0, min(max(s_, 0.0), 1.0), min(max(l_, 0.0), 1.0)).name()
+
+    out = dict(t)
+    out["accent"] = c.name()
+    # hover：浅色更深、深色更亮，保持可点按的对比
+    out["accent_hover"] = hsl(h, s, l - 0.12) if not dark else hsl(h, s, l + 0.12)
+    # soft：更亮一档（用于次级高亮/边框）
+    out["accent_soft"] = hsl(h, s, l + 0.10) if not dark else hsl(h, s, l + 0.14)
+    # pale：淡背景（保留主题色相，加深到可见的淡色，避免接近白色）
+    out["accent_pale"] = hsl(h, min(s * 0.55, 1.0), 0.88) if not dark \
+        else hsl(h, min(s * 0.65, 1.0), 0.28)
+    # deep：更深一档
+    out["accent_deep"] = hsl(h, s, l - 0.22) if not dark else hsl(h, s, l - 0.05)
+    return out
+
+
 def is_dark():
     return isDarkTheme()
 
 
+# 用户自定义主题色（None = 使用设计系统默认令牌）。
+# 由外观设置里的「主题色」写入；accent()/accent_hover() 等优先返回它。
+_accent_override = None
+
+
+def set_accent(color_hex):
+    """设置全局主题色覆盖；传 None/空串恢复设计系统默认。
+
+    切换主题色需让 QSS 缓存失效（QSS 内含 accent 系列色），否则
+    generate_qss 会继续返回旧主题色的缓存，导致视觉不更新。
+    """
+    global _accent_override
+    _accent_override = (color_hex or "").strip() or None
+    _QSS_CACHE.clear()
+    global _last_applied_qss
+    _last_applied_qss = None
+
+
 def accent():
+    if _accent_override:
+        return _accent_override
     return tokens()["accent"]
 
 
 def accent_hover():
+    if _accent_override:
+        c = QColor(_accent_override)
+        # 浅色主题 hover 变深，深色主题 hover 变亮，保持对比度
+        return (c.darker(115) if not isDarkTheme() else c.lighter(118)).name()
     return tokens()["accent_hover"]
+
+
+def set_animations(on: bool):
+    """开/关全局界面动画（页面淡入、卡片悬停浮起等）。"""
+    global _animations
+    _animations = bool(on)
+
+
+def animations_enabled() -> bool:
+    return _animations
+
+
+def set_card_radius(rounded: bool):
+    """设置卡片圆角：True 圆角(12)、False 直角(0)。"""
+    global _card_radius
+    _card_radius = RADIUS_CARD if rounded else 0
+    # 圆角写入 QSS（预计算缓存需失效）
+    _QSS_CACHE.clear()
+    global _last_applied_qss
+    _last_applied_qss = None
+
+
+def card_radius() -> int:
+    return _card_radius
 
 
 def page_bg():
@@ -214,6 +340,32 @@ def group_colors(key):
     """返回 (前景色, 浅背景色) 用于分组标记。"""
     table = GROUP_COLORS_DARK if isDarkTheme() else GROUP_COLORS
     return table.get(key, table["manage"])
+
+
+def bind_theme(widget, style_fn):
+    """让独立窗口/控件监听主题切换，切换时用 style_fn() 返回的 QSS 刷新。
+
+    style_fn: 无参可调用，返回要应用的 QSS 字符串（内部按 isDarkTheme 取色）。
+    返回内部刷新函数，便于外部手动触发。
+    """
+    from qfluentwidgets import qconfig
+
+    def _refresh():
+        try:
+            widget.setStyleSheet(style_fn())
+        except Exception:  # noqa: BLE001 - 刷新失败不影响运行
+            pass
+
+    try:
+        qconfig.themeChanged.connect(_refresh)
+    except Exception:  # noqa: BLE001
+        pass
+    # 主题色切换也要刷新（导航选中背景、图标色等跟随 qconfig.themeColor 派生）
+    try:
+        qconfig.themeColorChanged.connect(_refresh)
+    except Exception:  # noqa: BLE001
+        pass
+    return _refresh
 
 
 def group_color(name):
@@ -254,17 +406,23 @@ def _build_qss(t):
     """用给定令牌字典生成 QSS（不依赖 isDarkTheme()）。"""
     parts = []
 
-    # ── 窗口背景（FluentTitleBar 是透明背景，必须由 QSS 提供底色）──
+    # ── 圆角（直角模式时卡片/表面类归零）──
+    r_card = card_radius()
+
+    # ── 窗口背景（FluentTitleBar 透明，必须由 QSS 提供底色）──
+    win_bg = t["page_bg"]
+    scroll_bg = t["page_bg"]
+
     parts.append(f"""
     FluentWindow {{
-        background: {t["page_bg"]};
+        background: {win_bg};
     }}
     """)
 
     # ── 滚动区域（禁用动态调整大小，启用像素级平滑滚动）──
     parts.append(f"""
     QScrollArea {{
-        background: {t["page_bg"]};
+        background: {scroll_bg};
         border: none;
     }}
     QScrollArea > QWidget > QWidget {{
@@ -504,6 +662,66 @@ def _build_qss(t):
     }}
     """)
 
+    # ── 文本标签 ──
+    # 原生 QLabel 不跟随 qfluentwidgets 主题（palette 固定），深色模式下
+    # 若未单独设色会以 palette 黑字融入深色背景。全局兜底用 ink 令牌，
+    # 已用内联 QSS 单独设色的标签优先级更高、不受影响。
+    parts.append(f"""
+    QLabel {{
+        color: {t["ink"]};
+        background: transparent;
+    }}
+    QLabel:disabled {{
+        color: {t["ink_dis"]};
+    }}
+    QLabel[sec="true"] {{
+        color: {t["ink_sec"]};
+    }}
+    """)
+
+    # ── 数值输入框（QSpinBox / QDoubleSpinBox）──
+    parts.append(f"""
+    QSpinBox, QDoubleSpinBox {{
+        background: {t["input_bg"]};
+        color: {t["ink"]};
+        border: 1px solid {t["input_bd"]};
+        border-radius: 8px;
+        padding: 4px 10px;
+        min-height: 24px;
+    }}
+    QSpinBox:focus, QDoubleSpinBox:focus {{
+        border: 1px solid {t["accent"]};
+    }}
+    QSpinBox:disabled, QDoubleSpinBox:disabled {{
+        background: {t["table_header"]};
+        color: {t["ink_dis"]};
+    }}
+    QSpinBox::up-button, QSpinBox::down-button,
+    QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+        background: transparent;
+        border: none;
+        width: 18px;
+    }}
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+        image: url("{_SPIN_UP_SVG}");
+        width: 8px; height: 8px;
+    }}
+    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+        image: url("{_SPIN_DOWN_SVG}");
+        width: 8px; height: 8px;
+    }}
+    """)
+
+    # ── 关于页推荐条（QWidget#aboutCallout）──
+    # 由全局 QSS 托管：主题切换自动刷新，避免实例快照残留浅紫底
+    parts.append(f"""
+    QWidget#aboutCallout {{
+        background: {t["accent_pale"]};
+        border: 1px solid {t["border"]};
+        border-radius: 10px;
+    }}
+    """)
+
     # ── 列表（原生 QListWidget，如 PDF 缩略图网格）──
     parts.append(f"""
     QListWidget {{
@@ -602,7 +820,7 @@ def _build_qss(t):
         border: 1px solid {t["border"]};
         border-radius: 12px;
         padding: 10px 12px;
-        font-family: "Cascadia Code", "Consolas", "Microsoft YaHei UI";
+        font-family: "Cascadia Code", "Consolas", "Microsoft YaHei";
         font-size: 12px;
     }}
     QPlainTextEdit#logView::selection {{
@@ -614,15 +832,29 @@ def _build_qss(t):
     }}
     """)
 
-    return "\n".join(parts)
+    qss = "\n".join(parts)
+    # 直角模式：把卡片面 12px 圆角归零（控件 8px 圆角保留，观感更协调）
+    if r_card == 0:
+        qss = qss.replace("border-radius: 12px;", "border-radius: 0px;")
+    # 全局界面缩放：按 ui_scale() 等比缩放所有 font-size（最小 8px 防挤）
+    scale = ui_scale()
+    if abs(scale - 1.0) > 0.01:
+        qss = re.sub(
+            r"font-size:\s*(\d+)px",
+            lambda m: f"font-size: {max(8, int(int(m.group(1)) * scale))}px",
+            qss)
+    return qss
 
 
 def generate_qss():
-    """返回当前主题的 QSS（预计算缓存，避免每次切换重复生成）。"""
-    key = "dark" if isDarkTheme() else "light"
+    """返回当前主题的 QSS（预计算缓存，避免每次切换重复生成）。
+
+    注意：用 tokens()（含玻璃模式的半透明表面色），而非直接 DARK/LIGHT。
+    缓存 key 含 ui_scale——缩放偏好变化后强制重建，避免字号不刷新。
+    """
+    key = f"{'dark' if isDarkTheme() else 'light'}:{ui_scale():.2f}"
     if key not in _QSS_CACHE:
-        t = DARK if key == "dark" else LIGHT
-        _QSS_CACHE[key] = _build_qss(t)
+        _QSS_CACHE[key] = _build_qss(_accent_tokens(tokens()))
     return _QSS_CACHE[key]
 
 
@@ -711,24 +943,18 @@ def set_app_window(window):
 
 
 def set_app_style():
-    """应用 Prism 设计系统：设置主题色 + 应用预缓存 QSS + 修复窗口背景。
+    """应用 Prism 设计系统：应用预缓存 QSS 到主窗口 + 修复窗口背景。
 
-    主题切换时调用。FluentTitleBar 是透明背景，会透出 FluentWindow
+    明暗/主题色切换时调用。FluentTitleBar 是透明背景，会透出 FluentWindow
     底层色。深色模式下必须强制设置窗口背景，否则显示为系统浅色。
 
-    性能：qfluentwidgets 的 setTheme 已触发过一次 updateStyleSheet，
-    这里用 qconfig 直接写入主题色配置（不触发第二次全量刷新），
-    只应用窗口级 Prism QSS，避免每次切换两次全量重绘。
+    注意：这里只做主窗口 QSS 全量重算（重量级，~400ms）。qfluentwidgets
+    控件的主题色刷新由 setTheme 内部完成（明暗切换）或
+    apply_theme_color_fast（主题色切换）负责，本函数只处理 Prism 自定义 QSS。
     """
     app = QApplication.instance()
     if app is None:
         return
-    # 只更新主题色配置，不重复触发 updateStyleSheet（setTheme 已刷过）
-    try:
-        from qfluentwidgets import qconfig
-        qconfig.set(qconfig.themeColor, QColor(accent()), save=False)
-    except Exception:
-        setThemeColor(accent(), lazy=True)
     target = _app_window if _app_window is not None else app
     qss = generate_qss()
     # 同主题重复切换时 QSS 内容不变，跳过 setStyleSheet 避免无谓的全量
@@ -743,6 +969,54 @@ def set_app_style():
         _refresh_text_edits(_app_window)
 
 
+# 控件 → 是否含 ThemeColor 占位符（weakref，避免泄漏）
+import weakref as _weakref
+_theme_color_cache = _weakref.WeakKeyDictionary()
+
+
+def _widget_has_theme_color(widget, file):
+    """判断某控件的 QSS 源是否含 ThemeColor 占位符（结果缓存）。
+
+    主题色（accent）切换只影响含 ThemeColor 的控件；不含的控件（如
+    QLabel/ComboBox 等大控件）刷新它们反而触发昂贵的级联重算。
+    """
+    cached = _theme_color_cache.get(widget)
+    if cached is not None:
+        return cached
+    has = False
+    try:
+        from qfluentwidgets import qconfig
+        for src in file.sources:
+            if "ThemeColor" in src.content(qconfig.theme):
+                has = True
+                break
+    except Exception:  # noqa: BLE001
+        has = False
+    _theme_color_cache[widget] = has
+    return has
+
+
+def apply_theme_color_fast():
+    """主题色切换的即时刷新：只刷新含 ThemeColor 的可见控件（~25ms），
+    不含的控件跳过（主题色不影响它们），隐藏控件标记 dirty-qss 延迟刷新。
+
+    替代 setThemeColor 全量（预热后可见控件逐个 setStyleSheet 可达 400ms），
+    把主题色切换的即时反馈降到 ~25ms，剩余重量级工作由 set_app_style
+    去抖延迟执行。
+    """
+    from qfluentwidgets import qconfig
+    from qfluentwidgets.common import style_sheet as _ss
+    for widget, file in list(_ss.styleSheetManager.items()):
+        try:
+            if not widget.isVisible():
+                widget.setProperty("dirty-qss", True)
+                continue
+            if _widget_has_theme_color(widget, file):
+                _ss.setStyleSheet(widget, file, qconfig.theme)
+        except RuntimeError:  # noqa: BLE001
+            pass
+
+
 def _refresh_text_edits(root):
     """遍历 root 下所有 TextEdit，重新应用主题背景样式。"""
     from qfluentwidgets import TextEdit
@@ -754,31 +1028,89 @@ def _refresh_text_edits(root):
 
 
 def enable_smooth_scrolling(root):
-    """遍历 root 下所有滚动视图，启用像素级平滑滚动并优化速度。"""
+    """遍历 root 下所有滚动视图，启用像素级即时滚动（无动画延迟）。
+
+    原实现用 SmoothScrollDelegate 的 QPropertyAnimation（120ms OutCubic）做
+    「平滑滚动」，滚轮滚一下页面要 120ms 才「追」到目标位置，产生慢一拍
+    的滞后感。改为禁用动画（NO_SMOOTH + useAni=False），滚轮走原生
+    QAbstractScrollArea.wheelEvent 即时响应，配合 install_scroll_speed_booster
+    的增量放大，滚动又快又跟手。
+    """
+    apply_fast_scroll(root)
+
+
+def apply_fast_scroll(root):
+    """把 root 自身及其全部子孙滚动区域切换为「原生即时滚动」。
+
+    与 enable_smooth_scrolling 的关键差异：findChildren 不含 root 自身，
+    导致懒加载面板（BaseQtPanel 继承 qfluentwidgets ScrollArea）自身的
+    SmoothScrollDelegate 从未被关闭 —— 滚轮事件走 FixedStepSmoothScrollEngine
+    （LINEAR 400ms 逐帧动画），每格滚轮要 400ms 才滚完，表现为「页面功能区
+    滚轮滚动很慢、跟手差」（侧边导航栏启动时已被处理所以流畅）。
+
+    修复要点：
+    1. 处理 root 自身 + 递归全部子孙（findChildren 是深度遍历，一次调用
+       即可覆盖所有嵌套滚动区域，无需递归）。
+    2. SmoothMode.NO_SMOOTH：SmoothScroll.wheelEvent 直接走原生
+       QAbstractScrollArea.wheelEvent（即时滚动），任何 delta 都不进动画引擎。
+    3. ScrollPerPixel 像素滚动模式。
+    4. setProperty 防重复处理（动态创建的面板/弹窗不会重复遍历开销）。
+    """
     from PySide6.QtWidgets import QAbstractItemView, QAbstractScrollArea
-    for sa in root.findChildren(QAbstractScrollArea):
-        if hasattr(sa, 'setHorizontalScrollMode'):
+    from qfluentwidgets.common.smooth_scroll import SmoothMode
+    applied = 0
+    targets = []
+    if isinstance(root, QAbstractScrollArea):
+        targets.append(root)
+    targets.extend(root.findChildren(QAbstractScrollArea))
+    for sa in targets:
+        if sa.property("fm_fast_scroll"):
+            continue
+        sa.setProperty("fm_fast_scroll", True)
+        applied += 1
+        if hasattr(sa, "setHorizontalScrollMode"):
             sa.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
             sa.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        # 优化 qfluentwidgets SmoothScrollDelegate 滚动速度
+        # 关闭 qfluentwidgets 平滑滚动动画，改为即时响应
         if hasattr(sa, 'scrollDelagate') and sa.scrollDelagate:
             delegate = sa.scrollDelagate
-            if hasattr(delegate, 'vScrollBar') and delegate.vScrollBar:
-                delegate.vScrollBar.setScrollAnimation(120, QEasingCurve.OutCubic)
-            if hasattr(delegate, 'hScrollBar') and delegate.hScrollBar:
-                delegate.hScrollBar.setScrollAnimation(120, QEasingCurve.OutCubic)
-            # 启用动画模式以获得更快响应
-            delegate.useAni = True
+            delegate.useAni = False
+            try:
+                delegate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+                delegate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            except Exception:  # noqa: BLE001 - 属性缺失时静默
+                pass
     for view in root.findChildren(QAbstractItemView):
         view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+    return applied
 
 
 def install_scroll_speed_booster(app):
-    """安装全局鼠标滚轮加速器，放大滚轮增量。"""
+    """安装全局鼠标滚轮加速器，放大滚轮增量。
+
+    滚轮事件实际发给滚动区域的 viewport（或其子控件），而非 QAbstractScrollArea
+    本身，故需沿父链向上判断。放大后滚动更跟手（配合 enable_smooth_scrolling
+    关闭动画的即时响应）。
+    """
     from PySide6.QtCore import QEvent, Qt, QPoint, QObject
     from PySide6.QtWidgets import QAbstractScrollArea
     from PySide6.QtGui import QWheelEvent
+
+    def _is_scroll_related(widget):
+        """判断 widget 是否是滚动区域或其视口内的控件。"""
+        return _find_scroll_area(widget) is not None
+
+    def _find_scroll_area(widget):
+        """向上找 widget 所在（4 层内）的 QAbstractScrollArea，找不到返回 None。"""
+        w = widget
+        for _ in range(4):  # 最多向上 4 层
+            if w is None:
+                return None
+            if isinstance(w, QAbstractScrollArea):
+                return w
+            w = w.parent()
+        return None
 
     class _WheelBooster(QObject):
         def __init__(self, factor=1.5):
@@ -786,17 +1118,28 @@ def install_scroll_speed_booster(app):
             self.factor = factor
 
         def eventFilter(self, obj, event):
-            if event.type() == QEvent.Type.Wheel and isinstance(obj, QAbstractScrollArea):
+            if event.type() == QEvent.Type.Wheel and _is_scroll_related(obj):
+                # 兜底：动态创建的滚动区域（懒加载面板/对话框/弹窗）在
+                # 首次滚轮时现场应用快速滚动（NO_SMOOTH + 像素滚动），
+                # 无需在每一处创建代码里手动接线。setProperty 标记保证
+                # 只处理一次，遍历开销可忽略。
+                try:
+                    sa = _find_scroll_area(obj)
+                    if sa is not None and not sa.property("fm_fast_scroll"):
+                        apply_fast_scroll(sa)
+                except Exception:  # noqa: BLE001 - 兜底失败不影响滚动
+                    pass
                 if event.angleDelta().isNull():
                     return False
                 # 放大 angleDelta
                 delta = event.angleDelta()
-                new_delta = QPoint(int(delta.x() * 1.5), int(delta.y() * 1.5))
+                new_delta = QPoint(int(delta.x() * self.factor),
+                                   int(delta.y() * self.factor))
                 # 创建新的 wheel event
                 new_event = QWheelEvent(
                     event.position(), event.globalPosition(),
-                    event.pixelDelta() * 1.5 if event.pixelDelta() else QPoint(0, 0),
-                    QPoint(int(delta.x() * 1.5), int(delta.y() * 1.5)),
+                    event.pixelDelta() * self.factor if event.pixelDelta() else QPoint(0, 0),
+                    new_delta,
                     event.buttons(), event.modifiers(),
                     event.phase(), event.inverted()
                 )
@@ -950,15 +1293,18 @@ class HeroBanner(QWidget):
 
         left = QVBoxLayout()
         left.setSpacing(6)
-        self.title_label = TitleLabel(self._title)
-        self.subtitle_label = CaptionLabel(self._subtitle)
+        # 使用普通 QLabel，避免 qfluentwidgets 的 FluentLabelBase 在主题切换时
+        # 自动重设 light/dark 文字色覆盖手动的白色样式。
+        self.title_label = QLabel(self._title)
+        self.title_label.setWordWrap(False)
+        self.subtitle_label = QLabel(self._subtitle)
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setMaximumWidth(560)
         left.addWidget(self.title_label)
         left.addWidget(self.subtitle_label)
         left.addStretch()
 
-        self.badge = CaptionLabel(tr("本地转换 · FFmpeg 引擎", "Local convert · FFmpeg engine"))
+        self.badge = QLabel(tr("本地转换 · FFmpeg 引擎", "Local convert · FFmpeg engine"))
         left.addWidget(self.badge)
         outer.addLayout(left, 1)
 
@@ -972,33 +1318,38 @@ class HeroBanner(QWidget):
         # 棱镜流动动效：色标微移 + 光斑缓慢漂移（ambient 动画，可见时运行）
         self._t = 0.0
         self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(33)  # ~30fps
+        # 10fps（100ms）：原 24fps（42ms）常驻全量重绘渐变+光斑导致界面
+        # 交互卡顿（2026-08-15 性能修复）；降频后流动感仍保留、开销减半以上。
+        self._anim_timer.setInterval(100)
         self._anim_timer.timeout.connect(self._on_anim_tick)
 
-        # 背景为固定深色渐变，文字必须恒为白色。qfluentwidgets 主题切换会
-        # 重置其控件的样式表，导致浅色模式下 TitleLabel/CaptionLabel 变回
-        # 默认深色文字。themeChangedFinished 在 qfluentwidgets 控件刷新
-        # 完成后触发，此时再恢复白色样式才能保证不被后续覆盖。
+        # 背景为固定深色渐变，文字必须恒为白色。内部 label 已改为普通
+        # QLabel 以避免 qfluentwidgets 的 FluentLabelBase 自动根据主题切换
+        # 文字色；仍监听 themeChangedFinished 并在事件队列排空后再次刷新，
+        # 作为防御性保险，防止全局 QSS 变更后颜色被意外覆盖。
         self._apply_text_styles()
         try:
             from qfluentwidgets import qconfig
-            qconfig.themeChangedFinished.connect(self._apply_text_styles)
+
+            def _deferred_refresh():
+                QTimer.singleShot(0, self._apply_text_styles)
+
+            qconfig.themeChangedFinished.connect(_deferred_refresh)
         except Exception:  # noqa: BLE001 - 信号缺失不应阻断构建
             pass
 
     def _apply_text_styles(self):
         """重新应用 Hero 内文字样式（背景恒为深色渐变）。
 
-        徽章/卡片底色用半透明深色（而非半透明白）——
-        渐变右端为浅紫/粉色区，白字叠半透明白底对比度极低
-        （tr("透明白字", "Translucent white text")），叠深色底则白字始终清晰。
+        使用普通 QLabel + !important 颜色，确保 qfluentwidgets 主题切换后
+        文字始终保持白色，不受 FluentLabelBase 自动 light/dark 重设影响。
         """
         self.title_label.setStyleSheet(
-            "font-size: 27px; font-weight: 700; color: #FFFFFF;")
+            "font-size: 27px; font-weight: 700; color: #FFFFFF !important;")
         self.subtitle_label.setStyleSheet(
-            "font-size: 13px; color: rgba(255,255,255,0.82);")
+            "font-size: 13px; color: rgba(255,255,255,0.82) !important;")
         self.badge.setStyleSheet(
-            "background: rgba(0,0,0,0.28); color: #FFFFFF;"
+            "background: rgba(0,0,0,0.28); color: #FFFFFF !important;"
             "border: 1px solid rgba(255,255,255,0.22);"
             "border-radius: 12px; padding: 4px 12px;"
             "font-size: 12px; font-weight: 600;")
@@ -1010,7 +1361,6 @@ class HeroBanner(QWidget):
         self.subtitle_label.setText(subtitle)
 
     def paintEvent(self, e):
-        import math
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect()
@@ -1029,7 +1379,7 @@ class HeroBanner(QWidget):
         grad.setColorAt(1.0, QColor("#DB2777"))
         painter.fillRect(rect, grad)
 
-        # 装饰光斑：位置随 t 缓慢漂移（低调、有生命感）
+        # 装饰光斑：位置随 t 缓慢漂移（低调、有生命感；2 个足矣，减少重绘开销）
         painter.setPen(Qt.NoPen)
         w, h = rect.width(), rect.height()
         painter.setBrush(QColor(255, 255, 255, 20))
@@ -1040,22 +1390,21 @@ class HeroBanner(QWidget):
         painter.drawEllipse(
             QPointF(w * (0.96 + 0.015 * math.cos(t * 0.9)), h - 14 + 5 * math.sin(t * 0.7)),
             54, 54)
-        painter.setBrush(QColor(255, 255, 255, 10))
-        painter.drawEllipse(
-            QPointF(w * (0.52 - 0.03 * math.sin(t * 0.8)), -10 + 4 * math.cos(t)),
-            46, 46)
 
         painter.end()
 
     def _on_anim_tick(self):
-        """驱动流动：更新相位并重绘。"""
+        """驱动流动：更新相位并重绘；动画开关关闭时停止常驻重绘。"""
+        if not animations_enabled():
+            self._anim_timer.stop()
+            return
         self._t += 0.02
         self.update()
 
     def showEvent(self, e):
-        """可见时才运行动画，避免后台空转耗电。"""
+        """可见且动画开关开启时才运行动画，避免后台空转耗电。"""
         super().showEvent(e)
-        if not self._anim_timer.isActive():
+        if animations_enabled() and not self._anim_timer.isActive():
             self._anim_timer.start()
 
     def hideEvent(self, e):
@@ -1074,3 +1423,21 @@ class HeroBanner(QWidget):
     def refresh(self):
         """主题切换后刷新（渐变色随主题变化）。"""
         self.update()
+
+
+def screen_ratio_size(ratio=0.8, max_w=1200, max_h=800):
+    """按屏幕可用区域比例返回弹窗尺寸 (w, h)，适配不同分辨率。
+
+    ratio=0.8 表示占屏幕可用区域的 80%；超过上限时截断。
+    """
+    try:
+        from PySide6.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        geo = scr.availableGeometry() if scr is not None else None
+    except Exception:  # noqa: BLE001
+        geo = None
+    if geo is None or geo.width() <= 0:
+        return 800, 600
+    w = min(int(geo.width() * ratio), max_w)
+    h = min(int(geo.height() * ratio), max_h)
+    return max(w, 480), max(h, 360)
