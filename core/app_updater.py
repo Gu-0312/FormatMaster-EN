@@ -303,15 +303,18 @@ def _write_updater_bat(bat_path, parent, dir_name, app_exe_name):
 
 
 def cleanup_backup(app_dir):
-    """启动时清理旧版备份目录 _fm_old（上次更新成功后未能删除的残留）。
+    """启动时清理上次更新的遗留目录（幂等、静默、绝不抛异常）。
 
-    幂等、静默、绝不抛异常。新版已正常启动并运行到这一步，说明更新成功，
-    残留的备份目录（旧版文件）已无价值，删除避免占用磁盘。
+    - _fm_old：旧版备份目录（更新成功后的残留，update.bat 未能删除时）；
+    - _fm_new：更新包解压目录（下载/解压后未完成替换的残留，update.bat
+      从未运行或中途失败时遗留，占磁盘较大）。
+    新版已正常启动并运行到这一步，说明更新流程已结束，残留目录均无价值。
     """
     try:
         parent = os.path.dirname(app_dir)
-        bak = os.path.join(parent, "_fm_old")
-        if os.path.isdir(bak):
-            shutil.rmtree(bak, ignore_errors=True)
+        for name in ("_fm_old", "_fm_new"):
+            p = os.path.join(parent, name)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
     except Exception:  # noqa: BLE001
         pass

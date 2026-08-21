@@ -7,7 +7,7 @@ import threading
 import time as _time_mod
 
 APP_NAME = tr("格式大师", "FormatMaster")
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 
 # ═══════════════════════════════════════════════
 #  路径管理（核心修复区）
@@ -35,24 +35,132 @@ def get_resource_path(relative_path: str) -> str:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, relative_path)
 
+# 可写 bin 目录结果缓存：运行期目标目录不变（_MEIPASS/APPDATA/可写性在
+# 进程生命周期内稳定），避免每次调用都 makedirs + 探针写删文件——ffmpeg
+# 路径查找、yt-dlp 版本检测等高频路径每次写盘会产生无谓磁盘 IO。
+_WRITABLE_BIN_DIR_CACHE = None
+
+
 def get_writable_bin_dir() -> str:
     """
     获取可写的bin目录（用于下载FFmpeg、缓存等运行时生成的文件）
-    - 打包后: %APPDATA%/FormatMaster/bin（持久化，重启不丢失）
+    - 打包 onedir: 优先安装目录 _internal/bin——随包自带的 ffmpeg/ffprobe/
+      yt-dlp 就在此处，更新后直接覆盖随包那份，不再于 %APPDATA% 重复存一份
+      （2026-08-21 修复：避免 C 盘/安装盘双份浪费硬盘）；安装目录只读
+      （如 Program Files 等）时回退 %APPDATA%/FormatMaster/bin。
+    - 打包 onefile: _MEIPASS 是临时解压目录（%TEMP%/_MEIxxxx，重启即失），
+      直接回退 %APPDATA%/FormatMaster/bin（持久化，重启不丢失）。
     - 开发时: 项目根目录/bin
     """
+    global _WRITABLE_BIN_DIR_CACHE
+    if _WRITABLE_BIN_DIR_CACHE is not None:
+        return _WRITABLE_BIN_DIR_CACHE
     if _is_frozen():
+        app_bin = None
+        mei = getattr(sys, "_MEIPASS", "")
+        try:
+            # onedir：_MEIPASS = <exe目录>/_internal（PyInstaller 6.x 标准
+            # 结构；5.x 为 exe 目录本身）——真实安装目录，可持久；
+            # onefile：_MEIPASS 在系统临时目录（%TEMP%/_MEIxxxx，重启即失）。
+            # 用 exe 目录结构精确判定，不依赖 tempdir（用户自定义 TEMP、
+            # 测试 monkeypatch 等场景下 startswith 判定不可靠）。
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            if mei and (
+                    os.path.normcase(mei) == os.path.normcase(
+                        os.path.join(exe_dir, "_internal"))
+                    or os.path.normcase(mei) == os.path.normcase(exe_dir)):
+                app_bin = os.path.join(mei, "bin")
+        except Exception:  # noqa: BLE001 - 判定失败按不可用处理
+            app_bin = None
+        if app_bin is not None:
+            try:
+                os.makedirs(app_bin, exist_ok=True)
+                # 写探针验证安装目录可写（Program Files 等受 UAC 保护，
+                # os.access 在 Windows 目录上不可靠，直接尝试建删文件）
+                probe = os.path.join(app_bin, ".fm_w")
+                with open(probe, "w", encoding="utf-8") as f:
+                    f.write("")
+                os.remove(probe)
+                _WRITABLE_BIN_DIR_CACHE = app_bin
+                return app_bin
+            except OSError:
+                pass  # 只读 → 回退用户数据目录
         app_data = os.environ.get("APPDATA", os.path.expanduser("~"))
         bin_dir = os.path.join(app_data, APP_NAME, "bin")
     else:
         bin_dir = os.path.join(get_app_dir(), "bin")
     os.makedirs(bin_dir, exist_ok=True)
+    _WRITABLE_BIN_DIR_CACHE = bin_dir
     return bin_dir
 
 # ✅ 保留此函数名以兼容 ffmpeg_manager.py 的调用
 # 但内部已改为返回【可写目录】而非exe同级目录
 def get_bin_dir():
     return get_writable_bin_dir()
+
+
+# 历史遗留 %APPDATA% 工具副本迁移标记（已完成迁移后跳过，幂等）
+_LEGACY_BIN_MARK = "bin_migrated_v1"
+# 需统一到软件 bin 目录的工具文件（旧版更新曾写入 %APPDATA%/FormatMaster/bin）
+_LEGACY_BIN_FILES = ("ffmpeg.exe", "ffprobe.exe", "yt-dlp.exe", "yt-dlp")
+
+
+def migrate_legacy_bin_files():
+    """一次性迁移历史遗留的 %APPDATA%/FormatMaster/bin 工具副本到软件 bin 目录。
+
+    背景（2026-08-21）：旧版打包程序把更新后的 ffmpeg/ffprobe/yt-dlp 下载到
+    %APPDATA%/FormatMaster/bin，与安装目录随包 bin 双份占用硬盘；且更新流程
+    已改为覆盖安装目录 bin（见 get_writable_bin_dir），%APPDATA% 的旧副本不再
+    被查找链使用，纯属浪费。本函数把旧副本「去重」到软件 bin 目录后清掉：
+    - 软件 bin 已有同名 → 若 %APPDATA% 副本修改时间明显更新则以它覆盖（保留
+      用户手动更新的最新版），然后删除 %APPDATA% 副本；
+    - 软件 bin 缺失 → 直接迁移（move）过去；
+    - 全部清空后删除空目录。
+    完成后写偏好标记，后续启动零开销。跨盘 copy 可能耗时数秒，必须由
+    调用方放后台线程执行（app.py 启动时已如此安排）。
+    目标目录复用 get_writable_bin_dir()（单一真源：onedir 安装目录 bin /
+    onefile 与只读回退 %APPDATA%）；目标==%APPDATA% 时无迁移必要直接跳过。
+    """
+    try:
+        if USER_PREFS.get("qt_app", _LEGACY_BIN_MARK, False):
+            return
+        # 仅打包模式需要处理；开发模式 %APPDATA% 从未被写入工具
+        if not _is_frozen():
+            return
+        app_data = os.environ.get("APPDATA", os.path.expanduser("~"))
+        legacy = os.path.join(app_data, APP_NAME, "bin")
+        if not os.path.isdir(legacy):
+            return
+        app_bin = get_writable_bin_dir()
+        # onefile / 安装目录只读 → 目标就是 %APPDATA%，无迁移必要
+        if os.path.normcase(app_bin) == os.path.normcase(legacy):
+            return
+        for name in _LEGACY_BIN_FILES:
+            src = os.path.join(legacy, name)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(app_bin, name)
+            try:
+                if os.path.isfile(dst):
+                    # 软件 bin 已有：仅当 %APPDATA% 副本明显更新时覆盖之
+                    # （mtime 容差 60s，避免同时刻随机覆盖），随后必删副本
+                    if (os.path.getmtime(src)
+                            > os.path.getmtime(dst) + 60):
+                        shutil.copy2(src, dst)
+                    os.remove(src)
+                else:
+                    shutil.move(src, dst)
+            except OSError:
+                continue  # 单文件失败不影响其余
+        # 清空后删除空目录（残留其他文件则保留）
+        try:
+            if not os.listdir(legacy):
+                os.rmdir(legacy)
+        except OSError:
+            pass
+        USER_PREFS.set("qt_app", _LEGACY_BIN_MARK, True)
+    except Exception:  # noqa: BLE001 - 迁移失败不影响启动
+        pass
 
 # ffmpeg/ffprobe 路径查找缓存：运行期路径基本不变，避免每次调用
 # 都做 4 层文件系统探测（转换任务中每个 Popen 前至少调两次）。
@@ -71,8 +179,9 @@ def _find_ffmpeg(name: str):
     """
     按优先级查找FFmpeg/FFprobe:
     0. 用户自定义路径（设置页"浏览…"手动选择，优先级最高）
-    1. 用户可写目录（下载/更新后的版本）
-    2. 打包嵌入的资源（_internal/bin，只读）
+    1. 用户可写目录（下载/更新后的版本；打包 onedir 下即安装目录
+       _internal/bin，直接覆盖随包工具，见 get_writable_bin_dir）
+    2. 打包嵌入的资源（_internal/bin，只读；与 1 同目录时兜底）
     3. 系统环境变量PATH
 
     结果缓存到 _FFMPEG_PATH_CACHE，避免重复文件系统探测。
@@ -194,17 +303,32 @@ def get_user_prefs_path():
     return os.path.join(get_user_data_dir(), "user_prefs.json")
 
 
-def _atomic_write_json(path, data):
+def _atomic_write_json(path, data, durable=False):
     """健壮的 JSON 原子写：tmp + replace，瞬时占用（多实例/杀软锁定）时
-    重试 3 次，仍失败则降级直接写原文件（避免丢失本次保存）。"""
+    重试 3 次，仍失败则降级直接写原文件（避免丢失本次保存）。
+
+    durable=True：写入后 os.fsync 强制**物理落盘**（跳过操作系统 Page Cache）。
+    2026-08-21 修复：仅 flush 只到内核缓存，断电/进程被杀仍可能丢；退出收尾、
+    页面/侧边栏记忆等「不能丢」的场景必须 durable。后台合并写（150ms 防抖）
+    保持 False 以保性能（丢了也只是 150ms 窗口内的面板参数）。
+    """
     import json
     import time as _time
     tmp = path + ".tmp"
     last_err = None
+
+    def _write_to(f):
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.flush()
+        if durable:
+            # Windows 上 os.fsync 等价 _commit：把文件内容刷出内核缓冲，
+            # 确保数据真正到达物理磁盘（断电/强杀不丢）
+            os.fsync(f.fileno())
+
     for attempt in range(3):
         try:
             with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                _write_to(f)
             os.replace(tmp, path)
             return True
         except OSError as e:
@@ -213,7 +337,7 @@ def _atomic_write_json(path, data):
     # 降级：直接写原文件（非原子，但能保存数据；目标文件被占用时放弃）
     try:
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            _write_to(f)
         return True
     except OSError as e:
         last_err = e
@@ -287,21 +411,29 @@ class UserPrefs:
                 self.prefs = {}
 
     def _save(self):
-        """同步落盘（显式调用场景：退出收尾/测试断言）。"""
+        """同步落盘（显式调用场景：退出收尾/测试断言）。
+
+        durable=True：os.fsync 物理落盘，断电/强杀不丢（退出收尾场景）。
+        """
         if self._defer_save:
             return
         path = get_user_prefs_path()
         with self._write_lock:
-            _atomic_write_json(path, self.prefs)
+            _atomic_write_json(path, self.prefs, durable=True)
 
     def flush(self):
-        """手动触发落盘：先把内存中未落盘的变更同步写盘（退出前兜底）。"""
+        """手动触发落盘：先把内存中未落盘的变更同步写盘（退出前兜底）。
+
+        durable=True：os.fsync 强制物理落盘（2026-08-21 修复——原实现只把
+        数据送到操作系统 Page Cache，断电/进程被杀时仍会丢失；退出收尾与
+        页面/侧边栏即时记忆路径均调用本方法）。
+        """
         # 清掉后台待写标记（数据马上由本方法同步写盘，避免重复写）
         if self._dirty.is_set():
             self._dirty.clear()
         path = get_user_prefs_path()
         with self._write_lock:
-            _atomic_write_json(path, self.prefs)
+            _atomic_write_json(path, self.prefs, durable=True)
 
     def get(self, panel, key, default=None):
         with self._lock:
@@ -313,6 +445,24 @@ class UserPrefs:
                 self.prefs[panel] = {}
             self.prefs[panel][key] = value
         self._dirty.set()   # 后台合并写，UI 线程零 IO
+
+    def set_now(self, panel, key, value):
+        """设置并**同步 durable 落盘**（os.fsync 物理落盘，立即生效）。
+
+        用于面板防抖保存等「修改频率低（已由 500ms 防抖限频）但强杀进程/
+        断电也不能丢」的关键参数（2026-08-21：QA 6-3 强杀落盘专项）。
+        后台合并写（set()）最多丢失 150ms 窗口——面板参数强杀时不可接受。
+        写的是全量 prefs（含其他 pending 内存变更），无数据丢失。
+        """
+        with self._lock:
+            if panel not in self.prefs:
+                self.prefs[panel] = {}
+            self.prefs[panel][key] = value
+        # 已同步落盘：清掉后台待写标记，避免后台线程重复写同一份数据
+        self._dirty.clear()
+        path = get_user_prefs_path()
+        with self._write_lock:
+            _atomic_write_json(path, self.prefs, durable=True)
 
     def set_batch(self, items):
         """批量写入多个 panel 配置，只落盘一次（退出收尾用，避免 N 次全量写盘卡顿）。

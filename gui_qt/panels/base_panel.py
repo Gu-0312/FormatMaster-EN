@@ -61,17 +61,48 @@ class BaseQtPanel(ScrollArea):
     def _install_auto_prefs(self):
         """自动监听面板内常见输入控件变化，防抖保存 collect_prefs()。
 
-        覆盖 QComboBox / QCheckBox / QSlider / QLineEdit / QSpinBox；
+        覆盖 QComboBox（Qt 原生）与 qfluentwidgets ComboBox / SwitchButton
+        ——后者继承 QPushButton 而非 QComboBox/QCheckBox，findChildren 按
+        Qt 类型查不到，2026-08-21 QA 6-3 强杀落盘专项发现：Fluent 控件的
+        参数修改从不自动保存（旧版监听对它们完全失效）。
+        QSlider / QLineEdit / QSpinBox 沿用 Qt 类型。
         500ms 防抖避免滑块拖动等高频事件频繁写盘；任何面板无需额外接线。
         """
         self._prefs_timer = QTimer(self)
         self._prefs_timer.setSingleShot(True)
         self._prefs_timer.setInterval(500)
         self._prefs_timer.timeout.connect(self.save_prefs)
+
+        def _wire_combo(w):
+            # 两个信号都连（幂等防抖）：覆盖只有其一存在的情况
+            for sig in ("currentIndexChanged", "currentTextChanged"):
+                try:
+                    getattr(w, sig).connect(
+                        lambda *_: self._schedule_prefs_save())
+                except Exception:  # noqa: BLE001 - 缺信号跳过
+                    pass
+
+        # Qt 原生 QComboBox
         for w in self.findChildren(QComboBox):
-            w.currentIndexChanged.connect(lambda *_: self._schedule_prefs_save())
+            _wire_combo(w)
+        # qfluentwidgets ComboBox（QPushButton 系，需显式按类收集）
+        try:
+            from qfluentwidgets import ComboBox as _FluentComboBox
+            for w in self.findChildren(_FluentComboBox):
+                _wire_combo(w)
+        except Exception:  # noqa: BLE001
+            pass
         for w in self.findChildren(QCheckBox):
             w.toggled.connect(lambda *_: self._schedule_prefs_save())
+        # qfluentwidgets SwitchButton（QPushButton 系）
+        try:
+            from qfluentwidgets import SwitchButton as _FluentSwitch
+            for w in self.findChildren(_FluentSwitch):
+                if not isinstance(w, QCheckBox):
+                    w.checkedChanged.connect(
+                        lambda *_: self._schedule_prefs_save())
+        except Exception:  # noqa: BLE001
+            pass
         for w in self.findChildren(QSlider):
             w.valueChanged.connect(lambda *_: self._schedule_prefs_save())
         for w in self.findChildren(QLineEdit):
@@ -217,4 +248,6 @@ class BaseQtPanel(ScrollArea):
         od = self._out_dir_prefs()
         if od and "out_dir_combo" not in prefs:
             prefs = {**prefs, **od}
-        self.services.prefs.set(QT_PREFS_PANEL, self._prefs_key(), prefs)
+        # set_now：同步 durable 落盘（os.fsync）——面板参数强杀进程/断电
+        # 也不能丢（QA 6-3 专项；500ms 防抖已限频，同步写开销可忽略）
+        self.services.prefs.set_now(QT_PREFS_PANEL, self._prefs_key(), prefs)

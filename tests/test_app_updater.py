@@ -196,8 +196,20 @@ class TestCleanupBackup:
         cleanup_backup(str(app_dir))
         assert not bak.exists(), "启动后应清理旧版备份残留"
 
+    def test_removes_new_residue(self, tmp_path):
+        """启动时同时清理未完成更新的 _fm_new 解压残留（占磁盘大）。"""
+        app_dir = tmp_path / "格式大师"
+        app_dir.mkdir()
+        new_dir = tmp_path / "_fm_new"
+        new_dir.mkdir()
+        (new_dir / "格式大师.exe").write_bytes(b"x")
+        (new_dir / "_internal").mkdir()
+        cleanup_backup(str(app_dir))
+        assert not new_dir.exists(), "应清理未完成更新的 _fm_new 残留"
+
     def test_no_backup_noop(self, tmp_path):
         app_dir = tmp_path / "格式大师"
         app_dir.mkdir()
         cleanup_backup(str(app_dir))  # 不抛异常
         assert not (tmp_path / "_fm_old").exists()
+        assert not (tmp_path / "_fm_new").exists()

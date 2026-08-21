@@ -195,12 +195,16 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         def build(h):
             h.addWidget(CaptionLabel(tr("打开密码", "Open password")))
             self.ed_open_pwd = PasswordLineEdit()
-            self.ed_open_pwd.setFixedWidth(160)
+            self.ed_open_pwd.setFixedWidth(140)
             h.addWidget(self.ed_open_pwd)
+            self.cb_open_hist = self._hist_combo(self.ed_open_pwd)
+            h.addWidget(self.cb_open_hist)
             h.addWidget(CaptionLabel(tr("权限密码", "Owner password")))
             self.ed_owner_pwd = PasswordLineEdit()
-            self.ed_owner_pwd.setFixedWidth(160)
+            self.ed_owner_pwd.setFixedWidth(140)
             h.addWidget(self.ed_owner_pwd)
+            self.cb_owner_hist = self._hist_combo(self.ed_owner_pwd)
+            h.addWidget(self.cb_owner_hist)
             h.addWidget(CaptionLabel(tr("加密方式", "Encryption")))
             self.cb_encrypt_method = ComboBox()
             self.cb_encrypt_method.addItems(["AES-256", "AES-128"])
@@ -212,9 +216,83 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
         def build(h):
             h.addWidget(CaptionLabel(tr("输入密码", "Password")))
             self.ed_decrypt_pwd = PasswordLineEdit()
-            self.ed_decrypt_pwd.setFixedWidth(240)
+            self.ed_decrypt_pwd.setFixedWidth(200)
             h.addWidget(self.ed_decrypt_pwd)
+            self.cb_decrypt_hist = self._hist_combo(self.ed_decrypt_pwd)
+            h.addWidget(self.cb_decrypt_hist)
         return self._row_widget(build)
+
+    # ── PDF 密码历史（README v1.3.0 声明功能，2026-08-21 补全）──
+    # 加密/解密成功时记录最近 10 条密码到偏好，UI 下拉一键复用。
+    # 注：明文存储于 user_prefs.json（与 v1.3.0 原设计一致），如需更安全
+    # 可后续改用系统凭据管理器。
+    _PWD_HIST_KEY = "pdf_pwd_history"
+    _PWD_HIST_MAX = 10
+
+    def _pwd_hist(self):
+        h = self.services.prefs.get("qt_app", self._PWD_HIST_KEY, []) or []
+        # 坏配置容错：历史偏好非列表（int/str/dict）时回退空列表，
+        # 否则遍历抛 TypeError 导致 pdf 面板构建崩溃（P1~P5 同类）
+        if not isinstance(h, (list, tuple)):
+            return []
+        return [p for p in h if isinstance(p, str)]
+
+    def _record_pwd(self, pwd):
+        """记录一条密码到历史（去重置顶，最多 10 条）。后台线程可调用。
+
+        注意：只写偏好，不碰 UI（Qt 控件非线程安全）；历史下拉的刷新
+        由主线程 _on_state 任务成功回调执行。
+        """
+        if not pwd:
+            return
+        h = [p for p in self._pwd_hist() if p != pwd]
+        h.insert(0, pwd)
+        self.services.prefs.set_now(
+            "qt_app", self._PWD_HIST_KEY, h[:self._PWD_HIST_MAX])
+
+    def _refresh_hist_combos(self):
+        """重建全部历史密码下拉（主线程调用：任务成功回调/面板重进）。"""
+        hist = self._pwd_hist()
+        for cb in (getattr(self, "cb_open_hist", None),
+                   getattr(self, "cb_owner_hist", None),
+                   getattr(self, "cb_decrypt_hist", None)):
+            if cb is None:
+                continue
+            cb.blockSignals(True)
+            try:
+                cb.clear()
+                cb.addItem(tr("历史…", "History"))
+                for p in hist:
+                    cb.addItem(p)
+                cb.setCurrentIndex(0)
+            finally:
+                cb.blockSignals(False)
+
+    def _on_state(self, task_id, state):
+        """任务状态回调（主线程）：加密/解密成功后刷新历史下拉。"""
+        super()._on_state(task_id, state)
+        if state == "success":
+            try:
+                self._refresh_hist_combos()
+            except Exception:  # noqa: BLE001 - 刷新失败不影响任务
+                pass
+
+    def _hist_combo(self, target):
+        """历史密码下拉：选中即填入目标密码框（选中后自动复位）。"""
+        cb = ComboBox()
+        cb.setFixedWidth(92)
+        cb.addItem(tr("历史…", "History"))
+        for p in self._pwd_hist():
+            cb.addItem(p)
+        cb.setCurrentIndex(0)
+
+        def _on(idx):
+            if idx <= 0:
+                return
+            target.setText(cb.itemText(idx))
+            cb.setCurrentIndex(0)  # 复位，避免重复触发
+        cb.currentIndexChanged.connect(_on)
+        return cb
 
     def _build_compress_section(self):
         def build(h):
@@ -408,12 +486,20 @@ class PdfPanelPage(BaseQtPanel, TaskPanelMixin):
             if not p.get("open_pwd") and not p.get("owner_pwd"):
                 task.error = tr("请至少设置一个密码", "Set at least one password")
                 return False
-            return pdf_encrypt(task.file_path, task.output_path,
-                               p.get("open_pwd", ""), p.get("owner_pwd", ""),
-                               p.get("encrypt_method", "AES-256"), prog)
+            ok = pdf_encrypt(task.file_path, task.output_path,
+                             p.get("open_pwd", ""), p.get("owner_pwd", ""),
+                             p.get("encrypt_method", "AES-256"), prog)
+            if ok:
+                # 加密成功：记录密码到历史（最近 10 条，一键复用）
+                self._record_pwd(p.get("open_pwd", ""))
+                self._record_pwd(p.get("owner_pwd", ""))
+            return ok
         if tr("解密", "Decrypt") in mode:
-            return pdf_decrypt(task.file_path, task.output_path,
-                               p.get("decrypt_pwd", ""), prog)
+            ok = pdf_decrypt(task.file_path, task.output_path,
+                             p.get("decrypt_pwd", ""), prog)
+            if ok:
+                self._record_pwd(p.get("decrypt_pwd", ""))
+            return ok
         if tr("压缩", "Compress") in mode:
             dpi = int(p.get("compress_dpi", "150dpi").replace("dpi", ""))
             quality = int(p.get("compress_quality", "80"))

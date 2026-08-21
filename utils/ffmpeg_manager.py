@@ -301,6 +301,22 @@ class FFmpegManager:
             self._active_progress_cb = None
 
     def _download_impl(self, callback, force):
+        # 0) 先清理上次中断下载的残留压缩包/分片（进程被杀时 _race_download
+        #    的 finally 不执行，bin 目录会遗留 ffmpeg_dl.zip / .srcN）。
+        #    必须在「已就绪」早退之前执行，否则已就绪跳过下载时残留永不清。
+        try:
+            bin_dir0 = get_bin_dir()
+            zip_path0 = os.path.join(bin_dir0, "ffmpeg_dl.zip")
+            import glob
+            for p in [zip_path0] + glob.glob(zip_path0 + ".src*"):
+                if os.path.isfile(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+        except Exception:  # noqa: BLE001 - 残留清理失败不影响下载
+            pass
+
         # 1) 本地bin目录已有（force 时跳过，直接下载替换）
         if not force and self.is_available():
             self._report(100, "FFmpeg已就绪")

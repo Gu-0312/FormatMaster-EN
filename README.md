@@ -11,7 +11,7 @@
 
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-![Release](https://img.shields.io/badge/Release-v1.4.0-orange.svg)
+![Release](https://img.shields.io/badge/Release-v1.4.1-orange.svg)
 
 ---
 
@@ -279,7 +279,7 @@
 
 #### 下载使用
 
-从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.4.0) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
+从 [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.4.1) 页面下载最新版本，解压后双击 `格式大师.exe` 即可使用。
 
 #### 从源码运行
 
@@ -368,6 +368,17 @@ FormatMaster/
 ---
 
 ### 📝 更新日志
+
+#### v1.4.1 (2026-08-21)
+
+- 🛠 工具更新文件改存软件 bin 目录（不再与 C 盘双份占用），历史副本自动清理
+- 📌 侧边栏展开/折叠状态与上次停留页面记忆，重启自动恢复
+- 💾 偏好落盘全面加固：退出统一收尾 + fsync 物理落盘，断电/强杀进程不丢配置
+- 🔐 补全 PDF 密码历史（最近 10 条一键复用）
+- 🧹 应用自更新与 FFmpeg 下载中断残留自动清理
+- ⚡ 修复页面切换动画信号重复连接泄漏、面板参数自动保存失效（Fluent 控件）
+- 🪟 新增「毛玻璃效果」开关（设置 → 外观），性能敏感场景可关闭 Win11 Mica
+- 🛡 坏配置容错：配置损坏不再导致启动崩溃
 
 #### v1.4.0 (2026-08-19)
 
@@ -706,7 +717,7 @@ FormatMaster/
 
 #### Download
 
-Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.4.0) page — no installation required, just double-click `格式大师.exe`.
+Download the latest release from [Releases](https://github.com/Gu-0312/FormatMaster-EN/releases/tag/v1.4.1) page — no installation required, just double-click `格式大师.exe`.
 
 #### Build from Source
 

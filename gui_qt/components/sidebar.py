@@ -162,6 +162,15 @@ class LazyPage(QWidget):
         return getattr(self._ensure(), name)
 
 
+def _normalize_nav_expanded(v):
+    """nav_expanded 偏好归一化：仅真 bool 生效，缺失/损坏（非 bool）按 True。
+
+    修复 2026-08-21 QA 发现：损坏配置（dict/list/字符串）作为 truthy 会
+    误判展开态，统一回退默认展开。
+    """
+    return v if isinstance(v, bool) else True
+
+
 def build_navigation(window, services, theme_mgr):
     """创建全部页面并注册到 FluentWindow（首页即时加载，其余懒加载）。"""
     pages = {}
@@ -229,6 +238,40 @@ def build_navigation(window, services, theme_mgr):
     # 展开宽度 322 → 200：配合导航项紧凑绘制（图标/文字左移），留白最小化
     nav.setExpandWidth(152)
 
+    # 修复展开阈值错配（2026-08-21）：qfluentwidgets 内部用两套阈值判断
+    # 窗口宽度——expand() 用 minimumExpandWidth+expandWidth-322（152 时=838），
+    # resize 事件却用原始 minimumExpandWidth（默认 1008）。本项目窗口最小
+    # 宽 960，落在 838~1007 时用户展开侧边栏会被 resize 事件强制折叠（且
+    # 覆盖记忆的 nav_expanded）。把 minimumExpandWidth 对齐窗口最小宽度：
+    # 窗口永远 ≥960 → 不再误折叠，展开/折叠完全由用户手动控制。
+    panel.minimumExpandWidth = 960
+
+    # ── 侧边栏展开/折叠状态记忆（2026-08-21）──
+    # 用户手动展开（显示文字）/折叠（仅图标）后持久化到偏好，重启恢复
+    # 上次状态——不再每次启动都回到默认的「仅图标」折叠模式。
+    try:
+        from qfluentwidgets import NavigationDisplayMode
+
+        def _save_nav_expanded():
+            try:
+                services.set_pref(
+                    "nav_expanded",
+                    panel.displayMode == NavigationDisplayMode.EXPAND)
+                # 立即同步落盘：托盘退出/强杀进程不经过 closeEvent flush
+                services.prefs.flush()
+            except Exception:  # noqa: BLE001 - 保存失败不影响导航
+                pass
+
+        # 展开/折叠动画结束（duration=0 即时完成）后记录状态；restore 的
+        # expand(useAni=False) 不启动动画、不触发本信号，不会覆盖刚读的值
+        panel.expandAni.finished.connect(_save_nav_expanded)
+        # 启动恢复：上次为展开态则立即展开（无动画）。损坏配置（非 bool）
+        # 按默认 True（展开）处理，避免脏值误判。
+        if _normalize_nav_expanded(services.get_pref("nav_expanded", True)):
+            nav.expand(useAni=False)
+    except Exception:  # noqa: BLE001 - 记忆功能失败不影响启动
+        pass
+
     # ── 管理中心顶部悬浮分割线：把功能区与底部管理区物理切割 ──
     admin_divider = _make_admin_divider()
     panel.vBoxLayout.insertWidget(
@@ -254,11 +297,12 @@ def start_prewarm(window):
     """
     from PySide6.QtCore import QTimer
     lazy = list(getattr(window, "_lazy_pages", []) or [])
-    # 重面板优先预热：构建耗时 >50ms 的面板（实测 video/settings/pdf_editor/
-    # pdf/plugins 等）先构建，降低"点击到未预热重面板"时的卡顿概率；
-    # 轻面板按原顺序靠后（即使未预热，点击也只卡几十 ms 内）。
-    _HEAVY = {"video", "settings", "pdf_editor", "pdf", "plugins", "m3u8",
-              "lan_transfer", "download", "watermark", "image",
+    # 重面板优先预热：构建耗时 >100ms 的面板（实测 2026-08-21：audio 203ms /
+    # video 156ms / pdf 141ms / settings-pdf_editor-video_tools 125ms 等）
+    # 先构建，降低"点击到未预热重面板"时的卡顿概率；轻面板按原顺序靠后。
+    # audio 曾遗漏（最重面板最后预热，用户快速点音频转换仍卡 200ms）。
+    _HEAVY = {"video", "audio", "settings", "pdf_editor", "pdf", "plugins",
+              "m3u8", "lan_transfer", "download", "watermark", "image",
               "video_tools", "id_photo", "ocr"}
     queue = sorted(
         lazy,

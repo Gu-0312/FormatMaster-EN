@@ -8,6 +8,21 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+@pytest.fixture(autouse=True)
+def _reset_writable_bin_cache():
+    """每个测试前后重置 utils.config._WRITABLE_BIN_DIR_CACHE。
+
+    该缓存是模块级全局（运行期进程内只探测一次）。测试用 monkeypatch
+    模拟打包环境（frozen/_MEIPASS/APPDATA）时会改变目录解析结果，若
+    上一测试已填充缓存，后续测试（如 test_packaging_paths 的打包环境
+    断言）会命中过期路径导致失败。autouse 前后都清一次最稳妥。
+    """
+    from utils import config
+    config._WRITABLE_BIN_DIR_CACHE = None
+    yield
+    config._WRITABLE_BIN_DIR_CACHE = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_user_prefs():
     """测试隔离：备份/恢复 user_prefs.json，防止测试污染开发数据。

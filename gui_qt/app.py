@@ -61,6 +61,15 @@ def _is_win11():
         return False
 
 
+def _safe_nav_page(v):
+    """nav_page 偏好归一化：非字符串（损坏配置，如 dict/list）回退空串。
+
+    修复 2026-08-21 QA 发现：`pages.get(nav_page)` 对不可哈希的 dict/list
+    抛 TypeError: unhashable type，配置损坏时启动崩溃（P1~P5 同类问题）。
+    """
+    return v if isinstance(v, str) else ""
+
+
 class MainWindow(FluentWindow):
     """格式大师 Qt 版主窗口。"""
 
@@ -120,7 +129,11 @@ class MainWindow(FluentWindow):
 
         # ── 导航与页面（nav_registry 全量注册）────
         self.pages = build_navigation(self, self.services, self.theme_mgr)
-        self.switchTo(self.pages["home"])
+        # 恢复上次停留页面（侧边栏选中项记忆，2026-08-21）：不再每次
+        # 启动都回到首页；偏好缺失/损坏（非字符串）时回退首页
+        self.switchTo(self.pages.get(
+            _safe_nav_page(self.services.get_pref("nav_page", "")))
+            or self.pages["home"])
 
         # ── Mica 云母背景（Win11；Win10 自动跳过）──
         self._enable_mica()
@@ -144,28 +157,24 @@ class MainWindow(FluentWindow):
         self._patch_page_animation()
 
     def _patch_page_animation(self):
-        """把 FluentWindow 页面切换动画改成「快速弹出」。
+        """页面切换动画处理。
 
-        qfluentwidgets PopUpAniStackedWidget 默认 deltaY=76（新页从下往上
-        滑入 300ms）。当前采用轻快弹出：从下方轻微 40px 快速弹出
-        （100ms OutCubic），干脆利落不拖沓、无重"弹动"感。
+        2026-08-21 定稿：**禁用** qfluentwidgets PopUpAniStackedWidget 的
+        切换动画（view.isAnimationEnabled = False）——库源码每次切换都
+        `ani.finished.connect(self.__onAniFinished)` 且从不 disconnect：
+        QA 7-1 实测 400 次切换 RSS +371MB（连接数线性增长、每次动画结束
+        重复执行 N 次回调，长时间使用页面切换越来越慢），属库内存泄漏。
+        禁用后走 QStackedWidget 原生 setCurrentIndex：无动画、零泄漏，
+        页面即时切换（本项目切换成本已由 LazyPage 预热分摊）。
         """
         try:
-            from PySide6.QtCore import QEasingCurve
             view = self.stackedWidget.view
-            for info in view.aniInfos:
-                info.deltaX = 0
-                info.deltaY = 40
+            view.isAnimationEnabled = False
+            # wrapper 保持兼容（popOut 路径原样转发，无动画直接切换）
             _orig = self.stackedWidget.setCurrentWidget
             if not getattr(_orig, "_fm_patched", False):
                 def _patched(widget, popOut=True):
-                    if not popOut:
-                        view.setCurrentWidget(
-                            widget, needPopOut=False,
-                            showNextWidgetDirectly=True,
-                            duration=100, easingCurve=QEasingCurve.OutCubic)
-                    else:
-                        _orig(widget, popOut)
+                    _orig(widget, popOut)
                 _patched._fm_patched = True
                 self.stackedWidget.setCurrentWidget = _patched
         except Exception:  # noqa: BLE001 - 动画 patch 失败不影响切换
@@ -445,6 +454,19 @@ class MainWindow(FluentWindow):
         toast.close_all()
         super().switchTo(interface)
         self._fade_in_page(interface)
+        # 记住上次停留页面（侧边栏选中项记忆）：导航点击/快捷键/首页卡片
+        # 切换均经此入口，重启后恢复到该页而非总是首页。
+        # 页面变化时**立即同步落盘**：托盘退出/强杀进程等不经过 closeEvent
+        # flush 的路径也能恢复（切页低频，全量写盘开销可忽略）。
+        try:
+            for key, page in self.pages.items():
+                if page is interface:
+                    if self.services.get_pref("nav_page", "") != key:
+                        self.services.set_pref("nav_page", key)
+                        self.services.prefs.flush()
+                    break
+        except Exception:  # noqa: BLE001 - 记忆失败不影响切换
+            pass
 
     def _fade_in_page(self, widget):
         """页面切换显示（原 200ms QGraphicsOpacityEffect 淡入已移除）。
@@ -617,10 +639,22 @@ class MainWindow(FluentWindow):
                     w.setEnabled(enabled)
 
     def _enable_mica(self):
-        """应用窗口背景效果（Mica 云母，Win11；Win10 自动跳过）。"""
+        """应用窗口背景效果（Mica 云母，Win11；Win10 自动跳过）。
+
+        设置页「外观 → 毛玻璃效果」可关闭（性能敏感/兼容场景）：
+        关闭时移除已生效的背景效果，即时生效。
+        """
         if not _is_win11():
             return
         try:
+            if not self.services.get_pref("mica", True):
+                # 用户关闭毛玻璃：移除已生效的背景效果（Win11 云母走系统
+                # 合成器，占用 GPU/CPU；关闭后普通窗口背景，更省资源）
+                try:
+                    self.windowEffect.removeBackgroundEffect(self.winId())
+                except Exception:  # noqa: BLE001
+                    pass
+                return
             self.windowEffect.setMicaEffect(self.winId(),
                                             isDarkMode=isDarkTheme())
         except Exception:  # noqa: BLE001 - 特效失败不应阻断启动
@@ -665,59 +699,17 @@ class MainWindow(FluentWindow):
         except Exception:  # noqa: BLE001 - 库接口差异时静默跳过
             pass
 
-    def closeEvent(self, e):
-        # 强制退出（托盘右键/单实例激活等）不弹确认
-        if getattr(self, "_force_quit", False):
-            super().closeEvent(e)
-            return
+    def _finalize_shutdown(self):
+        """确认退出时的统一收尾（正常退出与 _force_quit 路径共用）。
 
-        # 关闭确认：未勾选"不再提醒"时弹出选择对话框。
-        # 决策必须在任何收尾工作（快照/面板保存/资源释放）之前执行，
-        # 避免：① 弹窗延迟出现导致白屏；② 取消/缩托盘时误触发耗时收尾。
-        decided = None  # None=继续退出 / "tray"=缩托盘 / "cancel"=取消关闭
-        try:
-            if self.services.get_pref("close_confirm", True):
-                from gui_qt.components.dialog import CloseConfirmDialog
-                dlg = CloseConfirmDialog(self)
-                dlg.move(self.frameGeometry().center() - dlg.rect().center())
-                if dlg.exec() != QDialog.Accepted or dlg.result is None:
-                    decided = "cancel"
-                else:
-                    if dlg.dont_ask_again:
-                        self.services.set_pref("close_confirm", False)
-                        self.services.set_pref("close_action", dlg.result)
-                    decided = dlg.result  # "quit" / "tray"
-            else:
-                # 已设置"不再提醒"：按记住的动作执行
-                decided = self.services.get_pref("close_action", "quit")
-        except Exception:  # noqa: BLE001 - 决策出错：取消关闭并提示
-            from app import logger
-            logger.error("[close] close decision error", exc_info=True)
-            try:
-                from gui_qt.components import toast
-                toast.show_error(
-                    self, tr("关闭处理出错，已取消关闭",
-                             "Error while closing; operation canceled"))
-            except Exception:  # noqa: BLE001
-                pass
-            e.ignore()
-            return
-
-        # ── 决策执行 ──
-        if decided == "tray":
-            try:
-                self._ensure_tray()
-            except Exception:  # noqa: BLE001
-                from app import logger
-                logger.error("[close] tray setup error", exc_info=True)
-            e.ignore()
-            self.hide()
-            return
-        if decided == "cancel":
-            e.ignore()
-            return
-
-        # ── 确认退出：现在才做收尾（耗时操作不在弹窗前执行）──
+        2026-08-21 彻底修复（原「显式 flush 兜底」为半吊子）：
+        - 流程逻辑：restart_application / _launch_updater 原先直接
+          QApplication.quit() 完全跳过 closeEvent，只补了 prefs.flush()，
+          面板偏好收尾/任务快照/临时清理全部丢失。现在所有退出路径都先
+          走本方法完成完整收尾；
+        - 物理落盘：prefs.flush() 已升级为 durable（os.fsync），数据真正
+          刷出操作系统 Page Cache 到达磁盘，断电/进程被杀不再丢失。
+        """
         # 快照立即写盘（防抖定时器在退出时可能尚未触发）
         tm = getattr(self, "task_manager", None)
         if tm and hasattr(tm, "flush_snapshot"):
@@ -787,12 +779,70 @@ class MainWindow(FluentWindow):
         except Exception:  # noqa: BLE001
             pass
 
-        # 偏好兜底落盘：后台合并写的脏数据在退出前同步刷出
-        # （_save_window_state 等走 set_pref → 后台写，不 flush 会丢）
+        # 偏好兜底落盘：durable（os.fsync 物理落盘），后台合并写的脏数据
+        # 与页面/侧边栏记忆在退出前同步刷出，断电/强杀也不丢
         try:
             self.services.prefs.flush()
         except Exception:  # noqa: BLE001
             pass
+
+    def closeEvent(self, e):
+        # 强制退出（托盘右键/单实例激活等）不弹确认，但走统一收尾：
+        # 面板偏好/任务快照/临时清理 + prefs durable 物理落盘
+        if getattr(self, "_force_quit", False):
+            self._finalize_shutdown()
+            super().closeEvent(e)
+            return
+
+        # 关闭确认：未勾选"不再提醒"时弹出选择对话框。
+        # 决策必须在任何收尾工作（快照/面板保存/资源释放）之前执行，
+        # 避免：① 弹窗延迟出现导致白屏；② 取消/缩托盘时误触发耗时收尾。
+        decided = None  # None=继续退出 / "tray"=缩托盘 / "cancel"=取消关闭
+        try:
+            if self.services.get_pref("close_confirm", True):
+                from gui_qt.components.dialog import CloseConfirmDialog
+                dlg = CloseConfirmDialog(self)
+                dlg.move(self.frameGeometry().center() - dlg.rect().center())
+                if dlg.exec() != QDialog.Accepted or dlg.result is None:
+                    decided = "cancel"
+                else:
+                    if dlg.dont_ask_again:
+                        self.services.set_pref("close_confirm", False)
+                        self.services.set_pref("close_action", dlg.result)
+                    decided = dlg.result  # "quit" / "tray"
+            else:
+                # 已设置"不再提醒"：按记住的动作执行
+                decided = self.services.get_pref("close_action", "quit")
+        except Exception:  # noqa: BLE001 - 决策出错：取消关闭并提示
+            from app import logger
+            logger.error("[close] close decision error", exc_info=True)
+            try:
+                from gui_qt.components import toast
+                toast.show_error(
+                    self, tr("关闭处理出错，已取消关闭",
+                             "Error while closing; operation canceled"))
+            except Exception:  # noqa: BLE001
+                pass
+            e.ignore()
+            return
+
+        # ── 决策执行 ──
+        if decided == "tray":
+            try:
+                self._ensure_tray()
+            except Exception:  # noqa: BLE001
+                from app import logger
+                logger.error("[close] tray setup error", exc_info=True)
+            e.ignore()
+            self.hide()
+            return
+        if decided == "cancel":
+            e.ignore()
+            return
+
+        # ── 确认退出：统一收尾（快照/面板偏好/资源释放/窗口状态/临时
+        #    清理/prefs durable 物理落盘），耗时操作不在弹窗前执行 ──
+        self._finalize_shutdown()
 
         super().closeEvent(e)
 
@@ -868,6 +918,12 @@ def restart_application(window=None):
     用于工具（FFmpeg/yt-dlp）更新完成后自动重启，让新版本生效——
     版本号、硬件加速检测、ffmpeg 路径缓存等都需重新初始化。
     window 传入时标记强制退出，跳过「关闭确认」对话框。
+
+    2026-08-21 彻底修复：原先直接 QApplication.quit() 完全跳过 closeEvent
+    （只补了一个 prefs.flush()，面板偏好收尾/任务快照/临时清理全丢，且
+    flush 不落物理盘）。现在改为 window.close() → closeEvent → _force_quit
+    分支 → _finalize_shutdown() 统一收尾（含 prefs durable os.fsync 落盘），
+    窗口关闭后靠 quitOnLastWindowClosed 退出事件循环，quit() 仅兜底。
     """
     global _SINGLE_INSTANCE_SHM
 
@@ -901,7 +957,14 @@ def restart_application(window=None):
     except Exception:  # noqa: BLE001 - 启动新实例失败仍退出旧实例
         pass
 
-    # 退出当前实例
+    # 统一收尾并关闭旧实例：close() → closeEvent（_force_quit 分支）→
+    # _finalize_shutdown（面板偏好/任务快照/临时清理 + prefs durable 落盘）。
+    # 窗口关闭后 quitOnLastWindowClosed 自动退出事件循环，quit() 兜底。
+    if window is not None:
+        try:
+            window.close()
+        except Exception:  # noqa: BLE001 - 关闭异常不阻止退出
+            pass
     QApplication.quit()
 
 
@@ -1108,6 +1171,19 @@ def run(convert_path=None):
             pass
         QTimer.singleShot(8000, lambda: window._tool_checker.check_async(notify=False))
     except Exception:  # noqa: BLE001 - 检测初始化失败不影响启动
+        pass
+
+    # ── 一次性迁移历史遗留的 %APPDATA% 工具副本到软件 bin 目录 ──
+    # 旧版把更新后的 ffmpeg/ffprobe/yt-dlp 下载到 %APPDATA%/FormatMaster/bin，
+    # 与安装目录随包 bin 双份占用硬盘；启动后后台去重（跨盘 copy 可能数秒，
+    # 不阻塞启动）。开发模式自动跳过。
+    try:
+        if getattr(sys, "frozen", False):
+            import threading as _th3
+            from utils.config import migrate_legacy_bin_files
+            QTimer.singleShot(1500, lambda: _th3.Thread(
+                target=migrate_legacy_bin_files, daemon=True).start())
+    except Exception:  # noqa: BLE001 - 迁移初始化失败不影响启动
         pass
 
     # ── 应用网络代理设置（urllib 体系自动读取环境变量，全局生效）──

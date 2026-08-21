@@ -870,6 +870,17 @@ class SettingsPage(ScrollArea):
         self.card_anim.checkedChanged.connect(self._on_animations)
         g.addSettingCard(self.card_anim)
 
+        # 毛玻璃效果（Win11 Mica 云母背景；性能敏感时可关闭）
+        self.card_mica = SwitchSettingCard(
+            FluentIcon.CLOUD, tr("毛玻璃效果", "Mica effect"),
+            tr("Win11 云母背景（关闭后为普通窗口背景，更省资源）",
+               "Win11 Mica background (disable for lower GPU/CPU usage)"),
+            parent=g)
+        self.card_mica.setValue(
+            bool(self.services.get_pref("mica", True)))
+        self.card_mica.checkedChanged.connect(self._on_mica)
+        g.addSettingCard(self.card_mica)
+
         # 界面缩放（全局字号比例，重启生效）
         self.card_ui_scale = _ComboSettingCard(
             FluentIcon.ZOOM, tr("界面缩放", "UI scale"),
@@ -893,6 +904,14 @@ class SettingsPage(ScrollArea):
     def _on_animations(self, on):
         self.services.set_pref("animations", bool(on))
         ds.set_animations(bool(on))
+
+    def _on_mica(self, on):
+        """毛玻璃开关：存偏好 + 即时生效（重应用/移除 Mica 效果）。"""
+        self.services.set_pref("mica", bool(on))
+        try:
+            self.main_window._enable_mica()
+        except Exception:  # noqa: BLE001 - 特效切换失败不影响设置
+            pass
 
     def _on_ui_scale_changed(self, idx):
         """界面缩放：存偏好 + 提示重启（QSS 启动时生成）。"""

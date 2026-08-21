@@ -131,6 +131,13 @@ def prompt_app_update(parent, latest):
             app_dir = os.path.dirname(sys.executable)
             app_exe = os.path.basename(sys.executable)
             bat = app_updater.prepare_update(zip_path, app_dir, app_exe)
+            # 更新包已解压完成，立即删除临时 zip——原逻辑只在失败/取消时
+            # 清理，成功路径会在 %TEMP% 遗留几十 MB（进程崩溃/强杀后永不清）。
+            try:
+                if zip_path and os.path.isfile(zip_path):
+                    os.remove(zip_path)
+            except OSError:
+                pass
             if dlg.cancelled:
                 # 解压期间被取消：不替换、不重启
                 return
@@ -159,7 +166,13 @@ def prompt_app_update(parent, latest):
 
 
 def _launch_updater(bat, parent):
-    """主线程：启动更新器脚本（替换文件并拉起新版本），然后退出当前实例。"""
+    """主线程：启动更新器脚本（替换文件并拉起新版本），然后退出当前实例。
+
+    2026-08-21 彻底修复：原先直接 QApplication.quit() 跳过 closeEvent（只
+    补 prefs.flush()，且不落物理盘）。现在 close() 触发 _force_quit 分支的
+    _finalize_shutdown() 统一收尾——面板偏好/任务快照/临时清理 + prefs
+    durable（os.fsync）落盘，断电/强杀不丢。
+    """
     try:
         QProcess.startDetached("cmd", ["/c", bat])
     except Exception:  # noqa: BLE001
@@ -167,6 +180,11 @@ def _launch_updater(bat, parent):
     # 标记强制退出，跳过关闭确认对话框
     try:
         parent._force_quit = True
+    except Exception:  # noqa: BLE001
+        pass
+    # 统一收尾并关闭（closeEvent → _force_quit → _finalize_shutdown）
+    try:
+        parent.close()
     except Exception:  # noqa: BLE001
         pass
     QApplication.quit()

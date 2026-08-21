@@ -88,7 +88,10 @@ class ToolStatusCard(Card):
             items = tool_check.check_tools()
         except Exception:  # noqa: BLE001 - 检查失败时显示空列表
             items = []
-        self._check_ready.emit(seq, items)
+        try:
+            self._check_ready.emit(seq, items)
+        except RuntimeError:
+            pass  # 卡片已销毁（信号源被删），静默丢弃
 
     def _on_check_ready(self, seq, items):
         """主线程：填充工具状态行；行就绪后再异步获取各工具版本。"""
@@ -219,15 +222,22 @@ class ToolStatusCard(Card):
                 daemon=True).start()
 
     def _fetch_version_worker(self, idx, fn):
-        """单个工具版本获取（后台线程）：成功后经信号切回主线程更新。"""
+        """单个工具版本获取（后台线程）：成功后经信号切回主线程更新。
+
+        注意：yt-dlp --version 首次约 7 秒，线程可能横跨窗口关闭——若卡片
+        已被销毁，emit 到已删的 C++ 信号源会抛 RuntimeError（2026-08-21
+        QA 发现），必须静默吞掉，不能把 traceback 打到控制台。
+        """
         try:
             ver = fn()
         except Exception:  # noqa: BLE001 - 版本获取失败保持原状态文字
             ver = None
         if not ver:
             return
-        # Signal.emit 跨线程安全：Qt 自动队列调度到主线程执行槽
-        self._version_ready.emit(idx, ver)
+        try:
+            self._version_ready.emit(idx, ver)
+        except RuntimeError:
+            pass  # 卡片已销毁（信号源被删），静默丢弃
 
     def _on_version_ready(self, idx, ver):
         """主线程：更新对应行的详情为版本号。"""
