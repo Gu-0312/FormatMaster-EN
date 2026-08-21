@@ -100,6 +100,15 @@ def prompt_app_update(parent, latest):
                                  manual_url=app_updater.release_page_url())
     _thread = {"t": None}  # 防止重试时旧线程引用问题（旧线程失败后已结束）
 
+    # 跨线程桥：_run 在后台线程，_launch_updater 含 parent.close()/
+    # QApplication.quit() 等 Qt UI 操作，必须在主线程执行——经 Signal
+    # 队列调度（QueuedConnection 自动跨线程，禁止线程内直接调用）。
+    class _RestartBridge(QObject):
+        restart = Signal(str)  # (update.bat 路径)
+
+    _bridge = _RestartBridge(parent)
+    _bridge.restart.connect(lambda bat: _launch_updater(bat, parent))
+
     def _run():
         zip_path = None
         try:
@@ -143,7 +152,8 @@ def prompt_app_update(parent, latest):
                 # 解压期间被取消：不替换、不重启
                 return
             dlg.finish(True, tr("更新完成，正在重启…", "Updated, restarting…"))
-            _launch_updater(bat, parent)
+            # 重启交给主线程（_launch_updater 含 UI/进程级操作）
+            _bridge.restart.emit(bat)
         except app_updater.UpdateCancelled:
             # 用户取消：静默收尾（download_update 已清理临时文件）
             return
