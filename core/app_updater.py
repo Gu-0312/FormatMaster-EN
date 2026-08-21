@@ -244,28 +244,54 @@ def download_update(urls, progress_cb=None, should_stop=None):
 
 
 def _locate_exe_in_new_dir(new_dir, app_exe_name):
-    """在解压目录中定位主 exe 所在目录（不依赖目录名匹配）。
+    """在解压目录中定位主 exe（不依赖目录名/精确名匹配）。
 
-    zip 根可能是程序目录本身，也可能含一层目录（打包时的目录名可能与
-    用户当前安装目录名不一致——用户改过安装目录名时按名匹配会失败）。
-    递归找最浅含主 exe 的目录；返回 (exe_dir, need_promote)。
+    策略分层：
+    1) 精确匹配 app_exe_name（new_dir 根 → 递归）
+    2) 找不到时兜底选 new_dir 下任意 .exe（最浅优先），处理打包时
+       --name 与当前程序 exe 名不一致/中文名编码差异等场景。
+
+    返回 (exe_dir, found_name, need_promote)；完全找不到返回 (None, None, False)。
     """
     if os.path.isfile(os.path.join(new_dir, app_exe_name)):
-        return new_dir, False
+        return new_dir, app_exe_name, False
     for root, _dirs, files in os.walk(new_dir):
         if app_exe_name in files:
-            return root, root != new_dir
-    return None, False
+            return root, app_exe_name, root != new_dir
+    # 兜底：任意 .exe，最浅优先（避免误选 _internal 子模块）
+    candidates = []
+    for root, _dirs, files in os.walk(new_dir):
+        for f in files:
+            if f.lower().endswith(".exe"):
+                candidates.append((root.count(os.sep), root, f))
+    if candidates:
+        candidates.sort()
+        return candidates[0][1], candidates[0][2], candidates[0][1] != new_dir
+    return None, None, False
+
+
+def _format_dir_tree(new_dir, max_depth=2):
+    """格式化 new_dir 目录树前 max_depth 层（用于"未找到主程序"诊断）。"""
+    lines = []
+    base_depth = new_dir.rstrip(os.sep).count(os.sep)
+    for root, dirs, files in os.walk(new_dir):
+        depth = root.count(os.sep) - base_depth
+        if depth > max_depth:
+            dirs[:] = []
+            continue
+        indent = "  " * depth
+        lines.append(f"{indent}{os.path.basename(root) or root}/")
+        for f in files:
+            lines.append(f"{indent}  {f}")
+    return "\n".join(lines[:60])
 
 
 def prepare_update(zip_path, app_dir, app_exe_name):
-    """解压新版本到 app_dir 同级「格式大师_new」，并生成 update.bat。
+    """解压新版本到 app_dir 同级「_fm_new」，并生成 update.bat。
 
-    参数：
-        zip_path   下载好的更新包
-        app_dir    当前程序目录（PyInstaller 免安装版目录，含 exe+_internal）
-        app_exe_name 主程序 exe 名（如 "格式大师.exe"）
-    返回 update.bat 路径。
+    找不到主 exe 时暴露实际目录树到日志（debug.log 可见）+ 报错含期望名。
+    主 exe 名与期望不一致时自动重命名（兜底匹配场景），保证 bat 的 EXE
+    变量能命中。
     """
     parent = os.path.dirname(app_dir)
     new_dir = os.path.join(parent, "_fm_new")
@@ -273,19 +299,41 @@ def prepare_update(zip_path, app_dir, app_exe_name):
         shutil.rmtree(new_dir, ignore_errors=True)
     os.makedirs(new_dir, exist_ok=True)
 
-    # 解压：zip 根可能是程序目录本身，或含一层「格式大师/」目录
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(new_dir)
-    exe_dir, need_promote = _locate_exe_in_new_dir(new_dir, app_exe_name)
+    exe_dir, found_name, need_promote = _locate_exe_in_new_dir(
+        new_dir, app_exe_name)
+    if exe_dir is None:
+        # 完全找不到任何 exe：暴露目录树到日志便于诊断
+        tree = _format_dir_tree(new_dir)
+        shutil.rmtree(new_dir, ignore_errors=True)
+        try:
+            from utils.logger import get_logger
+            get_logger("app_updater").warning(
+                "更新包未找到主程序（app_exe_name=%s），目录树：\n%s",
+                app_exe_name, tree)
+        except Exception:  # noqa: BLE001 - 日志失败不影响报错
+            pass
+        raise RuntimeError(
+            f"更新包内容无效（未找到主程序，期望 {app_exe_name}）")
     if need_promote and exe_dir != new_dir:
-        # 内层目录提升到 new_dir 根（避免更新器 move 后双重嵌套）
         for item in os.listdir(exe_dir):
             shutil.move(os.path.join(exe_dir, item), os.path.join(new_dir, item))
         shutil.rmtree(exe_dir, ignore_errors=True)
-    # 解压结果必须含主 exe，否则视为无效
-    if not os.path.isfile(os.path.join(new_dir, app_exe_name)):
-        shutil.rmtree(new_dir, ignore_errors=True)
-        raise RuntimeError("更新包内容无效（未找到主程序）")
+    # 兜底匹配时 found_name 可能 != app_exe_name：重命名以保 bat 命中
+    if found_name and found_name != app_exe_name:
+        try:
+            from utils.logger import get_logger
+            get_logger("app_updater").warning(
+                "主 exe 名不匹配（app_exe_name=%s, 实际=%s），自动重命名",
+                app_exe_name, found_name)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            os.replace(os.path.join(new_dir, found_name),
+                       os.path.join(new_dir, app_exe_name))
+        except OSError:
+            app_exe_name = found_name  # 重命名失败时让 bat 用实际名
 
     bat_path = os.path.join(parent, "_fm_update.bat")
     _write_updater_bat(bat_path, parent, os.path.basename(app_dir), app_exe_name)

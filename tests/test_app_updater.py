@@ -129,16 +129,45 @@ class TestPrepareUpdate:
         assert (new_dir / "_internal" / "data.txt").is_file()
         assert os.path.isfile(bat)
 
-    def test_invalid_zip(self, tmp_path):
-        # 解压后没有主 exe → 报错并清理
+    def test_exe_name_mismatch_fallback(self, tmp_path):
+        # 打包 --name 与当前程序 exe 名不一致（最常见：1.4.0 用旧名打、
+        # 1.4.1 改了 name），zip 内 exe 找不到精确名 → 兜底选任意 .exe
+        # 并重命名为 app_exe_name（Bug C 回归，2026-08-21）
+        app_dir = tmp_path / "格式大师"
+        app_dir.mkdir()
+        (app_dir / "FormatMaster.exe").write_bytes(b"old")  # 当前 exe 是这个名
+        zip_path = tmp_path / "upd.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("格式大师.exe", "fake-new")  # zip 内是中文名
+            zf.writestr("_internal/data.txt", "x")
+        bat = prepare_update(str(zip_path), str(app_dir), "FormatMaster.exe")
+        new_dir = tmp_path / "_fm_new"
+        # 自动重命名为期望名（保证 bat 的 EXE 变量命中）
+        assert (new_dir / "FormatMaster.exe").is_file(), \
+            "兜底匹配应将 zip 内 exe 重命名为 app_exe_name"
+        assert (new_dir / "_internal" / "data.txt").is_file()
+        # bat 应使用期望名（不是 zip 内的中文名）
+        with open(bat, "rb") as f:
+            content = f.read().decode("gbk", errors="ignore")
+        assert "EXE=FormatMaster.exe" in content
+
+    def test_no_exe_at_all(self, tmp_path):
+        # zip 内完全没有 .exe（异常包）：应暴露目录树到日志 + 清晰报错
         app_dir = tmp_path / "格式大师"
         app_dir.mkdir()
         (app_dir / "格式大师.exe").write_bytes(b"old")
         zip_path = tmp_path / "upd.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("README.txt", "no exe here")
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError) as ei:
             prepare_update(str(zip_path), str(app_dir), "格式大师.exe")
+        assert "未找到主程序" in str(ei.value)
+        assert "格式大师.exe" in str(ei.value)  # 报错含期望名
+        assert not (tmp_path / "_fm_new").exists()
+
+    def test_invalid_zip(self, tmp_path):
+        # 同 test_no_exe_at_all（无 .exe 异常包），保留作为兼容断言入口
+        self.test_no_exe_at_all(tmp_path)
         assert not (tmp_path / "_fm_new").exists()
 
 
