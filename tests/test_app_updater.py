@@ -31,10 +31,17 @@ class TestFindPortableAsset:
         assert find_portable_asset(["仅有的包.zip"]) == "仅有的包.zip"
 
     def test_no_match(self):
-        # 多个 zip 但无免安装关键词 → None（避免误下安装包）
-        assert find_portable_asset(["a.zip", "b.zip"]) is None
+        # 排除 Source 后没剩余 zip → None（实际 release 全部是 source 归档）
+        assert find_portable_asset(["Source code (zip)"]) is None
+        # 没 zip → None
         assert find_portable_asset(["说明.txt"]) is None
         assert find_portable_asset([]) is None
+
+    def test_source_excluded(self):
+        # source code 自动归档被排除，剩余 zip 兜底选首个（用户主安装包）
+        assert find_portable_asset(
+            ["FormatMasterv1.4.1.zip", "Source code (zip)"]) \
+            == "FormatMasterv1.4.1.zip"
 
 
 class TestUrls:

@@ -127,18 +127,24 @@ def find_portable_asset(asset_names):
 
     优先匹配含版本号(当前 APP_VERSION)的；否则取第一个匹配的。
     返回资产名或 None。
+
+    排除 GitHub UI 创建 Release 时自动生成的 Source code 归档
+    （asset.name='Source code (zip)' 不以 .zip 结尾时不会进入 zips，
+    但以 .zip 结尾时需按名排除，避免它干扰"唯一 zip"宽松兜底）。
     """
     from utils.config import APP_VERSION
-    zips = [n for n in asset_names if n.lower().endswith(".zip")]
+    zips = [n for n in asset_names
+            if n.lower().endswith(".zip")
+            and "source" not in n.lower()]   # 排除 Source code 自动归档
     portable = [n for n in zips if any(k in n for k in PORTABLE_KEYWORDS)]
-    if not portable:
-        # 宽松兜底：任意 zip（若只有单一资产）
-        return zips[0] if len(zips) == 1 else None
-    # 优先当前版本号
-    for n in portable:
-        if APP_VERSION in n:
-            return n
-    return portable[0]
+    if portable:
+        # 优先当前版本号
+        for n in portable:
+            if APP_VERSION in n:
+                return n
+        return portable[0]
+    # 宽松兜底：剩余 zip 中的第一个（用户上传的主安装包）
+    return zips[0] if zips else None
 
 
 def asset_download_url(asset_name, tag):
