@@ -96,7 +96,8 @@ def prompt_app_update(parent, latest):
         return
 
     dlg = DownloadProgressDialog(tr("格式大师", "FormatMaster"), parent,
-                                 retryable=True)
+                                 retryable=True,
+                                 manual_url=app_updater.release_page_url())
     _thread = {"t": None}  # 防止重试时旧线程引用问题（旧线程失败后已结束）
 
     def _run():

@@ -153,6 +153,11 @@ def asset_download_url(asset_name, tag):
             f"download/v{tag}/{asset_name}")
 
 
+def release_page_url():
+    """GitHub Releases 页面（供自动更新失败时引导手动下载）。"""
+    return f"https://github.com/{APP_OWNER}/{APP_REPO}/releases"
+
+
 def build_download_urls(asset_url):
     """[镜像1, 镜像2, ..., 原始]——镜像优先（国内可达），原始兜底。"""
     return [f"{m}{asset_url}" for m in GITHUB_MIRRORS] + [asset_url]

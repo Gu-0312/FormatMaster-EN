@@ -11,7 +11,8 @@
 - 模态 + 下载完成自动关闭；用户可在下载中「取消」（仅关闭窗口，下载在
   后台继续完成），避免下载卡住时无法关闭窗口。
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout,
 )
@@ -38,7 +39,9 @@ class DownloadProgressDialog(FluentDialogBase):
     _finished = Signal(bool, str)  # (ok, 结果消息)
     retry_requested = Signal()     # 失败态点「重试」（retryable=True 时）
 
-    def __init__(self, tool_label, parent=None, retryable=False):
+    def __init__(self, tool_label, parent=None, retryable=False,
+                 manual_url=None):
+        """manual_url：更新失败时额外显示「前往 GitHub 下载」按钮（打开该链接）。"""
         title = tr("正在更新 {}", "Updating {}").format(tool_label)
         super().__init__(title, parent)
         self.tool_label = tool_label
@@ -46,7 +49,9 @@ class DownloadProgressDialog(FluentDialogBase):
         self.msg = ""
         self.cancelled = False
         self.retryable = retryable
+        self.manual_url = manual_url
         self._close_btn = None
+        self._manual_btn = None
 
         self.setFixedSize(440, 190)
 
@@ -137,9 +142,11 @@ class DownloadProgressDialog(FluentDialogBase):
         else:
             self.bar.setValue(0)
             self.status_lbl.setText(
-                tr("下载失败：{}", "Download failed: {}").format(msg))
+                tr("下载失败：{}\n\n若多次失败，请前往 GitHub Release 页面手动下载。",
+                   "Download failed: {}\n\nIf it keeps failing, get the package "
+                   "manually from the GitHub Release page.").format(msg))
             if self.retryable:
-                # 失败态：主按钮变「重试」，左侧追加「关闭」
+                # 失败态：主按钮变「重试」，左侧追加「关闭」；可选「前往 GitHub」
                 self.btn.setText(tr("重试", "Retry"))
                 if self._close_btn is None:
                     self._close_btn = QPushButton(tr("关闭", "Close"), self)
@@ -149,6 +156,15 @@ class DownloadProgressDialog(FluentDialogBase):
                     # 插到主按钮左侧：[stretch, 关闭, 重试]
                     self._btn_lay.insertWidget(self._btn_lay.count() - 1,
                                                self._close_btn)
+                if self.manual_url and self._manual_btn is None:
+                    self._manual_btn = QPushButton(
+                        tr("前往 GitHub 下载", "Get from GitHub"), self)
+                    self._manual_btn.setObjectName("dlBtnSec")
+                    self._manual_btn.setCursor(Qt.PointingHandCursor)
+                    self._manual_btn.clicked.connect(self._open_manual)
+                    # [stretch, 前往GitHub, 关闭, 重试]
+                    self._btn_lay.insertWidget(self._btn_lay.count() - 1,
+                                               self._manual_btn)
             else:
                 self.btn.setText(tr("关闭", "Close"))
             toast.show_error(
@@ -166,7 +182,18 @@ class DownloadProgressDialog(FluentDialogBase):
         self.btn.setText(tr("取消", "Cancel"))
         if self._close_btn is not None:
             self._close_btn.hide()
+        if self._manual_btn is not None:
+            self._manual_btn.hide()
         self.setStyleSheet(self._theme_qss())
+
+    def _open_manual(self):
+        """打开 GitHub Release 页面让用户手动下载（失败引导）。"""
+        try:
+            QDesktopServices.openUrl(QUrl(self.manual_url or ""))
+        except Exception:  # noqa: BLE001 - 打开失败不影响关闭
+            pass
+        toast.show_info(self.parent(),
+                        tr("已打开 GitHub Release 页面", "GitHub Release page opened"))
 
     def _on_close(self):
         self.reject()
