@@ -182,8 +182,15 @@ class QrcodePanelPage(BaseQtPanel):
         self.btn_go.clicked.connect(self._generate)
         self.btn_save = PushButton(tr("保存为图片", "Save as image"))
         self.btn_save.clicked.connect(self._save)
+        self.btn_reset = PushButton(FluentIcon.ROTATE,
+                                    tr("恢复默认", "Reset defaults"))
+        self.btn_reset.setToolTip(tr(
+            "恢复外观/高级参数到默认值（前景色 #000000、背景色 #FFFFFF 等）",
+            "Reset appearance to defaults (fg #000000, bg #FFFFFF, ...)"))
+        self.btn_reset.clicked.connect(self._reset_defaults)
         brow.addWidget(self.btn_go)
         brow.addWidget(self.btn_save)
+        brow.addWidget(self.btn_reset)
         brow.addStretch(1)
         self.lb_status = CaptionLabel(tr("就绪", "Ready"))
         brow.addWidget(self.lb_status)
@@ -301,6 +308,24 @@ class QrcodePanelPage(BaseQtPanel):
         self.save_prefs()
 
     # ── Logo 选择 ─────────────────────────────────
+    def _reset_defaults(self):
+        """恢复外观/高级参数到出厂默认值（颜色、尺寸、边距、样式、渐变）。
+
+        用户修改前景色/背景色后一键还原；不动内容区（类型/文本/WiFi/Logo）。
+        恢复后若有内容立即重新生成预览，并同步保存偏好。
+        """
+        self.cb_size.setCurrentText("400")
+        self.cb_border.setCurrentText("4")
+        self.ed_fg.setText(DEFAULT_FG)
+        self.ed_bg.setText(DEFAULT_BG)
+        self.cb_style.setCurrentIndex(0)
+        self.cb_grad.setCurrentIndex(0)
+        if self._has_content():
+            self._generate()
+        self.lb_status.setText(tr("已恢复默认外观", "Appearance reset to defaults"))
+        self.save_prefs()
+        toast.show_info(self, tr("已恢复默认外观", "Appearance reset to defaults"))
+
     def _pick_logo(self):
         path, _ = QFileDialog.getOpenFileName(
             self, tr("选择 Logo 图片", "Pick logo image"), "",
