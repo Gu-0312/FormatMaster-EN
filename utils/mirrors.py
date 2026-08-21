@@ -23,13 +23,29 @@ utils/ffmpeg_manager.py）原本各自维护一份镜像列表，改由此模块
 
 # 版本检查用镜像：优先顺序即列表顺序，配合 parallel_first 并发抢答，
 # 单个镜像失效（超时/403/404）快速跳过，不影响整体。
+# 2026-08-21 按用户要求「全面添加」：并发抢答机制下（任一源成功即返回、
+# 其余立即取消、不等待慢源），失效镜像只占一个并发槽、不拖慢整体、
+# 不污染结果（解析失败/网络错误均返回 None）——故可多列候选，
+# 实测最快的 gh-proxy.com 仍靠前优先命中。
 API_MIRRORS = [
     "https://gh-proxy.com/",
     "https://ghproxy.net/",
     "https://gh.ddlc.top/",
+    "https://ghfast.top/",
+    "https://ghps.cc/",
+    "https://ghproxy.cc/",
+    "https://gh.llkk.cc/",
+    "https://ghproxy.cn/",
+    "https://github.moeyy.xyz/",
+    "https://gh-proxy.ygxz.in/",
+    "https://gh-proxy.20m4.net/",
+    "https://gh.con.sh/",
+    "https://ghproxy.netlify.app/",
+    "https://gh.94422.xyz/",
 ]
 
-# 下载用镜像：与 API 列表一致（下载路径实测三个都可达）。
+# 下载用镜像：与 API 列表一致（下载路径实测三个都可达；扩展候选同机制
+# ——掐流/限速源由调用方吞吐熔断弃源，错误内容由 zip 校验拒绝）。
 DOWNLOAD_MIRRORS = API_MIRRORS
 
 

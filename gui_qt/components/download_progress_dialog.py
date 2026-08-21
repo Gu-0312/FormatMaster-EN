@@ -142,8 +142,10 @@ class DownloadProgressDialog(FluentDialogBase):
         else:
             self.bar.setValue(0)
             self.status_lbl.setText(
-                tr("下载失败：{}\n\n若多次失败，请前往 GitHub Release 页面手动下载。",
-                   "Download failed: {}\n\nIf it keeps failing, get the package "
+                tr("下载失败：{}\n\n若多次失败，可能是网络受限（需代理/梯子）。"
+                   "\n可前往 GitHub Release 页面手动下载。",
+                   "Download failed: {}\n\nIf it keeps failing, your network "
+                   "may be restricted (VPN/proxy needed).\nGet the package "
                    "manually from the GitHub Release page.").format(msg))
             if self.retryable:
                 # 失败态：主按钮变「重试」，左侧追加「关闭」；可选「前往 GitHub」
