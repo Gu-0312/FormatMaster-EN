@@ -2231,7 +2231,7 @@ class SettingsPage(ScrollArea):
         info_color = ds.accent()
         items = [
             (FluentIcon.INFO, tr("当前版本", "Version"), APP_VERSION),
-            (FluentIcon.CALENDAR, tr("发布日期", "Released"), "2026-08-19"),
+            (FluentIcon.CALENDAR, tr("发布日期", "Released"), "2026-08-21"),
             (FluentIcon.PEOPLE, tr("开发方式", "Development"),
              tr("个人开发", "Solo developer")),
             (FluentIcon.GITHUB, tr("项目仓库", "Repository"), "GitHub"),
