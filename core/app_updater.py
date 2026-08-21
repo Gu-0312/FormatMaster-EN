@@ -40,6 +40,12 @@ _TIMEOUT = 8
 _UA = "FormatMaster-Updater/1.0"
 
 
+# 限速熔断参数：时间窗口内累计字节低于阈值即视为掐流弃源
+# （镜像掐流时 urlopen 的 timeout 只对单次 read 生效、永不超时，须主动弃源）
+STALL_WINDOW_SEC = 12.0   # 秒
+STALL_MIN_BYTES = 64 * 1024  # 64KB
+
+
 class UpdateCancelled(Exception):
     """用户取消了更新（should_stop 回调返回 True）。
 
@@ -176,6 +182,11 @@ def download_update(urls, progress_cb=None, should_stop=None):
     progress_cb(done_bytes, total_bytes)：主线程外调用（与 download_ytdlp 同签名）。
     should_stop()：可选回调，返回 True 时立即中止下载（抛 UpdateCancelled，
     不尝试下一个源）。用于用户点「取消」后真正停止，而不是继续下完。
+
+    限速熔断：镜像掐流（连接存活但吞吐 <64KB/12s）时，urlopen 的 timeout
+    只对单次 read 生效、永不超时——须按时间窗口检查累计字节主动弃源，
+    否则 500MB 包会在慢速源上无限卡住（与 ffmpeg_manager 的 _race_download
+    同策略）。
     """
     ctx = _ssl_ctx()
     tmp = os.path.join(tempfile.gettempdir(),
@@ -189,6 +200,10 @@ def download_update(urls, progress_cb=None, should_stop=None):
                     open(tmp, "wb") as f:
                 total = int(resp.headers.get("Content-Length") or 0)
                 done = 0
+                # 限速熔断窗口：窗口内累计字节 <阈值 视为掐流弃源
+                import time as _time
+                _win_start = _time.time()
+                _win_bytes = 0
                 while True:
                     if should_stop is not None and should_stop():
                         raise UpdateCancelled("用户取消更新")
@@ -197,6 +212,13 @@ def download_update(urls, progress_cb=None, should_stop=None):
                         break
                     f.write(chunk)
                     done += len(chunk)
+                    _win_bytes += len(chunk)
+                    _now = _time.time()
+                    if _now - _win_start >= STALL_WINDOW_SEC:
+                        if _win_bytes < STALL_MIN_BYTES:
+                            raise ValueError("下载源吞吐过低（掐流），切换源")
+                        _win_start = _now
+                        _win_bytes = 0
                     if progress_cb:
                         progress_cb(done, total)
             # 校验 zip 完整性
@@ -221,6 +243,21 @@ def download_update(urls, progress_cb=None, should_stop=None):
     raise RuntimeError(f"更新包下载失败。{last_err}")
 
 
+def _locate_exe_in_new_dir(new_dir, app_exe_name):
+    """在解压目录中定位主 exe 所在目录（不依赖目录名匹配）。
+
+    zip 根可能是程序目录本身，也可能含一层目录（打包时的目录名可能与
+    用户当前安装目录名不一致——用户改过安装目录名时按名匹配会失败）。
+    递归找最浅含主 exe 的目录；返回 (exe_dir, need_promote)。
+    """
+    if os.path.isfile(os.path.join(new_dir, app_exe_name)):
+        return new_dir, False
+    for root, _dirs, files in os.walk(new_dir):
+        if app_exe_name in files:
+            return root, root != new_dir
+    return None, False
+
+
 def prepare_update(zip_path, app_dir, app_exe_name):
     """解压新版本到 app_dir 同级「格式大师_new」，并生成 update.bat。
 
@@ -239,12 +276,12 @@ def prepare_update(zip_path, app_dir, app_exe_name):
     # 解压：zip 根可能是程序目录本身，或含一层「格式大师/」目录
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(new_dir)
-    inner = os.path.join(new_dir, os.path.basename(app_dir))
-    if os.path.isdir(inner):
+    exe_dir, need_promote = _locate_exe_in_new_dir(new_dir, app_exe_name)
+    if need_promote and exe_dir != new_dir:
         # 内层目录提升到 new_dir 根（避免更新器 move 后双重嵌套）
-        for item in os.listdir(inner):
-            shutil.move(os.path.join(inner, item), os.path.join(new_dir, item))
-        shutil.rmtree(inner, ignore_errors=True)
+        for item in os.listdir(exe_dir):
+            shutil.move(os.path.join(exe_dir, item), os.path.join(new_dir, item))
+        shutil.rmtree(exe_dir, ignore_errors=True)
     # 解压结果必须含主 exe，否则视为无效
     if not os.path.isfile(os.path.join(new_dir, app_exe_name)):
         shutil.rmtree(new_dir, ignore_errors=True)

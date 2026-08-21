@@ -113,6 +113,22 @@ class TestPrepareUpdate:
         assert (tmp_path / "_fm_new" / "格式大师.exe").is_file()
         assert os.path.isfile(bat)
 
+    def test_nested_zip_dirname_mismatch(self, tmp_path):
+        # 用户安装目录名与 zip 内层目录名不一致（如改名安装目录），
+        # 仍应正确提升内层目录并解出主 exe（Bug A 回归，2026-08-21）
+        app_dir = tmp_path / "MyFormat"      # 用户改名的安装目录
+        app_dir.mkdir()
+        (app_dir / "格式大师.exe").write_bytes(b"old")
+        zip_path = tmp_path / "upd.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("格式大师/格式大师.exe", "fake")
+            zf.writestr("格式大师/_internal/data.txt", "x")
+        bat = prepare_update(str(zip_path), str(app_dir), "格式大师.exe")
+        new_dir = tmp_path / "_fm_new"
+        assert (new_dir / "格式大师.exe").is_file(), "目录名不同也应提升出主 exe"
+        assert (new_dir / "_internal" / "data.txt").is_file()
+        assert os.path.isfile(bat)
+
     def test_invalid_zip(self, tmp_path):
         # 解压后没有主 exe → 报错并清理
         app_dir = tmp_path / "格式大师"
@@ -152,6 +168,35 @@ class TestDownloadCancellation:
         with pytest.raises(UpdateCancelled):
             download_update(urls, should_stop=lambda: True)
         assert len(called) == 1, "取消后不应继续尝试下一个源"
+
+    def test_stall_source_circuit_break(self, monkeypatch):
+        # 掐流源（连接存活但吞吐低于阈值）应在窗口期后主动弃源，
+        # 而不是被 urlopen timeout 卡死（Bug B 回归，2026-08-21）。
+        # 注入小窗口/小阈值（0.2s/512B）让测试秒级完成，逻辑与产品一致。
+        monkeypatch.setattr(app_updater, "STALL_WINDOW_SEC", 0.2)
+        monkeypatch.setattr(app_updater, "STALL_MIN_BYTES", 512)
+
+        class StallResp:
+            headers = {"Content-Length": "10485760"}  # 10MB
+
+            def read(self, n):
+                import time as _t
+                _t.sleep(0.01)
+                return b"x" * 16  # 每 10ms 16B → 0.2s 窗口 320B < 512B 阈值
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr(
+            app_updater.urllib.request, "urlopen",
+            lambda req, timeout=30, context=None: StallResp())
+        # 不断流但低速 → 应在窗口内熔断报错（永不"成功"）
+        with pytest.raises(RuntimeError) as ei:
+            download_update(["https://m1/slow.zip"])
+        assert "吞吐过低" in str(ei.value)
 
     def test_stop_false_downloads_ok(self, monkeypatch, tmp_path):
         # should_stop 恒 False：正常下载并校验 zip
